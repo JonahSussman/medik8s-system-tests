@@ -6,6 +6,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	configv1 "github.com/openshift/api/config/v1"
+	olmV1alpha1 "github.com/rh-ecosystem-edge/eco-goinfra/pkg/schemes/olm/operators/v1alpha1"
 
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/deployment"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/infrastructure"
@@ -17,6 +18,7 @@ import (
 	. "github.com/medik8s/system-tests/tests/internal/medik8sinittools"
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -50,6 +52,24 @@ var _ = Describe(
 				listOptions,
 			)
 			Expect(err).ToNot(HaveOccurred(), "Pod is not ready")
+
+			By("Verifying pod count matches expected replicas")
+
+			farPods, err := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
+			Expect(err).ToNot(HaveOccurred(), "Failed to list FAR pods")
+
+			runningPods := filterRunningPods(farPods)
+
+			infraConfig, err := infrastructure.Pull(APIClient)
+			Expect(err).ToNot(HaveOccurred(), "Failed to pull infrastructure configuration")
+
+			expectedCount := farparams.ExpectedReplicas
+			if infraConfig.Object.Status.ControlPlaneTopology == configv1.SingleReplicaTopologyMode {
+				expectedCount = int32(1)
+			}
+
+			Expect(int32(len(runningPods))).To(Equal(expectedCount),
+				"Expected %d running FAR pod(s), found %d", expectedCount, len(runningPods))
 		})
 
 		It("Verify FAR CSV has required annotations", reportxml.ID("70637"), func() {
@@ -60,12 +80,25 @@ var _ = Describe(
 			Expect(err).ToNot(HaveOccurred(), "Failed to list FAR ClusterServiceVersions")
 			Expect(len(farCSVs)).To(BeNumerically(">", 0), "At least one FAR ClusterServiceVersion should be found")
 
+			By("Finding the active (Succeeded) CSV")
+
+			var farCSV *olm.ClusterServiceVersionBuilder
+
+			for _, csv := range farCSVs {
+				phase, phaseErr := csv.GetPhase()
+				if phaseErr == nil && phase == olmV1alpha1.CSVPhaseSucceeded {
+					farCSV = csv
+
+					break
+				}
+			}
+
+			Expect(farCSV).ToNot(BeNil(), "No FAR CSV in Succeeded phase found")
+
 			By("Checking annotation values on FAR CSV")
 
-			farCSV := farCSVs[0]
 			Expect(farCSV.Object.Annotations).ToNot(BeNil(), "CSV annotations should not be nil")
 
-			// Check each required annotation
 			for annotationKey, expectedValue := range farparams.RequiredAnnotations {
 				annotationValue, exists := farCSV.Object.Annotations[annotationKey]
 				Expect(exists).To(BeTrue(), "Required annotation %q should exist on FAR CSV", annotationKey)
@@ -91,6 +124,28 @@ var _ = Describe(
 			By("Verifying ready replicas")
 			Expect(farDeployment.Object.Status.ReadyReplicas).To(Equal(farparams.ExpectedReplicas),
 				"Expected %d ready replica(s), found %d", farparams.ExpectedReplicas, farDeployment.Object.Status.ReadyReplicas)
+
+			By("Verifying pods run on different nodes")
+
+			listOptions := metav1.ListOptions{
+				LabelSelector: fmt.Sprintf("app.kubernetes.io/name=%s", farparams.OperatorControllerPodLabel),
+			}
+
+			farPods, err := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
+			Expect(err).ToNot(HaveOccurred(), "Failed to list FAR pods")
+
+			runningPods := filterRunningPods(farPods)
+
+			nodeNames := make(map[string]bool)
+
+			for _, p := range runningPods {
+				Expect(p.Object.Spec.NodeName).ToNot(BeEmpty(),
+					"Pod %s has not been assigned to a node", p.Object.Name)
+				nodeNames[p.Object.Spec.NodeName] = true
+			}
+
+			Expect(len(nodeNames)).To(Equal(int(farparams.ExpectedReplicas)),
+				"FAR pods must run on different nodes for HA, but found pods on %d unique node(s)", len(nodeNames))
 		})
 
 		It("Verify FAR container runs as non-root user", reportxml.ID("61208"), func() {
@@ -108,7 +163,6 @@ var _ = Describe(
 			for _, farPod := range farPods {
 				By(fmt.Sprintf("Verifying security context for pod %s", farPod.Object.Name))
 
-				// Check 1: Verify runAsNonRoot security context
 				By("Checking pod-level runAsNonRoot security context")
 
 				if farPod.Object.Spec.SecurityContext == nil {
@@ -123,28 +177,86 @@ var _ = Describe(
 							farPod.Object.Name, *farPod.Object.Spec.SecurityContext.RunAsNonRoot))
 				}
 
-				// Check 2: Verify all containers' runAsUser
-				By("Checking all containers' runAsUser")
+				By("Checking manager container security context")
 
-				if len(farPod.Object.Spec.Containers) < 1 {
-					errorMessages = append(errorMessages,
-						fmt.Sprintf("Pod %s has no containers", farPod.Object.Name))
-				} else {
-					for i, container := range farPod.Object.Spec.Containers {
-						if container.SecurityContext != nil && container.SecurityContext.RunAsUser != nil {
-							if *container.SecurityContext.RunAsUser == 0 {
-								errorMessages = append(errorMessages,
-									fmt.Sprintf("Incorrect user running container [%d] in pod %s, expected non 0, found: %d",
-										i, farPod.Object.Name, *container.SecurityContext.RunAsUser))
+				managerFound := false
+
+				for _, container := range farPod.Object.Spec.Containers {
+					if container.Name != farparams.ManagerContainerName {
+						continue
+					}
+
+					managerFound = true
+					securityContext := container.SecurityContext
+
+					if securityContext == nil {
+						errorMessages = append(errorMessages,
+							fmt.Sprintf("Container %s in pod %s has nil SecurityContext",
+								container.Name, farPod.Object.Name))
+
+						continue
+					}
+
+					if securityContext.RunAsUser != nil && *securityContext.RunAsUser == 0 {
+						errorMessages = append(errorMessages,
+							fmt.Sprintf("Container %s in pod %s runs as root (UID 0)",
+								container.Name, farPod.Object.Name))
+					}
+
+					if securityContext.AllowPrivilegeEscalation == nil || *securityContext.AllowPrivilegeEscalation {
+						errorMessages = append(errorMessages,
+							fmt.Sprintf("Container %s in pod %s: AllowPrivilegeEscalation must be explicitly false",
+								container.Name, farPod.Object.Name))
+					}
+
+					if securityContext.Capabilities == nil {
+						errorMessages = append(errorMessages,
+							fmt.Sprintf("Container %s in pod %s: Capabilities block is nil, must drop ALL",
+								container.Name, farPod.Object.Name))
+					} else {
+						hasDropAll := false
+
+						for _, cap := range securityContext.Capabilities.Drop {
+							if cap == "ALL" {
+								hasDropAll = true
+
+								break
 							}
 						}
+
+						if !hasDropAll {
+							errorMessages = append(errorMessages,
+								fmt.Sprintf("Container %s in pod %s does not drop ALL capabilities",
+									container.Name, farPod.Object.Name))
+						}
 					}
+
+					seccompOk := false
+					if securityContext.SeccompProfile != nil &&
+						securityContext.SeccompProfile.Type == corev1.SeccompProfileTypeRuntimeDefault {
+						seccompOk = true
+					} else if farPod.Object.Spec.SecurityContext != nil &&
+						farPod.Object.Spec.SecurityContext.SeccompProfile != nil &&
+						farPod.Object.Spec.SecurityContext.SeccompProfile.Type == corev1.SeccompProfileTypeRuntimeDefault {
+						seccompOk = true
+					}
+
+					if !seccompOk {
+						errorMessages = append(errorMessages,
+							fmt.Sprintf("Container %s in pod %s missing RuntimeDefault seccomp profile",
+								container.Name, farPod.Object.Name))
+					}
+				}
+
+				if !managerFound {
+					errorMessages = append(errorMessages,
+						fmt.Sprintf("Pod %s has no container named %q",
+							farPod.Object.Name, farparams.ManagerContainerName))
 				}
 			}
 
-			// Final validation
 			if len(errorMessages) > 0 {
-				errMsg := "Testing user running FAR container failed due to:\n"
+				errMsg := "Testing security context of FAR container failed due to:\n"
 				for _, msg := range errorMessages {
 					errMsg += fmt.Sprintf("- %s\n", msg)
 				}
@@ -153,3 +265,15 @@ var _ = Describe(
 			}
 		})
 	})
+
+func filterRunningPods(pods []*pod.Builder) []*pod.Builder {
+	running := make([]*pod.Builder, 0, len(pods))
+
+	for _, p := range pods {
+		if p.Object.Status.Phase == corev1.PodRunning && p.Object.DeletionTimestamp == nil {
+			running = append(running, p)
+		}
+	}
+
+	return running
+}

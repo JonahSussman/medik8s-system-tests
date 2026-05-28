@@ -6,4 +6,7 @@ const (
 
 	// ExpectedReplicas defines the expected number of replicas for FAR controller manager.
 	ExpectedReplicas = int32(2)
+
+	// ManagerContainerName is the name of the main controller container in the FAR pod.
+	ManagerContainerName = "manager"
 )
