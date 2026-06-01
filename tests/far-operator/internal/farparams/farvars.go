@@ -37,12 +37,12 @@ var (
 
 	// RequiredAnnotations defines the required annotations and their expected values for FAR CSV.
 	RequiredAnnotations = map[string]string{
-		"features.operators.openshift.io/tls-profiles":   "false",
-		"features.operators.openshift.io/disconnected":   "true",
-		"features.operators.openshift.io/fips-compliant": "true",
-		"features.operators.openshift.io/proxy-aware":    "false",
-		"features.operators.openshift.io/cnf":            "false",
-		"features.operators.openshift.io/cni":            "false",
+		"features.operators.openshift.io/tls-profiles":     "false",
+		"features.operators.openshift.io/disconnected":     "true",
+		"features.operators.openshift.io/fips-compliant":   "true",
+		"features.operators.openshift.io/proxy-aware":      "false",
+		"features.operators.openshift.io/cnf":              "false",
+		"features.operators.openshift.io/cni":              "false",
 		"features.operators.openshift.io/csi":              "false",
 		"features.operators.openshift.io/token-auth-aws":   "false",
 		"features.operators.openshift.io/token-auth-azure": "false",
