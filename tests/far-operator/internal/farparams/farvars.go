@@ -43,8 +43,11 @@ var (
 		"features.operators.openshift.io/proxy-aware":    "false",
 		"features.operators.openshift.io/cnf":            "false",
 		"features.operators.openshift.io/cni":            "false",
-		"features.operators.openshift.io/csi":            "false",
-		"operatorframework.io/suggested-namespace":       medik8sparams.OperatorNs,
+		"features.operators.openshift.io/csi":              "false",
+		"features.operators.openshift.io/token-auth-aws":   "false",
+		"features.operators.openshift.io/token-auth-azure": "false",
+		"features.operators.openshift.io/token-auth-gcp":   "false",
+		"operatorframework.io/suggested-namespace":         medik8sparams.OperatorNs,
 	}
 )
 

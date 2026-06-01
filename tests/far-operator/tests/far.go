@@ -231,6 +231,13 @@ var _ = Describe(
 						}
 					}
 
+					if securityContext.ReadOnlyRootFilesystem == nil || !*securityContext.ReadOnlyRootFilesystem {
+						errorMessages = append(errorMessages,
+							fmt.Sprintf(
+								"Container %s in pod %s: ReadOnlyRootFilesystem must be explicitly true",
+								container.Name, farPod.Object.Name))
+					}
+
 					seccompOk := false
 					if securityContext.SeccompProfile != nil &&
 						securityContext.SeccompProfile.Type == corev1.SeccompProfileTypeRuntimeDefault {
