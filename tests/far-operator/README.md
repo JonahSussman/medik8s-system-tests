@@ -20,7 +20,7 @@ ginkgo --label-filter="far" ./tests/far-operator/...
 
 Validates that FAR controller-manager pods are in Running state and the pod count matches the cluster topology (2 on multi-node, 1 on SNO).
 
-- **Operators**: FAR (any version)
+- **Operators**: FAR v0.8.0
 - **Cluster**: Any topology (MNO or SNO)
 - **Storage**: None
 - **Environment**: Connected or disconnected
@@ -31,7 +31,7 @@ Validates that FAR controller-manager pods are in Running state and the pod coun
 
 Validates that the active FAR ClusterServiceVersion (in Succeeded phase) has all required OLM feature annotations: disconnected support, FIPS compliance, suggested namespace, and feature flags.
 
-- **Operators**: FAR (any version)
+- **Operators**: FAR v0.8.0
 - **Cluster**: Any topology
 - **Storage**: None
 - **Environment**: Connected or disconnected
@@ -42,7 +42,7 @@ Validates that the active FAR ClusterServiceVersion (in Succeeded phase) has all
 
 Validates that 2 replicas are running and scheduled on different nodes for high availability. Skipped on SNO clusters where only 1 replica is expected.
 
-- **Operators**: FAR (any version)
+- **Operators**: FAR v0.8.0
 - **Cluster**: Multi-node only (skips on SNO)
 - **Storage**: None
 - **Environment**: Connected or disconnected
@@ -53,7 +53,7 @@ Validates that 2 replicas are running and scheduled on different nodes for high 
 
 Validates the manager container follows the restricted security posture: runAsNonRoot at pod level, allowPrivilegeEscalation=false, capabilities.drop=ALL, and seccompProfile=RuntimeDefault (at container or pod level). Only checks the `manager` container, not sidecars.
 
-- **Operators**: FAR (any version)
+- **Operators**: FAR v0.8.0
 - **Cluster**: Any topology
 - **Storage**: None
 - **Environment**: Connected or disconnected
