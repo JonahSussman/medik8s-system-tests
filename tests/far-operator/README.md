@@ -36,7 +36,7 @@ Validates that the active FAR ClusterServiceVersion (in Succeeded phase) has all
 - **Storage**: None
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="far" --focus="required annotations" ./tests/far-operator/...`
-- **Pass criteria**: 8 required annotations present with expected values on the active CSV
+- **Pass criteria**: All required annotations present with expected values on the active CSV
 
 ### 3. Verify FAR Controller Replicas and Node Distribution (Polarion 61222)
 
@@ -49,9 +49,9 @@ Validates that 2 replicas are running and scheduled on different nodes for high 
 - **Standalone**: `ginkgo --label-filter="far" --focus="correct number of replicas" ./tests/far-operator/...`
 - **Pass criteria**: 2 ready replicas on 2 different nodes
 
-### 4. Verify FAR Container Security Context (Polarion 61208)
+### 4. Verify FAR Container Security Context (Polarion 89231)
 
-Validates the manager container follows the restricted security posture: runAsNonRoot at pod level, allowPrivilegeEscalation=false, capabilities.drop=ALL, and seccompProfile=RuntimeDefault (at container or pod level). Only checks the `manager` container, not sidecars.
+Validates the manager container follows the restricted security posture: runAsNonRoot at pod level, runAsUser is not UID 0 when set, allowPrivilegeEscalation=false, capabilities.drop=ALL, readOnlyRootFilesystem=true, and seccompProfile=RuntimeDefault (at container or pod level). Only checks the `manager` container, not sidecars.
 
 - **Operators**: FAR v0.8.0
 - **Cluster**: Any topology

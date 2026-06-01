@@ -148,7 +148,7 @@ var _ = Describe(
 				"FAR pods must run on different nodes for HA, but found pods on %d unique node(s)", len(nodeNames))
 		})
 
-		It("Verify FAR container runs as non-root user", reportxml.ID("61208"), func() {
+		It("Verify FAR container runs as non-root user", reportxml.ID("89231"), func() {
 			By("Getting FAR controller pod names")
 
 			listOptions := metav1.ListOptions{
@@ -156,11 +156,13 @@ var _ = Describe(
 			}
 			farPods, err := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
 			Expect(err).ToNot(HaveOccurred(), "Failed to get FAR controller pods")
-			Expect(len(farPods)).To(BeNumerically(">", 0), "At least one FAR controller pod should be found")
+
+			runningPods := filterRunningPods(farPods)
+			Expect(len(runningPods)).To(BeNumerically(">", 0), "No running FAR controller pods found")
 
 			var errorMessages []string
 
-			for _, farPod := range farPods {
+			for _, farPod := range runningPods {
 				By(fmt.Sprintf("Verifying security context for pod %s", farPod.Object.Name))
 
 				By("Checking pod-level runAsNonRoot security context")
