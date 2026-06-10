@@ -1,19 +1,11 @@
 package snrparams
 
-import "time"
-
 const (
 	// Label represents snr operator label that can be used for test cases selection.
 	Label = "snr"
 
-	// DefaultPollInterval is the polling interval used with Eventually calls.
-	DefaultPollInterval = 5 * time.Second
-
 	// ExpectedReplicas defines the expected number of replicas for SNR controller manager.
 	ExpectedReplicas = int32(2)
-
-	// ManagerContainerName is the name of the main controller container in the SNR pod.
-	ManagerContainerName = "manager"
 
 	// CRDGroup is the Kubernetes API group for all SNR custom resources.
 	CRDGroup = "self-node-remediation.medik8s.io"

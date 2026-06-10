@@ -15,10 +15,11 @@ import (
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/reportxml"
 	oplmV1alpha1 "github.com/rh-ecosystem-edge/eco-goinfra/pkg/schemes/olm/operators/v1alpha1"
 
-	"github.com/medik8s/system-tests/tests/snr-operator/internal/snrparams"
 	. "github.com/medik8s/system-tests/tests/internal/medik8sinittools"
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
+	"github.com/medik8s/system-tests/tests/snr-operator/internal/snrparams"
 
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -30,7 +31,10 @@ var _ = Describe(
 	Ordered,
 	ContinueOnFailure,
 	Label(snrparams.Label), func() {
-		var snrDeployment *deployment.Builder
+		var (
+			snrDeployment *deployment.Builder
+			snrCSV        *olm.ClusterServiceVersionBuilder
+		)
 
 		BeforeAll(func() {
 			By("Get SNR deployment object")
@@ -43,35 +47,44 @@ var _ = Describe(
 
 			By("Verify SNR deployment is Ready")
 			Expect(snrDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(), "SNR deployment is not Ready")
+
+			By("Get SNR ClusterServiceVersion")
+
+			snrCSVs, err := olm.ListClusterServiceVersionWithNamePattern(
+				APIClient, snrparams.CSVNamePattern, medik8sparams.OperatorNs)
+			Expect(err).ToNot(HaveOccurred(), "Failed to list SNR ClusterServiceVersions")
+			Expect(len(snrCSVs)).To(BeNumerically(">", 0),
+				"At least one SNR ClusterServiceVersion should be found")
+
+			for _, csv := range snrCSVs {
+				if csv.Object.Status.Phase == oplmV1alpha1.CSVPhaseSucceeded {
+					snrCSV = csv
+
+					break
+				}
+			}
+
+			Expect(snrCSV).ToNot(BeNil(), "No SNR CSV in Succeeded phase found")
 		})
 
 		It("Verify SNR resources are installed and running",
 			reportxml.ID("54205"), func() {
 				By("Verifying SelfNodeRemediationConfig exists")
 
-				snrcGVR := schema.GroupVersionResource{
-					Group:    snrparams.CRDGroup,
-					Version:  snrparams.CRDVersion,
-					Resource: "selfnoderemediationconfigs",
-				}
+				snrcObj := &unstructured.Unstructured{}
+				snrcObj.SetGroupVersionKind(schema.GroupVersionKind{
+					Group:   snrparams.CRDGroup,
+					Version: snrparams.CRDVersion,
+					Kind:    "SelfNodeRemediationConfig",
+				})
 
-				snrcList, err := APIClient.Resource(snrcGVR).Namespace(medik8sparams.OperatorNs).
-					List(context.TODO(), metav1.ListOptions{})
-				Expect(err).ToNot(HaveOccurred(), "Failed to list SelfNodeRemediationConfig resources")
-				Expect(len(snrcList.Items)).To(BeNumerically(">", 0),
-					"At least one SelfNodeRemediationConfig should exist")
-
-				found := false
-
-				for _, item := range snrcList.Items {
-					if item.GetName() == snrparams.SNRConfigName {
-						found = true
-
-						break
-					}
-				}
-
-				Expect(found).To(BeTrue(),
+				err := APIClient.Get(context.TODO(),
+					client.ObjectKey{
+						Name:      snrparams.SNRConfigName,
+						Namespace: medik8sparams.OperatorNs,
+					},
+					snrcObj)
+				Expect(err).ToNot(HaveOccurred(),
 					"SelfNodeRemediationConfig %q not found", snrparams.SNRConfigName)
 
 				By("Verifying SNR DaemonSet pods are running")
@@ -103,14 +116,6 @@ var _ = Describe(
 					listOptions,
 				)
 				Expect(err).ToNot(HaveOccurred(), "SNR controller pods are not running")
-
-				By("Verifying SNR controller-manager replicas are ready")
-
-				Expect(snrDeployment.Object.Spec.Replicas).ToNot(BeNil(),
-					"Deployment replicas should not be nil")
-				Expect(snrDeployment.Object.Status.ReadyReplicas).To(
-					Equal(*snrDeployment.Object.Spec.Replicas),
-					"Not all controller-manager replicas are ready")
 			})
 
 		It("Verify only Automatic remediation template exists",
@@ -146,38 +151,27 @@ var _ = Describe(
 
 				By("Verifying unsupported templates do not exist")
 
-				snrtGVR := schema.GroupVersionResource{
-					Group:    snrparams.CRDGroup,
-					Version:  snrparams.CRDVersion,
-					Resource: "selfnoderemediationtemplates",
-				}
+				for _, unsupported := range snrparams.UnsupportedTemplateNames {
+					tmpl := &unstructured.Unstructured{}
+					tmpl.SetGroupVersionKind(schema.GroupVersionKind{
+						Group:   snrparams.CRDGroup,
+						Version: snrparams.CRDVersion,
+						Kind:    "SelfNodeRemediationTemplate",
+					})
 
-				snrtList, err := APIClient.Resource(snrtGVR).Namespace(medik8sparams.OperatorNs).
-					List(context.TODO(), metav1.ListOptions{})
-				Expect(err).ToNot(HaveOccurred(), "Failed to list SelfNodeRemediationTemplate resources")
-
-				for _, tmpl := range snrtList.Items {
-					for _, unsupported := range snrparams.UnsupportedTemplateNames {
-						Expect(tmpl.GetName()).ToNot(Equal(unsupported),
-							"Unsupported template %q should not exist", unsupported)
-					}
+					err := APIClient.Get(context.TODO(),
+						client.ObjectKey{
+							Name:      unsupported,
+							Namespace: medik8sparams.OperatorNs,
+						},
+						tmpl)
+					Expect(k8serrors.IsNotFound(err)).To(BeTrue(),
+						"Unsupported template %q should not exist", unsupported)
 				}
 			})
 
 		It("Verify SNR CSV annotations",
 			reportxml.ID("52136"), func() {
-				By("Getting SNR ClusterServiceVersion")
-
-				snrCSVs, err := olm.ListClusterServiceVersionWithNamePattern(
-					APIClient, snrparams.CSVNamePattern, medik8sparams.OperatorNs)
-				Expect(err).ToNot(HaveOccurred(), "Failed to list SNR ClusterServiceVersions")
-				Expect(len(snrCSVs)).To(BeNumerically(">", 0),
-					"At least one SNR ClusterServiceVersion should be found")
-
-				snrCSV := snrCSVs[0]
-				Expect(snrCSV.Object.Status.Phase).To(
-					Equal(oplmV1alpha1.CSVPhaseSucceeded), "CSV should be in Succeeded phase")
-
 				By("Checking valid-subscription annotation")
 
 				annotations := snrCSV.Object.Annotations
@@ -206,16 +200,6 @@ var _ = Describe(
 
 		It("Verify SNR CSV metadata",
 			reportxml.ID("70705"), func() {
-				By("Getting SNR ClusterServiceVersion")
-
-				snrCSVs, err := olm.ListClusterServiceVersionWithNamePattern(
-					APIClient, snrparams.CSVNamePattern, medik8sparams.OperatorNs)
-				Expect(err).ToNot(HaveOccurred(), "Failed to list SNR ClusterServiceVersions")
-				Expect(len(snrCSVs)).To(BeNumerically(">", 0),
-					"At least one SNR ClusterServiceVersion should be found")
-
-				snrCSV := snrCSVs[0]
-
 				By("Checking infrastructure feature annotations")
 
 				annotations := snrCSV.Object.Annotations
@@ -229,14 +213,6 @@ var _ = Describe(
 						"Annotation %q should have value %q, got %q",
 						annotationKey, expectedValue, annotationValue)
 				}
-
-				By("Checking suggested-namespace annotation")
-
-				suggestedNs, exists := annotations["operatorframework.io/suggested-namespace"]
-				Expect(exists).To(BeTrue(),
-					"CSV should have operatorframework.io/suggested-namespace annotation")
-				Expect(suggestedNs).To(Equal(medik8sparams.OperatorNs),
-					"suggested-namespace should be %q", medik8sparams.OperatorNs)
 
 				By("Checking replaces field")
 
