@@ -1,0 +1,248 @@
+package tests
+
+import (
+	"context"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	configv1 "github.com/openshift/api/config/v1"
+
+	oplmV1alpha1 "github.com/rh-ecosystem-edge/eco-goinfra/pkg/schemes/olm/operators/v1alpha1"
+	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/deployment"
+	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/infrastructure"
+	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/olm"
+	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/pod"
+	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/reportxml"
+
+	"github.com/medik8s/system-tests/tests/snr-operator/internal/snrparams"
+	. "github.com/medik8s/system-tests/tests/internal/medik8sinittools"
+	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+var _ = Describe(
+	"SNR Post Deployment tests",
+	Ordered,
+	ContinueOnFailure,
+	Label(snrparams.Label), func() {
+		var snrDeployment *deployment.Builder
+
+		BeforeAll(func() {
+			By("Get SNR deployment object")
+
+			var err error
+
+			snrDeployment, err = deployment.Pull(
+				APIClient, snrparams.OperatorDeploymentName, medik8sparams.OperatorNs)
+			Expect(err).ToNot(HaveOccurred(), "Failed to get SNR deployment")
+
+			By("Verify SNR deployment is Ready")
+			Expect(snrDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(), "SNR deployment is not Ready")
+		})
+
+		It("Verify SNR resources are installed and running",
+			reportxml.ID("54205"), func() {
+				By("Verifying SelfNodeRemediationConfig exists")
+
+				snrcGVR := schema.GroupVersionResource{
+					Group:    snrparams.CRDGroup,
+					Version:  snrparams.CRDVersion,
+					Resource: "selfnoderemediationconfigs",
+				}
+
+				snrcList, err := APIClient.Resource(snrcGVR).Namespace(medik8sparams.OperatorNs).
+					List(context.TODO(), metav1.ListOptions{})
+				Expect(err).ToNot(HaveOccurred(), "Failed to list SelfNodeRemediationConfig resources")
+				Expect(len(snrcList.Items)).To(BeNumerically(">", 0),
+					"At least one SelfNodeRemediationConfig should exist")
+
+				found := false
+
+				for _, item := range snrcList.Items {
+					if item.GetName() == snrparams.SNRConfigName {
+						found = true
+
+						break
+					}
+				}
+
+				Expect(found).To(BeTrue(),
+					"SelfNodeRemediationConfig %q not found", snrparams.SNRConfigName)
+
+				By("Verifying SNR DaemonSet pods are running on all nodes")
+
+				listOptions := metav1.ListOptions{
+					LabelSelector: snrparams.OperatorControllerPodLabelSelector,
+				}
+
+				_, err = pod.WaitForAllPodsInNamespaceRunning(
+					APIClient,
+					medik8sparams.OperatorNs,
+					medik8sparams.DefaultTimeout,
+					listOptions,
+				)
+				Expect(err).ToNot(HaveOccurred(), "SNR controller pods are not running")
+
+				By("Verifying SNR controller-manager replicas are ready")
+
+				Expect(snrDeployment.Object.Spec.Replicas).ToNot(BeNil(),
+					"Deployment replicas should not be nil")
+				Expect(snrDeployment.Object.Status.ReadyReplicas).To(
+					Equal(*snrDeployment.Object.Spec.Replicas),
+					"Not all controller-manager replicas are ready")
+			})
+
+		It("Verify only Automatic remediation template exists",
+			reportxml.ID("71010"), func() {
+				By("Verifying Automatic SelfNodeRemediationTemplate exists")
+
+				snrtGVR := schema.GroupVersionResource{
+					Group:    snrparams.CRDGroup,
+					Version:  snrparams.CRDVersion,
+					Resource: "selfnoderemediationtemplates",
+				}
+
+				automaticTemplate := &unstructured.Unstructured{}
+				automaticTemplate.SetGroupVersionKind(schema.GroupVersionKind{
+					Group:   snrparams.CRDGroup,
+					Version: snrparams.CRDVersion,
+					Kind:    "SelfNodeRemediationTemplate",
+				})
+
+				err := APIClient.Get(context.TODO(),
+					client.ObjectKey{
+						Name:      snrparams.SNRTemplateName,
+						Namespace: medik8sparams.OperatorNs,
+					},
+					automaticTemplate)
+				Expect(err).ToNot(HaveOccurred(),
+					"Automatic SelfNodeRemediationTemplate %q not found", snrparams.SNRTemplateName)
+
+				By("Verifying remediation strategy is Automatic")
+
+				strategy, found, err := unstructured.NestedString(
+					automaticTemplate.Object,
+					"spec", "template", "spec", "remediationStrategy")
+				Expect(err).ToNot(HaveOccurred(), "Failed to get remediationStrategy field")
+				Expect(found).To(BeTrue(), "remediationStrategy field not found in template spec")
+				Expect(strategy).To(Equal(snrparams.SNRTemplateExpectedStrategy),
+					"Expected remediationStrategy %q, got %q",
+					snrparams.SNRTemplateExpectedStrategy, strategy)
+
+				By("Verifying unsupported templates do not exist")
+
+				snrtList, err := APIClient.Resource(snrtGVR).Namespace(medik8sparams.OperatorNs).
+					List(context.TODO(), metav1.ListOptions{})
+				Expect(err).ToNot(HaveOccurred(), "Failed to list SelfNodeRemediationTemplate resources")
+
+				for _, tmpl := range snrtList.Items {
+					for _, unsupported := range snrparams.UnsupportedTemplateNames {
+						Expect(tmpl.GetName()).ToNot(Equal(unsupported),
+							"Unsupported template %q should not exist", unsupported)
+					}
+				}
+			})
+
+		It("Verify SNR CSV annotations",
+			reportxml.ID("52136"), func() {
+				By("Getting SNR ClusterServiceVersion")
+
+				snrCSVs, err := olm.ListClusterServiceVersionWithNamePattern(
+					APIClient, snrparams.CSVNamePattern, medik8sparams.OperatorNs)
+				Expect(err).ToNot(HaveOccurred(), "Failed to list SNR ClusterServiceVersions")
+				Expect(len(snrCSVs)).To(BeNumerically(">", 0),
+					"At least one SNR ClusterServiceVersion should be found")
+
+				snrCSV := snrCSVs[0]
+				Expect(snrCSV.Object.Status.Phase).To(
+					Equal(oplmV1alpha1.CSVPhaseSucceeded), "CSV should be in Succeeded phase")
+
+				By("Checking valid-subscription annotation")
+
+				annotations := snrCSV.Object.Annotations
+				Expect(annotations).ToNot(BeNil(), "CSV annotations should not be nil")
+
+				_, hasValidSubscription := annotations["operators.openshift.io/valid-subscription"]
+				Expect(hasValidSubscription).To(BeTrue(),
+					"CSV should have operators.openshift.io/valid-subscription annotation")
+
+				By("Checking support annotation")
+
+				_, hasSupport := annotations["support"]
+				Expect(hasSupport).To(BeTrue(), "CSV should have support annotation")
+
+				By("Checking repository annotation")
+
+				_, hasRepository := annotations["repository"]
+				Expect(hasRepository).To(BeTrue(), "CSV should have repository annotation")
+
+				By("Checking maintainers")
+
+				maintainers := snrCSV.Object.Spec.Maintainers
+				Expect(len(maintainers)).To(BeNumerically(">", 0),
+					"CSV should have at least one maintainer")
+			})
+
+		It("Verify SNR CSV metadata",
+			reportxml.ID("70705"), func() {
+				By("Getting SNR ClusterServiceVersion")
+
+				snrCSVs, err := olm.ListClusterServiceVersionWithNamePattern(
+					APIClient, snrparams.CSVNamePattern, medik8sparams.OperatorNs)
+				Expect(err).ToNot(HaveOccurred(), "Failed to list SNR ClusterServiceVersions")
+				Expect(len(snrCSVs)).To(BeNumerically(">", 0),
+					"At least one SNR ClusterServiceVersion should be found")
+
+				snrCSV := snrCSVs[0]
+
+				By("Checking infrastructure feature annotations")
+
+				annotations := snrCSV.Object.Annotations
+				Expect(annotations).ToNot(BeNil(), "CSV annotations should not be nil")
+
+				for annotationKey, expectedValue := range snrparams.RequiredAnnotations {
+					annotationValue, exists := annotations[annotationKey]
+					Expect(exists).To(BeTrue(),
+						"Required annotation %q should exist on SNR CSV", annotationKey)
+					Expect(annotationValue).To(Equal(expectedValue),
+						"Annotation %q should have value %q, got %q", annotationKey, expectedValue, annotationValue)
+				}
+
+				By("Checking suggested-namespace annotation")
+
+				suggestedNs, exists := annotations["operatorframework.io/suggested-namespace"]
+				Expect(exists).To(BeTrue(),
+					"CSV should have operatorframework.io/suggested-namespace annotation")
+				Expect(suggestedNs).To(Equal(medik8sparams.OperatorNs),
+					"suggested-namespace should be %q", medik8sparams.OperatorNs)
+
+				By("Checking replaces field")
+
+				replaces := snrCSV.Object.Spec.Replaces
+				Expect(replaces).ToNot(BeEmpty(), "CSV spec.replaces should not be empty")
+				Expect(replaces).To(ContainSubstring(snrparams.CSVNamePattern),
+					"replaces field should contain %q, got %q", snrparams.CSVNamePattern, replaces)
+
+				By("Checking cluster topology for replica validation")
+
+				infraConfig, err := infrastructure.Pull(APIClient)
+				Expect(err).ToNot(HaveOccurred(), "Failed to pull infrastructure configuration")
+
+				if infraConfig.Object.Status.ControlPlaneTopology != configv1.SingleReplicaTopologyMode {
+					By("Verifying controller replicas on multi-node cluster")
+
+					Expect(snrDeployment.Object.Spec.Replicas).ToNot(BeNil(),
+						"Deployment replicas should not be nil")
+					Expect(*snrDeployment.Object.Spec.Replicas).To(Equal(snrparams.ExpectedReplicas),
+						"Expected %d replica(s), found %d",
+						snrparams.ExpectedReplicas, *snrDeployment.Object.Spec.Replicas)
+					Expect(snrDeployment.Object.Status.ReadyReplicas).To(Equal(snrparams.ExpectedReplicas),
+						"Expected %d ready replica(s), found %d",
+						snrparams.ExpectedReplicas, snrDeployment.Object.Status.ReadyReplicas)
+				}
+			})
+	})
