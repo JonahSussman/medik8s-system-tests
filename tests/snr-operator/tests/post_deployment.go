@@ -2,17 +2,18 @@ package tests
 
 import (
 	"context"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	configv1 "github.com/openshift/api/config/v1"
 
-	oplmV1alpha1 "github.com/rh-ecosystem-edge/eco-goinfra/pkg/schemes/olm/operators/v1alpha1"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/deployment"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/infrastructure"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/olm"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/pod"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/reportxml"
+	oplmV1alpha1 "github.com/rh-ecosystem-edge/eco-goinfra/pkg/schemes/olm/operators/v1alpha1"
 
 	"github.com/medik8s/system-tests/tests/snr-operator/internal/snrparams"
 	. "github.com/medik8s/system-tests/tests/internal/medik8sinittools"
@@ -73,7 +74,23 @@ var _ = Describe(
 				Expect(found).To(BeTrue(),
 					"SelfNodeRemediationConfig %q not found", snrparams.SNRConfigName)
 
-				By("Verifying SNR DaemonSet pods are running on all nodes")
+				By("Verifying SNR DaemonSet pods are running")
+
+				dsPods, err := pod.List(APIClient, medik8sparams.OperatorNs, metav1.ListOptions{})
+				Expect(err).ToNot(HaveOccurred(), "Failed to list pods in operator namespace")
+
+				var dsPodsCount int
+
+				for _, p := range dsPods {
+					if strings.HasPrefix(p.Object.Name, snrparams.DaemonSetPodPrefix) {
+						dsPodsCount++
+					}
+				}
+
+				Expect(dsPodsCount).To(BeNumerically(">", 0),
+					"At least one SNR DaemonSet pod should be running")
+
+				By("Verifying SNR controller-manager pods are running")
 
 				listOptions := metav1.ListOptions{
 					LabelSelector: snrparams.OperatorControllerPodLabelSelector,
@@ -99,12 +116,6 @@ var _ = Describe(
 		It("Verify only Automatic remediation template exists",
 			reportxml.ID("71010"), func() {
 				By("Verifying Automatic SelfNodeRemediationTemplate exists")
-
-				snrtGVR := schema.GroupVersionResource{
-					Group:    snrparams.CRDGroup,
-					Version:  snrparams.CRDVersion,
-					Resource: "selfnoderemediationtemplates",
-				}
 
 				automaticTemplate := &unstructured.Unstructured{}
 				automaticTemplate.SetGroupVersionKind(schema.GroupVersionKind{
@@ -134,6 +145,12 @@ var _ = Describe(
 					snrparams.SNRTemplateExpectedStrategy, strategy)
 
 				By("Verifying unsupported templates do not exist")
+
+				snrtGVR := schema.GroupVersionResource{
+					Group:    snrparams.CRDGroup,
+					Version:  snrparams.CRDVersion,
+					Resource: "selfnoderemediationtemplates",
+				}
 
 				snrtList, err := APIClient.Resource(snrtGVR).Namespace(medik8sparams.OperatorNs).
 					List(context.TODO(), metav1.ListOptions{})
@@ -209,7 +226,8 @@ var _ = Describe(
 					Expect(exists).To(BeTrue(),
 						"Required annotation %q should exist on SNR CSV", annotationKey)
 					Expect(annotationValue).To(Equal(expectedValue),
-						"Annotation %q should have value %q, got %q", annotationKey, expectedValue, annotationValue)
+						"Annotation %q should have value %q, got %q",
+						annotationKey, expectedValue, annotationValue)
 				}
 
 				By("Checking suggested-namespace annotation")
