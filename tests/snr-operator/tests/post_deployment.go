@@ -19,6 +19,7 @@ import (
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 	"github.com/medik8s/system-tests/tests/snr-operator/internal/snrparams"
 
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -94,8 +95,17 @@ var _ = Describe(
 
 				var dsPodsCount int
 
-				for _, p := range dsPods {
-					if strings.HasPrefix(p.Object.Name, snrparams.DaemonSetPodPrefix) {
+				for _, dsPod := range dsPods {
+					if strings.HasPrefix(dsPod.Object.Name, snrparams.DaemonSetPodPrefix) {
+						Expect(dsPod.Object.Status.Phase).To(Equal(corev1.PodRunning),
+							"SNR DaemonSet pod %q should be Running, got %s",
+							dsPod.Object.Name, dsPod.Object.Status.Phase)
+
+						for _, cs := range dsPod.Object.Status.ContainerStatuses {
+							Expect(cs.Ready).To(BeTrue(),
+								"Container %q in pod %q is not ready", cs.Name, dsPod.Object.Name)
+						}
+
 						dsPodsCount++
 					}
 				}
@@ -183,13 +193,17 @@ var _ = Describe(
 
 				By("Checking support annotation")
 
-				_, hasSupport := annotations["support"]
+				supportValue, hasSupport := annotations["support"]
 				Expect(hasSupport).To(BeTrue(), "CSV should have support annotation")
+				Expect(strings.TrimSpace(supportValue)).ToNot(BeEmpty(),
+					"CSV support annotation should not be empty")
 
 				By("Checking repository annotation")
 
-				_, hasRepository := annotations["repository"]
+				repoValue, hasRepository := annotations["repository"]
 				Expect(hasRepository).To(BeTrue(), "CSV should have repository annotation")
+				Expect(strings.TrimSpace(repoValue)).ToNot(BeEmpty(),
+					"CSV repository annotation should not be empty")
 
 				By("Checking maintainers")
 
@@ -226,17 +240,19 @@ var _ = Describe(
 				infraConfig, err := infrastructure.Pull(APIClient)
 				Expect(err).ToNot(HaveOccurred(), "Failed to pull infrastructure configuration")
 
-				if infraConfig.Object.Status.ControlPlaneTopology != configv1.SingleReplicaTopologyMode {
-					By("Verifying controller replicas on multi-node cluster")
-
-					Expect(snrDeployment.Object.Spec.Replicas).ToNot(BeNil(),
-						"Deployment replicas should not be nil")
-					Expect(*snrDeployment.Object.Spec.Replicas).To(Equal(snrparams.ExpectedReplicas),
-						"Expected %d replica(s), found %d",
-						snrparams.ExpectedReplicas, *snrDeployment.Object.Spec.Replicas)
-					Expect(snrDeployment.Object.Status.ReadyReplicas).To(Equal(snrparams.ExpectedReplicas),
-						"Expected %d ready replica(s), found %d",
-						snrparams.ExpectedReplicas, snrDeployment.Object.Status.ReadyReplicas)
+				if infraConfig.Object.Status.ControlPlaneTopology == configv1.SingleReplicaTopologyMode {
+					Skip("Skipping replica validation on SNO (Single Node OpenShift) cluster")
 				}
+
+				By("Verifying controller replicas on multi-node cluster")
+
+				Expect(snrDeployment.Object.Spec.Replicas).ToNot(BeNil(),
+					"Deployment replicas should not be nil")
+				Expect(*snrDeployment.Object.Spec.Replicas).To(Equal(snrparams.ExpectedReplicas),
+					"Expected %d replica(s), found %d",
+					snrparams.ExpectedReplicas, *snrDeployment.Object.Spec.Replicas)
+				Expect(snrDeployment.Object.Status.ReadyReplicas).To(Equal(snrparams.ExpectedReplicas),
+					"Expected %d ready replica(s), found %d",
+					snrparams.ExpectedReplicas, snrDeployment.Object.Status.ReadyReplicas)
 			})
 	})
