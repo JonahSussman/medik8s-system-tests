@@ -47,7 +47,7 @@ var (
 		"features.operators.openshift.io/token-auth-aws":   "false",
 		"features.operators.openshift.io/token-auth-azure": "false",
 		"features.operators.openshift.io/token-auth-gcp":   "false",
-		"operatorframework.io/suggested-namespace":         medik8sparams.OperatorNs,
+		"operatorframework.io/suggested-namespace":         operatorNs,
 	}
 )
 
