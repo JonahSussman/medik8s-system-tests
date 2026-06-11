@@ -3,7 +3,10 @@ package farparams
 import (
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 	"github.com/openshift-kni/k8sreporter"
+	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 var (
@@ -22,21 +25,35 @@ var (
 		"openshift-machine-api":  "openshift-machine-api",
 	}
 
+	operatorNs = medik8sparams.OperatorNs
+
 	// ReporterCRDsToDump tells to the reporter what CRs to dump.
-	// For first test, before medik8s API added.
 	ReporterCRDsToDump = []k8sreporter.CRData{
 		{Cr: &corev1.PodList{}},
+		{Cr: newUnstructuredList("fence-agents-remediation.medik8s.io", "v1alpha1", "FenceAgentsRemediationList")},
+		{Cr: newUnstructuredList("fence-agents-remediation.medik8s.io", "v1alpha1", "FenceAgentsRemediationTemplateList")},
+		{Cr: &coordinationv1.LeaseList{}, Namespace: &operatorNs},
 	}
 
 	// RequiredAnnotations defines the required annotations and their expected values for FAR CSV.
 	RequiredAnnotations = map[string]string{
-		"features.operators.openshift.io/tls-profiles":   "false",
-		"features.operators.openshift.io/disconnected":   "true",
-		"features.operators.openshift.io/fips-compliant": "true",
-		"features.operators.openshift.io/proxy-aware":    "false",
-		"features.operators.openshift.io/cnf":            "false",
-		"features.operators.openshift.io/cni":            "false",
-		"features.operators.openshift.io/csi":            "false",
-		"operatorframework.io/suggested-namespace":       medik8sparams.OperatorNs,
+		"features.operators.openshift.io/tls-profiles":     "false",
+		"features.operators.openshift.io/disconnected":     "true",
+		"features.operators.openshift.io/fips-compliant":   "true",
+		"features.operators.openshift.io/proxy-aware":      "false",
+		"features.operators.openshift.io/cnf":              "false",
+		"features.operators.openshift.io/cni":              "false",
+		"features.operators.openshift.io/csi":              "false",
+		"features.operators.openshift.io/token-auth-aws":   "false",
+		"features.operators.openshift.io/token-auth-azure": "false",
+		"features.operators.openshift.io/token-auth-gcp":   "false",
+		"operatorframework.io/suggested-namespace":         operatorNs,
 	}
 )
+
+func newUnstructuredList(group, version, kind string) *unstructured.UnstructuredList {
+	l := &unstructured.UnstructuredList{}
+	l.SetGroupVersionKind(schema.GroupVersionKind{Group: group, Version: version, Kind: kind})
+
+	return l
+}
