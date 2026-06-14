@@ -90,28 +90,25 @@ var _ = Describe(
 
 				By("Verifying SNR DaemonSet pods are running")
 
-				dsPods, err := pod.List(APIClient, medik8sparams.OperatorNs, metav1.ListOptions{})
-				Expect(err).ToNot(HaveOccurred(), "Failed to list pods in operator namespace")
-
-				var dsPodsCount int
-
-				for _, dsPod := range dsPods {
-					if strings.HasPrefix(dsPod.Object.Name, snrparams.DaemonSetPodPrefix) {
-						Expect(dsPod.Object.Status.Phase).To(Equal(corev1.PodRunning),
-							"SNR DaemonSet pod %q should be Running, got %s",
-							dsPod.Object.Name, dsPod.Object.Status.Phase)
-
-						for _, cs := range dsPod.Object.Status.ContainerStatuses {
-							Expect(cs.Ready).To(BeTrue(),
-								"Container %q in pod %q is not ready", cs.Name, dsPod.Object.Name)
-						}
-
-						dsPodsCount++
-					}
+				dsListOptions := metav1.ListOptions{
+					LabelSelector: snrparams.DaemonSetPodLabelSelector,
 				}
 
-				Expect(dsPodsCount).To(BeNumerically(">", 0),
-					"At least one SNR DaemonSet pod should be running")
+				dsPods, err := pod.List(APIClient, medik8sparams.OperatorNs, dsListOptions)
+				Expect(err).ToNot(HaveOccurred(), "Failed to list SNR DaemonSet pods")
+				Expect(len(dsPods)).To(BeNumerically(">", 0),
+					"At least one SNR DaemonSet pod should exist")
+
+				for _, dsPod := range dsPods {
+					Expect(dsPod.Object.Status.Phase).To(Equal(corev1.PodRunning),
+						"SNR DaemonSet pod %q should be Running, got %s",
+						dsPod.Object.Name, dsPod.Object.Status.Phase)
+
+					for _, cs := range dsPod.Object.Status.ContainerStatuses {
+						Expect(cs.Ready).To(BeTrue(),
+							"Container %q in pod %q is not ready", cs.Name, dsPod.Object.Name)
+					}
+				}
 
 				By("Verifying SNR controller-manager pods are running")
 
@@ -214,7 +211,7 @@ var _ = Describe(
 
 		It("Verify SNR CSV metadata",
 			reportxml.ID("70705"), func() {
-				By("Checking infrastructure feature annotations")
+				By("Checking required CSV annotations")
 
 				annotations := snrCSV.Object.Annotations
 				Expect(annotations).ToNot(BeNil(), "CSV annotations should not be nil")

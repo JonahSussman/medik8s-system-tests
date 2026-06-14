@@ -16,10 +16,13 @@ var (
 	OperatorDeploymentName = "self-node-remediation-controller-manager"
 
 	// OperatorControllerPodLabelSelector selects SNR controller-manager pods.
+	// The trailing "=" matches the empty-value label that SNR controller pods carry:
+	//   self-node-remediation-operator: ""
 	OperatorControllerPodLabelSelector = "control-plane=controller-manager,self-node-remediation-operator="
 
-	// DaemonSetPodPrefix is the prefix for SNR DaemonSet pods.
-	DaemonSetPodPrefix = "self-node-remediation-ds"
+	// DaemonSetPodLabelSelector selects SNR DaemonSet agent pods by their labels:
+	//   app.kubernetes.io/name=self-node-remediation, app.kubernetes.io/component=agent
+	DaemonSetPodLabelSelector = "app.kubernetes.io/name=self-node-remediation,app.kubernetes.io/component=agent"
 
 	// ReporterNamespacesToDump tells the reporter from where to collect logs.
 	ReporterNamespacesToDump = map[string]string{
