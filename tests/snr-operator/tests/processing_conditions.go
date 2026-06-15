@@ -7,6 +7,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/deployment"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/reportxml"
 
 	"github.com/medik8s/system-tests/tests/internal/labels"
@@ -39,6 +40,16 @@ var _ = Describe(
 	Ordered,
 	ContinueOnFailure,
 	Label(snrparams.Label), func() {
+		BeforeAll(func() {
+			By("Verify SNR deployment is ready")
+
+			snrDeployment, err := deployment.Pull(
+				APIClient, snrparams.OperatorDeploymentName, medik8sparams.OperatorNs)
+			Expect(err).ToNot(HaveOccurred(), "Failed to get SNR deployment")
+			Expect(snrDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(),
+				"SNR deployment is not Ready")
+		})
+
 		It("Verify SNR conditions with nhc-timed-out annotation",
 			reportxml.ID("60881"),
 			Label(labels.TierAcceptance, labels.DisruptionNonDestructive,
