@@ -3,6 +3,7 @@ package snrparams
 import (
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 	"github.com/openshift-kni/k8sreporter"
+	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -24,6 +25,8 @@ var (
 	//   app.kubernetes.io/name=self-node-remediation, app.kubernetes.io/component=agent
 	DaemonSetPodLabelSelector = "app.kubernetes.io/name=self-node-remediation,app.kubernetes.io/component=agent"
 
+	operatorNs = medik8sparams.OperatorNs
+
 	// ReporterNamespacesToDump tells the reporter from where to collect logs.
 	ReporterNamespacesToDump = map[string]string{
 		medik8sparams.OperatorNs: medik8sparams.OperatorNs,
@@ -36,6 +39,7 @@ var (
 		{Cr: newUnstructuredList(CRDGroup, CRDVersion, "SelfNodeRemediationList")},
 		{Cr: newUnstructuredList(CRDGroup, CRDVersion, "SelfNodeRemediationConfigList")},
 		{Cr: newUnstructuredList(CRDGroup, CRDVersion, "SelfNodeRemediationTemplateList")},
+		{Cr: &coordinationv1.LeaseList{}, Namespace: &operatorNs},
 	}
 
 	// RequiredAnnotations defines the required annotations and expected values for SNR CSV.

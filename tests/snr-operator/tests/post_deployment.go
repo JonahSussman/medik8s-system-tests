@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -13,8 +14,8 @@ import (
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/olm"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/pod"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/reportxml"
-	oplmV1alpha1 "github.com/rh-ecosystem-edge/eco-goinfra/pkg/schemes/olm/operators/v1alpha1"
 
+	"github.com/medik8s/system-tests/tests/internal/labels"
 	. "github.com/medik8s/system-tests/tests/internal/medik8sinittools"
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 	"github.com/medik8s/system-tests/tests/snr-operator/internal/snrparams"
@@ -32,21 +33,14 @@ var _ = Describe(
 	Ordered,
 	ContinueOnFailure,
 	Label(snrparams.Label), func() {
-		var (
-			snrDeployment *deployment.Builder
-			snrCSV        *olm.ClusterServiceVersionBuilder
-		)
+		var snrCSV *olm.ClusterServiceVersionBuilder
 
 		BeforeAll(func() {
-			By("Get SNR deployment object")
+			By("Get SNR deployment object and verify readiness")
 
-			var err error
-
-			snrDeployment, err = deployment.Pull(
+			snrDeployment, err := deployment.Pull(
 				APIClient, snrparams.OperatorDeploymentName, medik8sparams.OperatorNs)
 			Expect(err).ToNot(HaveOccurred(), "Failed to get SNR deployment")
-
-			By("Verify SNR deployment is Ready")
 			Expect(snrDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(), "SNR deployment is not Ready")
 
 			By("Get SNR ClusterServiceVersion")
@@ -58,7 +52,8 @@ var _ = Describe(
 				"At least one SNR ClusterServiceVersion should be found")
 
 			for _, csv := range snrCSVs {
-				if csv.Object.Status.Phase == oplmV1alpha1.CSVPhaseSucceeded {
+				phase, phaseErr := csv.GetPhase()
+				if phaseErr == nil && phase == "Succeeded" {
 					snrCSV = csv
 
 					break
@@ -69,7 +64,10 @@ var _ = Describe(
 		})
 
 		It("Verify SNR resources are installed and running",
-			reportxml.ID("54205"), func() {
+			reportxml.ID("54205"),
+			Label(labels.TierSmoke, labels.DisruptionNonDestructive,
+				labels.PlatformAny, labels.FrequencyPresubmit,
+				labels.ComponentDaemonSet), func() {
 				By("Verifying SelfNodeRemediationConfig exists")
 
 				snrcObj := &unstructured.Unstructured{}
@@ -94,25 +92,37 @@ var _ = Describe(
 					LabelSelector: snrparams.DaemonSetPodLabelSelector,
 				}
 
-				dsPods, err := pod.List(APIClient, medik8sparams.OperatorNs, dsListOptions)
-				Expect(err).ToNot(HaveOccurred(), "Failed to list SNR DaemonSet pods")
-				Expect(len(dsPods)).To(BeNumerically(">", 0),
-					"At least one SNR DaemonSet pod should exist")
-
-				for _, dsPod := range dsPods {
-					Expect(dsPod.Object.Status.Phase).To(Equal(corev1.PodRunning),
-						"SNR DaemonSet pod %q should be Running, got %s",
-						dsPod.Object.Name, dsPod.Object.Status.Phase)
-
-					for _, cs := range dsPod.Object.Status.ContainerStatuses {
-						Expect(cs.Ready).To(BeTrue(),
-							"Container %q in pod %q is not ready", cs.Name, dsPod.Object.Name)
+				Eventually(func() error {
+					dsPods, listErr := pod.List(APIClient, medik8sparams.OperatorNs, dsListOptions)
+					if listErr != nil {
+						return fmt.Errorf("failed to list SNR DaemonSet pods: %w", listErr)
 					}
-				}
+
+					if len(dsPods) == 0 {
+						return fmt.Errorf("no SNR DaemonSet pods found")
+					}
+
+					for _, dsPod := range dsPods {
+						if dsPod.Object.Status.Phase != corev1.PodRunning {
+							return fmt.Errorf("SNR DaemonSet pod %q is %s, expected Running",
+								dsPod.Object.Name, dsPod.Object.Status.Phase)
+						}
+
+						for _, cs := range dsPod.Object.Status.ContainerStatuses {
+							if !cs.Ready {
+								return fmt.Errorf("container %q in pod %q is not ready",
+									cs.Name, dsPod.Object.Name)
+							}
+						}
+					}
+
+					return nil
+				}, medik8sparams.DefaultTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
+					"SNR DaemonSet pods are not all running and ready")
 
 				By("Verifying SNR controller-manager pods are running")
 
-				listOptions := metav1.ListOptions{
+				ctrlListOptions := metav1.ListOptions{
 					LabelSelector: snrparams.OperatorControllerPodLabelSelector,
 				}
 
@@ -120,13 +130,16 @@ var _ = Describe(
 					APIClient,
 					medik8sparams.OperatorNs,
 					medik8sparams.DefaultTimeout,
-					listOptions,
+					ctrlListOptions,
 				)
 				Expect(err).ToNot(HaveOccurred(), "SNR controller pods are not running")
 			})
 
 		It("Verify only Automatic remediation template exists",
-			reportxml.ID("71010"), func() {
+			reportxml.ID("71010"),
+			Label(labels.TierSmoke, labels.DisruptionNonDestructive,
+				labels.PlatformAny, labels.FrequencyPresubmit,
+				labels.ComponentController), func() {
 				By("Verifying Automatic SelfNodeRemediationTemplate exists")
 
 				automaticTemplate := &unstructured.Unstructured{}
@@ -178,7 +191,10 @@ var _ = Describe(
 			})
 
 		It("Verify SNR CSV annotations",
-			reportxml.ID("52136"), func() {
+			reportxml.ID("52136"),
+			Label(labels.TierSmoke, labels.DisruptionNonDestructive,
+				labels.PlatformAny, labels.FrequencyPresubmit,
+				labels.ComponentOLM), func() {
 				By("Checking valid-subscription annotation")
 
 				annotations := snrCSV.Object.Annotations
@@ -210,19 +226,40 @@ var _ = Describe(
 			})
 
 		It("Verify SNR CSV metadata",
-			reportxml.ID("70705"), func() {
+			reportxml.ID("70705"),
+			Label(labels.TierSmoke, labels.DisruptionNonDestructive,
+				labels.PlatformAny, labels.FrequencyPresubmit,
+				labels.ComponentOLM), func() {
 				By("Checking required CSV annotations")
 
 				annotations := snrCSV.Object.Annotations
 				Expect(annotations).ToNot(BeNil(), "CSV annotations should not be nil")
 
+				var annotationErrors []string
+
 				for annotationKey, expectedValue := range snrparams.RequiredAnnotations {
 					annotationValue, exists := annotations[annotationKey]
-					Expect(exists).To(BeTrue(),
-						"Required annotation %q should exist on SNR CSV", annotationKey)
-					Expect(annotationValue).To(Equal(expectedValue),
-						"Annotation %q should have value %q, got %q",
-						annotationKey, expectedValue, annotationValue)
+					if !exists {
+						annotationErrors = append(annotationErrors,
+							fmt.Sprintf("required annotation %q is missing", annotationKey))
+
+						continue
+					}
+
+					if annotationValue != expectedValue {
+						annotationErrors = append(annotationErrors,
+							fmt.Sprintf("annotation %q: expected %q, got %q",
+								annotationKey, expectedValue, annotationValue))
+					}
+				}
+
+				if len(annotationErrors) > 0 {
+					errMsg := "SNR CSV annotation validation failures:\n"
+					for _, msg := range annotationErrors {
+						errMsg += fmt.Sprintf("- %s\n", msg)
+					}
+
+					Fail(errMsg)
 				}
 
 				By("Checking replaces field")
@@ -243,13 +280,29 @@ var _ = Describe(
 
 				By("Verifying controller replicas on multi-node cluster")
 
-				Expect(snrDeployment.Object.Spec.Replicas).ToNot(BeNil(),
-					"Deployment replicas should not be nil")
-				Expect(*snrDeployment.Object.Spec.Replicas).To(Equal(snrparams.ExpectedReplicas),
-					"Expected %d replica(s), found %d",
-					snrparams.ExpectedReplicas, *snrDeployment.Object.Spec.Replicas)
-				Expect(snrDeployment.Object.Status.ReadyReplicas).To(Equal(snrparams.ExpectedReplicas),
-					"Expected %d ready replica(s), found %d",
-					snrparams.ExpectedReplicas, snrDeployment.Object.Status.ReadyReplicas)
+				Eventually(func() error {
+					liveDeploy, pullErr := deployment.Pull(
+						APIClient, snrparams.OperatorDeploymentName, medik8sparams.OperatorNs)
+					if pullErr != nil {
+						return fmt.Errorf("failed to pull deployment: %w", pullErr)
+					}
+
+					if liveDeploy.Object.Spec.Replicas == nil {
+						return fmt.Errorf("deployment replicas is nil")
+					}
+
+					if *liveDeploy.Object.Spec.Replicas != snrparams.ExpectedReplicas {
+						return fmt.Errorf("expected %d replica(s), found %d",
+							snrparams.ExpectedReplicas, *liveDeploy.Object.Spec.Replicas)
+					}
+
+					if liveDeploy.Object.Status.ReadyReplicas != snrparams.ExpectedReplicas {
+						return fmt.Errorf("expected %d ready replica(s), found %d",
+							snrparams.ExpectedReplicas, liveDeploy.Object.Status.ReadyReplicas)
+					}
+
+					return nil
+				}, medik8sparams.DefaultTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
+					"SNR controller replicas not matching expected count")
 			})
 	})
