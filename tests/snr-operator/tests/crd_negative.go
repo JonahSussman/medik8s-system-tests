@@ -1,0 +1,248 @@
+package tests
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/reportxml"
+
+	"github.com/medik8s/system-tests/tests/internal/labels"
+	. "github.com/medik8s/system-tests/tests/internal/medik8sinittools"
+	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
+	"github.com/medik8s/system-tests/tests/snr-operator/internal/snrparams"
+
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+var _ = Describe(
+	"SNR CRD and Negative Validation tests",
+	Ordered,
+	ContinueOnFailure,
+	Label(snrparams.Label), func() {
+		It("Verify CRD description of safeTimeToAssumeNodeRebootedSeconds",
+			reportxml.ID("60824"),
+			Label(labels.TierSmoke, labels.DisruptionNonDestructive,
+				labels.PlatformAny, labels.FrequencyPresubmit,
+				labels.ComponentController), func() {
+				By("Getting SNR CRD")
+
+				snrCRD := &unstructured.Unstructured{}
+				snrCRD.SetGroupVersionKind(schema.GroupVersionKind{
+					Group:   "apiextensions.k8s.io",
+					Version: "v1",
+					Kind:    "CustomResourceDefinition",
+				})
+
+				err := APIClient.Get(context.TODO(),
+					client.ObjectKey{Name: snrparams.SNRCRDName},
+					snrCRD)
+				Expect(err).ToNot(HaveOccurred(),
+					"Failed to get CRD %q", snrparams.SNRCRDName)
+
+				By("Extracting safeTimeToAssumeNodeRebootedSeconds description")
+
+				versions, found, err := unstructured.NestedSlice(snrCRD.Object, "spec", "versions")
+				Expect(err).ToNot(HaveOccurred(), "Failed to get spec.versions from CRD")
+				Expect(found).To(BeTrue(), "spec.versions not found in CRD")
+				Expect(len(versions)).To(BeNumerically(">", 0), "CRD should have at least one version")
+
+				var description string
+
+				for _, ver := range versions {
+					verMap, ok := ver.(map[string]interface{})
+					if !ok {
+						continue
+					}
+
+					desc, descFound, descErr := unstructured.NestedString(verMap,
+						"schema", "openAPIV3Schema", "properties",
+						"spec", "properties", "safeTimeToAssumeNodeRebootedSeconds", "description")
+					if descErr == nil && descFound {
+						description = desc
+
+						break
+					}
+				}
+
+				Expect(description).ToNot(BeEmpty(),
+					"safeTimeToAssumeNodeRebootedSeconds description not found in CRD")
+				Expect(description).To(ContainSubstring(snrparams.SafeTimeToAssumeNodeRebootedDescription),
+					"CRD description does not contain expected text")
+			})
+
+		It("Verify non-default SNRC creation is rejected",
+			reportxml.ID("50961"),
+			Label(labels.TierAcceptance, labels.DisruptionNonDestructive,
+				labels.PlatformAny, labels.FrequencyPresubmit,
+				labels.ComponentController), func() {
+				By("Attempting to create a non-default SelfNodeRemediationConfig")
+
+				nonDefaultSNRC := buildSNRCR("SelfNodeRemediationConfig",
+					"non-default-snr-config-1", map[string]interface{}{})
+
+				err := APIClient.Create(context.TODO(), nonDefaultSNRC)
+				if err == nil {
+					deferDeleteCR(nonDefaultSNRC)
+				}
+
+				Expect(err).To(HaveOccurred(),
+					"Creating a non-default SNRC should be rejected")
+				Expect(err.Error()).To(ContainSubstring(snrparams.SNRCNonDefaultErrMsg),
+					"Error should mention single SNRC enforcement")
+			})
+
+		It("Verify invalid values in SNRC are rejected",
+			reportxml.ID("47330"),
+			Label(labels.TierAcceptance, labels.DisruptionNonDestructive,
+				labels.PlatformAny, labels.FrequencyPresubmit,
+				labels.ComponentController), func() {
+				By("Creating SNRC with invalid string duration values")
+
+				invalidStringSNRC := buildSNRCR("SelfNodeRemediationConfig",
+					snrparams.SNRCTestName, map[string]interface{}{
+						"apiServerTimeout": "foo",
+						"apiCheckInterval": "string",
+					})
+
+				err := APIClient.Create(context.TODO(), invalidStringSNRC)
+				if err == nil {
+					deferDeleteCR(invalidStringSNRC)
+				}
+
+				Expect(err).To(HaveOccurred(), "SNRC with invalid string values should be rejected")
+				Expect(err.Error()).To(ContainSubstring("Invalid value"),
+					"Error should mention invalid value")
+
+				By("Creating SNRC with too-small duration values")
+
+				invalidDurationSNRC := buildSNRCR("SelfNodeRemediationConfig",
+					snrparams.SNRCTestName, map[string]interface{}{
+						"apiServerTimeout":     "0s",
+						"apiCheckInterval":     "0.2ms",
+						"peerApiServerTimeout": "0.001s",
+						"peerDialTimeout":      "0.009s",
+						"peerRequestTimeout":   "0.003ms",
+						"peerUpdateInterval":   "0ms",
+					})
+
+				err = APIClient.Create(context.TODO(), invalidDurationSNRC)
+				if err == nil {
+					deferDeleteCR(invalidDurationSNRC)
+				}
+
+				Expect(err).To(HaveOccurred(), "SNRC with too-small duration values should be rejected")
+
+				expectedErrors := []string{
+					"ApiServerTimeout cannot be less than 10ms",
+					"ApiCheckInterval cannot be less than 1s",
+					"PeerApiServerTimeout cannot be less than 10ms",
+					"PeerDialTimeout cannot be less than 10ms",
+					"PeerRequestTimeout cannot be less than 10ms",
+					"PeerUpdateInterval cannot be less than 10s",
+				}
+
+				var missingErrors []string
+
+				for _, expectedErr := range expectedErrors {
+					if !strings.Contains(err.Error(), expectedErr) {
+						missingErrors = append(missingErrors,
+							fmt.Sprintf("expected error %q not found", expectedErr))
+					}
+				}
+
+				if len(missingErrors) > 0 {
+					errMsg := fmt.Sprintf("SNRC validation missing expected errors (got: %s):\n", err.Error())
+					for _, msg := range missingErrors {
+						errMsg += fmt.Sprintf("- %s\n", msg)
+					}
+
+					Fail(errMsg)
+				}
+			})
+
+		It("Verify lastError is captured for non-existent node",
+			reportxml.ID("50583"),
+			Label(labels.TierAcceptance, labels.DisruptionNonDestructive,
+				labels.PlatformAny, labels.FrequencyPresubmit,
+				labels.ComponentController), func() {
+				By("Creating SNR with non-existent node name")
+
+				snrCR := buildSNRCR("SelfNodeRemediation", snrparams.SNRTestNodeName, nil)
+
+				err := APIClient.Create(context.TODO(), snrCR)
+				Expect(err).ToNot(HaveOccurred(),
+					"Failed to create SNR for non-existent node")
+
+				deferDeleteCR(snrCR)
+
+				By("Verifying lastError field is populated")
+
+				liveSNR := &unstructured.Unstructured{}
+				liveSNR.SetGroupVersionKind(schema.GroupVersionKind{
+					Group:   snrparams.CRDGroup,
+					Version: snrparams.CRDVersion,
+					Kind:    "SelfNodeRemediation",
+				})
+
+				Eventually(func() (string, error) {
+					getErr := APIClient.Get(context.TODO(),
+						client.ObjectKey{
+							Name:      snrparams.SNRTestNodeName,
+							Namespace: medik8sparams.OperatorNs,
+						},
+						liveSNR)
+					if getErr != nil {
+						return "", getErr
+					}
+
+					lastError, _, _ := unstructured.NestedString(
+						liveSNR.Object, "status", "lastError")
+
+					return lastError, nil
+				}, medik8sparams.DefaultTimeout, snrparams.DefaultPollInterval).Should(
+					ContainSubstring(snrparams.SNRLastErrorNodeNotFound),
+					"lastError should contain %q", snrparams.SNRLastErrorNodeNotFound)
+			})
+	})
+
+// buildSNRCR builds an unstructured SNR custom resource of the given kind.
+func buildSNRCR(kind, name string, spec map[string]interface{}) *unstructured.Unstructured {
+	resource := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": snrparams.CRDGroup + "/" + snrparams.CRDVersion,
+			"kind":       kind,
+			"metadata": map[string]interface{}{
+				"name":      name,
+				"namespace": medik8sparams.OperatorNs,
+			},
+		},
+	}
+
+	if spec != nil {
+		resource.Object["spec"] = spec
+	}
+
+	return resource
+}
+
+// deferDeleteCR registers cleanup for a CR that was unexpectedly created.
+func deferDeleteCR(resource *unstructured.Unstructured) {
+	DeferCleanup(func() {
+		Eventually(func() error {
+			deleteErr := APIClient.Delete(context.TODO(), resource)
+			if k8serrors.IsNotFound(deleteErr) {
+				return nil
+			}
+
+			return deleteErr
+		}, 30, snrparams.DefaultPollInterval).Should(Succeed(),
+			"cleanup of test CR %q must succeed", resource.GetName())
+	})
+}

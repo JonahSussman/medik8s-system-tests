@@ -29,4 +29,23 @@ const (
 
 	// CSVNamePattern is the CSV name pattern used to find the SNR ClusterServiceVersion.
 	CSVNamePattern = "self-node-remediation"
+
+	// SNRCRDName is the full CRD name for SelfNodeRemediationConfig.
+	SNRCRDName = "selfnoderemediationconfigs.self-node-remediation.medik8s.io"
+
+	// SafeTimeToAssumeNodeRebootedDescription is the expected description
+	// text substring for the safeTimeToAssumeNodeRebootedSeconds CRD field.
+	SafeTimeToAssumeNodeRebootedDescription = "SafeTimeToAssumeNodeRebootedSeconds " +
+		"is the time after which the healthy self node remediation"
+
+	// SNRCNonDefaultErrMsg is the expected error when creating a non-default SNRC.
+	SNRCNonDefaultErrMsg = "to enforce only one SelfNodeRemediationConfig " +
+		"in the cluster, a name other than " +
+		"self-node-remediation-config is not allowed"
+
+	// SNRTestNodeName is the fake node name used in negative tests.
+	SNRTestNodeName = "incorrect-node-name"
+
+	// SNRCTestName is the name used for test SNRC CRs.
+	SNRCTestName = "test-snrc"
 )

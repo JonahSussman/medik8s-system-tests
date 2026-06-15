@@ -1,6 +1,8 @@
 package snrparams
 
 import (
+	"fmt"
+
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 	"github.com/openshift-kni/k8sreporter"
 	coordinationv1 "k8s.io/api/coordination/v1"
@@ -12,6 +14,9 @@ import (
 var (
 	// Labels represents the range of labels that can be used for test cases selection.
 	Labels = []string{medik8sparams.Label, Label}
+
+	// SNRLastErrorNodeNotFound is the expected lastError for a non-existent node.
+	SNRLastErrorNodeNotFound = fmt.Sprintf("Node %q not found", SNRTestNodeName)
 
 	// OperatorDeploymentName represents SNR deployment name.
 	OperatorDeploymentName = "self-node-remediation-controller-manager"
