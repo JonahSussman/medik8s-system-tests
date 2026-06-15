@@ -60,6 +60,12 @@ var _ = Describe(
 						continue
 					}
 
+					// Use the storage version to get the authoritative schema.
+					storage, _, _ := unstructured.NestedBool(verMap, "storage")
+					if !storage {
+						continue
+					}
+
 					desc, descFound, descErr := unstructured.NestedString(verMap,
 						"schema", "openAPIV3Schema", "properties",
 						"spec", "properties", "safeTimeToAssumeNodeRebootedSeconds", "description")
@@ -138,6 +144,8 @@ var _ = Describe(
 
 				Expect(err).To(HaveOccurred(), "SNRC with too-small duration values should be rejected")
 
+				// The SNR webhook currently aggregates all validation failures into a
+				// single error. If it switches to fail-fast, split into per-field tests.
 				expectedErrors := []string{
 					"ApiServerTimeout cannot be less than 10ms",
 					"ApiCheckInterval cannot be less than 1s",

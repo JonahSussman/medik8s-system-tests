@@ -75,8 +75,8 @@ version, and controller replicas match expected count on multi-node clusters.
 
 ### 5. Verify CRD Description of safeTimeToAssumeNodeRebootedSeconds (Polarion OCP-60824)
 
-Validates that the SNR CRD schema contains the expected description text
-for the safeTimeToAssumeNodeRebootedSeconds field.
+Validates that the SelfNodeRemediationConfig CRD schema contains the
+expected description text for the safeTimeToAssumeNodeRebootedSeconds field.
 
 - **Operators**: SNR v0.12.1+
 - **Cluster**: Any topology
