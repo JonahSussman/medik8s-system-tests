@@ -3,6 +3,10 @@
 GINKGO="${GINKGO:-ginkgo}"
 TEST_DIR="./tests"
 
+# In CI, ARTIFACT_DIR is set by ci-operator and is collected/uploaded automatically.
+# Fall back to ECO_REPORTS_DUMP_DIR if already set, then /tmp/reports for local runs.
+export ECO_REPORTS_DUMP_DIR="${ARTIFACT_DIR:-${ECO_REPORTS_DUMP_DIR:-/tmp/reports}}"
+
 # Check that ECO_TEST_FEATURES environment variable has been set
 if [[ -z "${ECO_TEST_FEATURES}" ]]; then
     echo "ECO_TEST_FEATURES environment variable is undefined"
