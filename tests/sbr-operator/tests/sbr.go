@@ -47,6 +47,8 @@ func watchdogDebugPodName(nodeName string) string {
 		name = name[:253]
 	}
 
+	name = strings.TrimRight(name, "-")
+
 	return name
 }
 
