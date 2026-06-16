@@ -15,6 +15,7 @@ import (
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 	"github.com/medik8s/system-tests/tests/snr-operator/internal/snrparams"
 
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -30,14 +31,9 @@ var _ = Describe(
 			Label(labels.TierSmoke, labels.DisruptionNonDestructive,
 				labels.PlatformAny, labels.FrequencyPresubmit,
 				labels.ComponentController), func() {
-				By("Getting SNR CRD")
+				By("Getting SelfNodeRemediationConfig CRD")
 
-				snrCRD := &unstructured.Unstructured{}
-				snrCRD.SetGroupVersionKind(schema.GroupVersionKind{
-					Group:   "apiextensions.k8s.io",
-					Version: "v1",
-					Kind:    "CustomResourceDefinition",
-				})
+				snrCRD := &apiextensionsv1.CustomResourceDefinition{}
 
 				err := APIClient.Get(context.TODO(),
 					client.ObjectKey{Name: snrparams.SNRCRDName},
@@ -45,32 +41,20 @@ var _ = Describe(
 				Expect(err).ToNot(HaveOccurred(),
 					"Failed to get CRD %q", snrparams.SNRCRDName)
 
-				By("Extracting safeTimeToAssumeNodeRebootedSeconds description")
+				By("Extracting safeTimeToAssumeNodeRebootedSeconds description from storage version")
 
-				versions, found, err := unstructured.NestedSlice(snrCRD.Object, "spec", "versions")
-				Expect(err).ToNot(HaveOccurred(), "Failed to get spec.versions from CRD")
-				Expect(found).To(BeTrue(), "spec.versions not found in CRD")
-				Expect(len(versions)).To(BeNumerically(">", 0), "CRD should have at least one version")
+				Expect(snrCRD.Spec.Versions).ToNot(BeEmpty(), "CRD should have at least one version")
 
 				var description string
 
-				for _, ver := range versions {
-					verMap, ok := ver.(map[string]interface{})
-					if !ok {
+				for _, ver := range snrCRD.Spec.Versions {
+					if !ver.Storage {
 						continue
 					}
 
-					// Use the storage version to get the authoritative schema.
-					storage, _, _ := unstructured.NestedBool(verMap, "storage")
-					if !storage {
-						continue
-					}
-
-					desc, descFound, descErr := unstructured.NestedString(verMap,
-						"schema", "openAPIV3Schema", "properties",
-						"spec", "properties", "safeTimeToAssumeNodeRebootedSeconds", "description")
-					if descErr == nil && descFound {
-						description = desc
+					props := ver.Schema.OpenAPIV3Schema.Properties["spec"].Properties
+					if safeTimeProp, exists := props["safeTimeToAssumeNodeRebootedSeconds"]; exists {
+						description = safeTimeProp.Description
 
 						break
 					}
