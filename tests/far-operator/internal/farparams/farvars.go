@@ -28,8 +28,10 @@ var (
 	// ReporterCRDsToDump tells to the reporter what CRs to dump.
 	ReporterCRDsToDump = []k8sreporter.CRData{
 		{Cr: &corev1.PodList{}},
-		{Cr: medik8sparams.NewUnstructuredList("fence-agents-remediation.medik8s.io", "v1alpha1", "FenceAgentsRemediationList")},
-		{Cr: medik8sparams.NewUnstructuredList("fence-agents-remediation.medik8s.io", "v1alpha1", "FenceAgentsRemediationTemplateList")},
+		{Cr: medik8sparams.NewUnstructuredList("fence-agents-remediation.medik8s.io", "v1alpha1",
+			"FenceAgentsRemediationList")},
+		{Cr: medik8sparams.NewUnstructuredList("fence-agents-remediation.medik8s.io", "v1alpha1",
+			"FenceAgentsRemediationTemplateList")},
 		{Cr: &coordinationv1.LeaseList{}, Namespace: &operatorNs},
 	}
 

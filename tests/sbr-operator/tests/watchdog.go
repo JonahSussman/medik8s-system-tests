@@ -70,6 +70,7 @@ var _ = Describe(
 					if !ok {
 						GinkgoWriter.Printf("Warning: node %s missing from watchdog inventory; treating as no hardware watchdog\n",
 							node.Name)
+
 						devs = []string{}
 					}
 
