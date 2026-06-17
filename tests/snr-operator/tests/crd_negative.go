@@ -8,6 +8,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/deployment"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/reportxml"
 
 	"github.com/medik8s/system-tests/tests/internal/labels"
@@ -15,7 +16,9 @@ import (
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 	"github.com/medik8s/system-tests/tests/snr-operator/internal/snrparams"
 
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -26,6 +29,16 @@ var _ = Describe(
 	Ordered,
 	ContinueOnFailure,
 	Label(snrparams.Label), func() {
+		BeforeAll(func() {
+			By("Verify SNR admission webhook is ready before running webhook-dependent tests")
+
+			snrDeployment, err := deployment.Pull(
+				APIClient, snrparams.OperatorDeploymentName, medik8sparams.OperatorNs)
+			Expect(err).ToNot(HaveOccurred(), "Failed to get SNR deployment")
+			Expect(snrDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(),
+				"SNR deployment is not Ready")
+		})
+
 		It("Verify CRD description of safeTimeToAssumeNodeRebootedSeconds",
 			reportxml.ID("60824"),
 			Label(labels.TierSmoke, labels.DisruptionNonDestructive,
@@ -163,6 +176,16 @@ var _ = Describe(
 			Label(labels.TierAcceptance, labels.DisruptionNonDestructive,
 				labels.PlatformAny, labels.FrequencyPresubmit,
 				labels.ComponentController), func() {
+				By("Verifying test node name does not exist in the cluster")
+
+				nodeObj := &corev1.Node{}
+				nodeErr := APIClient.Get(context.TODO(),
+					client.ObjectKey{Name: snrparams.SNRTestNodeName},
+					nodeObj)
+				Expect(k8serrors.IsNotFound(nodeErr)).To(BeTrue(),
+					"Node %q must not exist in the cluster to avoid triggering real fencing",
+					snrparams.SNRTestNodeName)
+
 				By("Creating SNR with non-existent node name")
 
 				snrCR := buildSNRCR("SelfNodeRemediation", snrparams.SNRTestNodeName, nil)

@@ -44,7 +44,7 @@ func deferDeleteCR(resource *unstructured.Unstructured) {
 			}
 
 			return deleteErr
-		}, 30, snrparams.DefaultPollInterval).Should(Succeed(),
+		}, medik8sparams.DefaultTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
 			"cleanup of test CR %q must succeed", resource.GetName())
 	})
 }
