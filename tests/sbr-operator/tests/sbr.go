@@ -117,7 +117,10 @@ var _ = Describe(
 						continue
 					}
 
-					var devices []string
+					// Use a non-nil empty slice so that "no devices found" is distinguishable
+					// from "probe failed" (nil) — the watchdog integration test fast path
+					// relies on this three-state contract.
+					devices := make([]string, 0)
 
 					for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
 						line = strings.TrimSpace(line)
