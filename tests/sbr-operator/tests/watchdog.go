@@ -161,9 +161,12 @@ var _ = Describe(
 			GinkgoWriter.Println("=== Watchdog inventory (self-discovered) ===")
 
 			for nodeName, devs := range nodeWatchdogDevices {
-				if len(devs) == 0 {
+				switch {
+				case devs == nil:
+					GinkgoWriter.Printf("  %s: probe-failed\n", nodeName)
+				case len(devs) == 0:
 					GinkgoWriter.Printf("  %s: none\n", nodeName)
-				} else {
+				default:
 					GinkgoWriter.Printf("  %s: %v\n", nodeName, devs)
 				}
 			}

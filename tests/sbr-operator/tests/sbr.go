@@ -138,10 +138,12 @@ var _ = Describe(
 				GinkgoWriter.Println("=== /dev/watchdog* Inventory ===")
 
 				for _, n := range nodeList.Items {
-					devs := WatchdogDevicesByNode[n.Name]
-					if len(devs) == 0 {
+					switch devs := WatchdogDevicesByNode[n.Name]; {
+					case devs == nil:
+						GinkgoWriter.Printf("  %s: probe-failed\n", n.Name)
+					case len(devs) == 0:
 						GinkgoWriter.Printf("  %s: none\n", n.Name)
-					} else {
+					default:
 						GinkgoWriter.Printf("  %s: %v\n", n.Name, devs)
 					}
 				}
@@ -186,14 +188,27 @@ func filterRunningPods(pods []*pod.Builder) []*pod.Builder {
 }
 
 func fetchActiveCSV() *olm.ClusterServiceVersionBuilder {
-	sbrCSVs, err := olm.ListClusterServiceVersionWithNamePattern(
-		APIClient, sbrparams.CSVNamePattern, medik8sparams.OperatorNs)
-	Expect(err).ToNot(HaveOccurred(), "Failed to list SBR ClusterServiceVersions")
-	Expect(len(sbrCSVs)).To(BeNumerically(">", 0),
-		"At least one SBR ClusterServiceVersion should be found in namespace %s", medik8sparams.OperatorNs)
+	var sbrCSV *olm.ClusterServiceVersionBuilder
 
-	sbrCSV := findActiveCSV(sbrCSVs)
-	Expect(sbrCSV).ToNot(BeNil(), "No SBR CSV in Succeeded phase found")
+	Eventually(func() error {
+		sbrCSVs, err := olm.ListClusterServiceVersionWithNamePattern(
+			APIClient, sbrparams.CSVNamePattern, medik8sparams.OperatorNs)
+		if err != nil {
+			return fmt.Errorf("failed to list SBR ClusterServiceVersions: %w", err)
+		}
+
+		if len(sbrCSVs) == 0 {
+			return fmt.Errorf("no SBR ClusterServiceVersion found in namespace %s", medik8sparams.OperatorNs)
+		}
+
+		sbrCSV = findActiveCSV(sbrCSVs)
+		if sbrCSV == nil {
+			return fmt.Errorf("no SBR CSV in Succeeded phase found yet")
+		}
+
+		return nil
+	}, medik8sparams.DefaultTimeout, sbrparams.DefaultPollInterval).Should(Succeed(),
+		"SBR CSV must reach Succeeded phase")
 
 	return sbrCSV
 }
@@ -689,21 +704,6 @@ var _ = Describe(
 
 				var schemaErrors []string
 
-				// DeferCleanup so schema errors are reported even when Layer 2 also fails —
-				// a direct Fail() would abort the It block before Layer 2 runs.
-				DeferCleanup(func() {
-					if len(schemaErrors) == 0 {
-						return
-					}
-
-					errMsg := "CRD schema validation failures:\n"
-					for _, msg := range schemaErrors {
-						errMsg += fmt.Sprintf("- %s\n", msg)
-					}
-
-					Fail(errMsg)
-				})
-
 				for _, invalidCase := range []invalidSBRCCase{
 					{"below-min-timeout", "sbrTimeoutSeconds", sbrparams.SBRCTimeoutSecondsMin - 1},
 					{"above-max-timeout", "sbrTimeoutSeconds", sbrparams.SBRCTimeoutSecondsMax + 1},
@@ -742,6 +742,15 @@ var _ = Describe(
 							fmt.Sprintf("expected Invalid or BadRequest error for %s=%d, got: %v",
 								invalidCase.field, invalidCase.value, createErr))
 					}
+				}
+
+				if len(schemaErrors) > 0 {
+					errMsg := "CRD schema validation failures:\n"
+					for _, msg := range schemaErrors {
+						errMsg += fmt.Sprintf("- %s\n", msg)
+					}
+
+					Fail(errMsg)
 				}
 
 				By("Layer 2: Controller validation — StorageBasedRemediationConfig with non-existent " +
