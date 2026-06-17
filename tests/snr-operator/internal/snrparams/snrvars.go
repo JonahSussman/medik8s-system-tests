@@ -5,8 +5,6 @@ import (
 	"github.com/openshift-kni/k8sreporter"
 	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 var (
@@ -36,9 +34,9 @@ var (
 	// ReporterCRDsToDump tells the reporter what CRs to dump.
 	ReporterCRDsToDump = []k8sreporter.CRData{
 		{Cr: &corev1.PodList{}},
-		{Cr: newUnstructuredList(CRDGroup, CRDVersion, "SelfNodeRemediationList")},
-		{Cr: newUnstructuredList(CRDGroup, CRDVersion, "SelfNodeRemediationConfigList")},
-		{Cr: newUnstructuredList(CRDGroup, CRDVersion, "SelfNodeRemediationTemplateList")},
+		{Cr: medik8sparams.NewUnstructuredList(CRDGroup, CRDVersion, "SelfNodeRemediationList")},
+		{Cr: medik8sparams.NewUnstructuredList(CRDGroup, CRDVersion, "SelfNodeRemediationConfigList")},
+		{Cr: medik8sparams.NewUnstructuredList(CRDGroup, CRDVersion, "SelfNodeRemediationTemplateList")},
 		{Cr: &coordinationv1.LeaseList{}, Namespace: &operatorNs},
 	}
 
@@ -63,10 +61,3 @@ var (
 		"self-node-remediation-node-deletion-template",
 	}
 )
-
-func newUnstructuredList(group, version, kind string) *unstructured.UnstructuredList {
-	l := &unstructured.UnstructuredList{}
-	l.SetGroupVersionKind(schema.GroupVersionKind{Group: group, Version: version, Kind: kind})
-
-	return l
-}

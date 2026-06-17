@@ -25,7 +25,7 @@ LABEL container.user=${CONTAINERUSER}
 
 ENV PATH "$PATH:/usr/local/go/bin:/root/go/bin"
 RUN dnf install -y tar gcc make && \
-    dnf clean metadata packages && \
+    dnf clean all && \
     useradd -U -u 1000 -m -d /home/${CONTAINERUSER} -s /usr/bin/bash ${CONTAINERUSER}
 
 USER ${CONTAINERUSER}

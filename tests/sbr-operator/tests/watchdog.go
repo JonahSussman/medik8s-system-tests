@@ -66,12 +66,14 @@ var _ = Describe(
 						continue
 					}
 
-					if _, ok := WatchdogDevicesByNode[node.Name]; !ok {
+					devs, ok := WatchdogDevicesByNode[node.Name]
+					if !ok {
 						GinkgoWriter.Printf("Warning: node %s missing from watchdog inventory; treating as no hardware watchdog\n",
 							node.Name)
+						devs = []string{}
 					}
 
-					nodeWatchdogDevices[node.Name] = WatchdogDevicesByNode[node.Name]
+					nodeWatchdogDevices[node.Name] = devs
 				}
 
 				if len(nodeWatchdogDevices) == 0 {
@@ -194,6 +196,11 @@ var _ = Describe(
 					}
 				}
 
+				if len(hwNodes) == 0 && len(noWatchdogNodes) == 0 {
+					Fail("watchdog integration test did not successfully inventory any schedulable nodes; " +
+						"all probe pods likely failed during setup")
+				}
+
 				var errorMessages []string
 
 				// Part 1: nodes with hardware watchdog — verify each device is a character device.
@@ -230,22 +237,11 @@ var _ = Describe(
 					for _, device := range devices {
 						hostPath := "/proc/1/root" + device
 
-						buf, execErr := debugPod.ExecCommand([]string{
-							"sh", "-c",
-							fmt.Sprintf("test -c %s && echo ok || echo notchardev", hostPath),
-						})
+						_, execErr := debugPod.ExecCommand([]string{"test", "-c", hostPath})
 						if execErr != nil {
 							errorMessages = append(errorMessages,
-								fmt.Sprintf("node %s: exec failed for device %s: %v",
+								fmt.Sprintf("node %s: watchdog device %s is not a character device or check failed: %v",
 									nodeName, device, execErr))
-
-							continue
-						}
-
-						if strings.TrimSpace(buf.String()) != "ok" {
-							errorMessages = append(errorMessages,
-								fmt.Sprintf("node %s: watchdog device %s is not a character device",
-									nodeName, device))
 						}
 					}
 

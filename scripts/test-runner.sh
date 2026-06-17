@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
 GINKGO="${GINKGO:-ginkgo}"
+GOPATH="${GOPATH:-${HOME}/go}"
+PATH=$PATH:$GOPATH/bin
 TEST_DIR="./tests"
 
 # In CI, ARTIFACT_DIR is set by ci-operator and is collected/uploaded automatically.

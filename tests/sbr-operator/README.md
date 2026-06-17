@@ -102,6 +102,7 @@ a DaemonSet for it.
 
 ### 7. Verify StorageBasedRemediationConfig Controller Handles Invalid Inputs Without Scheduling Agent Pods ([Polarion OCP-88741](https://polarion.engineering.redhat.com/polarion/#/project/OCPQE/workitem?id=OCP-88741))
 
+
 Validates that the SBR controller does not schedule agent DaemonSets when
 `StorageBasedRemediationConfig` resources specify inputs the controller cannot
 act on:
@@ -119,3 +120,19 @@ act on:
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="sbr" --focus="invalid watchdog path and non-matching nodeSelector" ./tests/sbr-operator/...`
 - **Pass criteria**: No agent pods scheduled for either invalid StorageBasedRemediationConfig input; StorageBasedRemediationConfig CRs remain present after controller reconciliation
+
+### 8. Verify Watchdog Device Accessibility and Softdog Module Availability ([Polarion OCP-88878](https://polarion.engineering.redhat.com/polarion/#/project/OCPQE/workitem?id=OCP-88878))
+
+Validates that every schedulable cluster node either has accessible hardware watchdog character
+devices or has the softdog kernel module available as a fallback.
+
+The test reuses the `/dev/watchdog*` inventory populated by the "SBR Debug — Cluster Watchdog
+Inventory" suite when it ran in the same Ginkgo session; otherwise it discovers devices
+independently using a short-lived privileged hostPID pod per node.
+
+- **Operators**: SBR v0.3.0
+- **Cluster**: Any topology (BM or VM nodes with watchdog hardware or softdog)
+- **Storage**: None
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="sbr" --focus="Verify watchdog device" ./tests/sbr-operator/...`
+- **Pass criteria**: All hardware watchdog devices are character devices; nodes without hardware watchdog have softdog.ko present in the kernel module tree
