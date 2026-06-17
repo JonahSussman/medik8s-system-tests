@@ -137,14 +137,14 @@ var _ = Describe(
 
 				GinkgoWriter.Println("=== /dev/watchdog* Inventory ===")
 
-				for _, n := range nodeList.Items {
-					switch devs := WatchdogDevicesByNode[n.Name]; {
+				for _, node := range nodeList.Items {
+					switch devs := WatchdogDevicesByNode[node.Name]; {
 					case devs == nil:
-						GinkgoWriter.Printf("  %s: probe-failed\n", n.Name)
+						GinkgoWriter.Printf("  %s: probe-failed\n", node.Name)
 					case len(devs) == 0:
-						GinkgoWriter.Printf("  %s: none\n", n.Name)
+						GinkgoWriter.Printf("  %s: none\n", node.Name)
 					default:
-						GinkgoWriter.Printf("  %s: %v\n", n.Name, devs)
+						GinkgoWriter.Printf("  %s: %v\n", node.Name, devs)
 					}
 				}
 			})
@@ -704,6 +704,21 @@ var _ = Describe(
 
 				var schemaErrors []string
 
+				// DeferCleanup so schema errors are reported even when Layer 2 also fails —
+				// a direct Fail() would abort the It block before Layer 2 runs.
+				DeferCleanup(func() {
+					if len(schemaErrors) == 0 {
+						return
+					}
+
+					errMsg := "CRD schema validation failures:\n"
+					for _, msg := range schemaErrors {
+						errMsg += fmt.Sprintf("- %s\n", msg)
+					}
+
+					Fail(errMsg)
+				})
+
 				for _, invalidCase := range []invalidSBRCCase{
 					{"below-min-timeout", "sbrTimeoutSeconds", sbrparams.SBRCTimeoutSecondsMin - 1},
 					{"above-max-timeout", "sbrTimeoutSeconds", sbrparams.SBRCTimeoutSecondsMax + 1},
@@ -742,15 +757,6 @@ var _ = Describe(
 							fmt.Sprintf("expected Invalid or BadRequest error for %s=%d, got: %v",
 								invalidCase.field, invalidCase.value, createErr))
 					}
-				}
-
-				if len(schemaErrors) > 0 {
-					errMsg := "CRD schema validation failures:\n"
-					for _, msg := range schemaErrors {
-						errMsg += fmt.Sprintf("- %s\n", msg)
-					}
-
-					Fail(errMsg)
 				}
 
 				By("Layer 2: Controller validation — StorageBasedRemediationConfig with non-existent " +
