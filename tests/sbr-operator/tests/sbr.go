@@ -47,6 +47,8 @@ func watchdogDebugPodName(nodeName string) string {
 		name = name[:253]
 	}
 
+	name = strings.TrimRight(name, "-")
+
 	return name
 }
 
@@ -115,7 +117,10 @@ var _ = Describe(
 						continue
 					}
 
-					var devices []string
+					// Use a non-nil empty slice so that "no devices found" is distinguishable
+					// from "probe failed" (nil) — the watchdog integration test fast path
+					// relies on this three-state contract.
+					devices := make([]string, 0)
 
 					for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
 						line = strings.TrimSpace(line)
@@ -132,12 +137,14 @@ var _ = Describe(
 
 				GinkgoWriter.Println("=== /dev/watchdog* Inventory ===")
 
-				for _, n := range nodeList.Items {
-					devs := WatchdogDevicesByNode[n.Name]
-					if len(devs) == 0 {
-						GinkgoWriter.Printf("  %s: none\n", n.Name)
-					} else {
-						GinkgoWriter.Printf("  %s: %v\n", n.Name, devs)
+				for _, node := range nodeList.Items {
+					switch devs := WatchdogDevicesByNode[node.Name]; {
+					case devs == nil:
+						GinkgoWriter.Printf("  %s: probe-failed\n", node.Name)
+					case len(devs) == 0:
+						GinkgoWriter.Printf("  %s: none\n", node.Name)
+					default:
+						GinkgoWriter.Printf("  %s: %v\n", node.Name, devs)
 					}
 				}
 			})
@@ -181,14 +188,27 @@ func filterRunningPods(pods []*pod.Builder) []*pod.Builder {
 }
 
 func fetchActiveCSV() *olm.ClusterServiceVersionBuilder {
-	sbrCSVs, err := olm.ListClusterServiceVersionWithNamePattern(
-		APIClient, sbrparams.CSVNamePattern, medik8sparams.OperatorNs)
-	Expect(err).ToNot(HaveOccurred(), "Failed to list SBR ClusterServiceVersions")
-	Expect(len(sbrCSVs)).To(BeNumerically(">", 0),
-		"At least one SBR ClusterServiceVersion should be found in namespace %s", medik8sparams.OperatorNs)
+	var sbrCSV *olm.ClusterServiceVersionBuilder
 
-	sbrCSV := findActiveCSV(sbrCSVs)
-	Expect(sbrCSV).ToNot(BeNil(), "No SBR CSV in Succeeded phase found")
+	Eventually(func() error {
+		sbrCSVs, err := olm.ListClusterServiceVersionWithNamePattern(
+			APIClient, sbrparams.CSVNamePattern, medik8sparams.OperatorNs)
+		if err != nil {
+			return fmt.Errorf("failed to list SBR ClusterServiceVersions: %w", err)
+		}
+
+		if len(sbrCSVs) == 0 {
+			return fmt.Errorf("no SBR ClusterServiceVersion found in namespace %s", medik8sparams.OperatorNs)
+		}
+
+		sbrCSV = findActiveCSV(sbrCSVs)
+		if sbrCSV == nil {
+			return fmt.Errorf("no SBR CSV in Succeeded phase found yet")
+		}
+
+		return nil
+	}, medik8sparams.DefaultTimeout, sbrparams.DefaultPollInterval).Should(Succeed(),
+		"SBR CSV must reach Succeeded phase")
 
 	return sbrCSV
 }
@@ -796,10 +816,6 @@ var _ = Describe(
 				labels.ComponentController,
 				labels.FrequencyNightly,
 			), func() {
-				By("Recording baseline DaemonSet names before creating invalid SBRCs")
-
-				baselineDSNames := snapshotDaemonSetNames()
-
 				type invalidSBRCCase struct {
 					name               string
 					spec               map[string]interface{}
@@ -827,6 +843,14 @@ var _ = Describe(
 						requireNoDaemonSet: false,
 					},
 				} {
+					By(fmt.Sprintf("Recording baseline DaemonSet names before creating StorageBasedRemediationConfig with %s",
+						invalidCase.desc))
+
+					// Snapshot per-iteration so DaemonSets created by prior iterations' SBRCs
+					// (which remain alive until DeferCleanup fires after the It body) are treated
+					// as baseline and don't contaminate this iteration's Consistently check.
+					baselineDSNames := snapshotDaemonSetNames()
+
 					By(fmt.Sprintf("Creating StorageBasedRemediationConfig with %s", invalidCase.desc))
 
 					sbrc := buildSBRC(invalidCase.name, invalidCase.spec)

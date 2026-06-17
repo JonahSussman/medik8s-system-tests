@@ -75,25 +75,27 @@ var _ = Describe(
 		It("Verify FAR CSV has required annotations", reportxml.ID("70637"), func() {
 			By("Getting FAR ClusterServiceVersion")
 
-			farCSVs, err := olm.ListClusterServiceVersionWithNamePattern(
-				APIClient, "fence-agents-remediation", medik8sparams.OperatorNs)
-			Expect(err).ToNot(HaveOccurred(), "Failed to list FAR ClusterServiceVersions")
-			Expect(len(farCSVs)).To(BeNumerically(">", 0), "At least one FAR ClusterServiceVersion should be found")
-
-			By("Finding the active (Succeeded) CSV")
-
 			var farCSV *olm.ClusterServiceVersionBuilder
 
-			for _, csv := range farCSVs {
-				phase, phaseErr := csv.GetPhase()
-				if phaseErr == nil && phase == olmV1alpha1.CSVPhaseSucceeded {
-					farCSV = csv
-
-					break
+			Eventually(func() error {
+				farCSVs, err := olm.ListClusterServiceVersionWithNamePattern(
+					APIClient, "fence-agents-remediation", medik8sparams.OperatorNs)
+				if err != nil {
+					return err
 				}
-			}
 
-			Expect(farCSV).ToNot(BeNil(), "No FAR CSV in Succeeded phase found")
+				for _, csv := range farCSVs {
+					phase, phaseErr := csv.GetPhase()
+					if phaseErr == nil && phase == olmV1alpha1.CSVPhaseSucceeded {
+						farCSV = csv
+
+						return nil
+					}
+				}
+
+				return fmt.Errorf("no FAR CSV in Succeeded phase found yet")
+			}, medik8sparams.DefaultTimeout, farparams.DefaultPollInterval).Should(Succeed(),
+				"FAR CSV must reach Succeeded phase")
 
 			By("Checking annotation values on FAR CSV")
 
@@ -278,9 +280,23 @@ var _ = Describe(
 func filterRunningPods(pods []*pod.Builder) []*pod.Builder {
 	running := make([]*pod.Builder, 0, len(pods))
 
-	for _, p := range pods {
-		if p.Object.Status.Phase == corev1.PodRunning && p.Object.DeletionTimestamp == nil {
-			running = append(running, p)
+	for _, podBuilder := range pods {
+		if podBuilder.Object.Status.Phase != corev1.PodRunning || podBuilder.Object.DeletionTimestamp != nil {
+			continue
+		}
+
+		allReady := true
+
+		for _, cs := range podBuilder.Object.Status.ContainerStatuses {
+			if !cs.Ready {
+				allReady = false
+
+				break
+			}
+		}
+
+		if allReady {
+			running = append(running, podBuilder)
 		}
 	}
 

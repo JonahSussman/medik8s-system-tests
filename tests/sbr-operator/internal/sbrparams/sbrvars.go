@@ -5,8 +5,6 @@ import (
 	"github.com/openshift-kni/k8sreporter"
 	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 var (
@@ -24,9 +22,9 @@ var (
 	// ReporterCRDsToDump tells the reporter what CRs to dump.
 	ReporterCRDsToDump = []k8sreporter.CRData{
 		{Cr: &corev1.PodList{}},
-		{Cr: newUnstructuredList(CRDGroup, CRDVersion, "StorageBasedRemediationList")},
-		{Cr: newUnstructuredList(CRDGroup, CRDVersion, "StorageBasedRemediationConfigList")},
-		{Cr: newUnstructuredList(CRDGroup, CRDVersion, "StorageBasedRemediationTemplateList")},
+		{Cr: medik8sparams.NewUnstructuredList(CRDGroup, CRDVersion, "StorageBasedRemediationList")},
+		{Cr: medik8sparams.NewUnstructuredList(CRDGroup, CRDVersion, "StorageBasedRemediationConfigList")},
+		{Cr: medik8sparams.NewUnstructuredList(CRDGroup, CRDVersion, "StorageBasedRemediationTemplateList")},
 		{Cr: &coordinationv1.LeaseList{}, Namespace: &operatorNs},
 	}
 
@@ -52,10 +50,3 @@ var (
 		"operatorframework.io/suggested-namespace":         medik8sparams.OperatorNs,
 	}
 )
-
-func newUnstructuredList(group, version, kind string) *unstructured.UnstructuredList {
-	l := &unstructured.UnstructuredList{}
-	l.SetGroupVersionKind(schema.GroupVersionKind{Group: group, Version: version, Kind: kind})
-
-	return l
-}

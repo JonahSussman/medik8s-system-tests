@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 
 GINKGO="${GINKGO:-ginkgo}"
+GOPATH="${GOPATH:-${HOME}/go}"
+PATH=$PATH:$GOPATH/bin
 TEST_DIR="./tests"
 
-# In CI, write JUnit XML to ARTIFACT_DIR so Prow picks it up; fall back to /tmp/reports locally.
-export ECO_REPORTS_DUMP_DIR="${ECO_REPORTS_DUMP_DIR:-${ARTIFACT_DIR:-/tmp/reports}}"
+# In CI, ARTIFACT_DIR is set by ci-operator and is collected/uploaded automatically.
+# Fall back to ECO_REPORTS_DUMP_DIR if already set, then /tmp/reports for local runs.
+export ECO_REPORTS_DUMP_DIR="${ARTIFACT_DIR:-${ECO_REPORTS_DUMP_DIR:-/tmp/reports}}"
 
 # Check that ECO_TEST_FEATURES environment variable has been set
 if [[ -z "${ECO_TEST_FEATURES}" ]]; then
@@ -59,14 +62,3 @@ cmd+=" $@ $feature_dirs"   # add user args before feature dirs
 # Execute ginkgo command
 echo $cmd
 eval $cmd
-GINKGO_EXIT=$?
-
-# Generate HTML summary for Prow artifacts (no-op locally when ARTIFACT_DIR is unset)
-[ -n "${ARTIFACT_DIR}" ] && python3 "$(dirname "$0")/junit-to-html.py" || echo "Warning: HTML report generation failed" >&2
-
-# Copy JUnit XML to SHARED_DIR so post-test steps (e.g. Polarion reporter) can read them.
-if [[ -n "${SHARED_DIR}" ]]; then
-  find "${ECO_REPORTS_DUMP_DIR}" -name '*_junit.xml' -exec cp -t "${SHARED_DIR}/" {} + 2>/dev/null
-fi
-
-exit $GINKGO_EXIT

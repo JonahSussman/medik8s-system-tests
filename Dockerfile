@@ -24,8 +24,7 @@ LABEL ginkgo.version=${GINKGO_VER}
 LABEL container.user=${CONTAINERUSER}
 
 ENV PATH "$PATH:/usr/local/go/bin:/root/go/bin"
-RUN dnf install -y tar gcc make python3 python3-pip && \
-    pip3 install --no-cache-dir defusedxml && \
+RUN dnf install -y tar gcc make && \
     dnf clean all && \
     useradd -U -u 1000 -m -d /home/${CONTAINERUSER} -s /usr/bin/bash ${CONTAINERUSER}
 
