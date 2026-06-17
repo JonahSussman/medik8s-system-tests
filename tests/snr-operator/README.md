@@ -81,7 +81,7 @@ NodeDeletion remediation strategy is rejected by CRD validation.
 - **Operators**: SNR v0.12.1+
 - **Cluster**: Any topology
 - **Environment**: Connected or disconnected
-- **Standalone**: `ginkgo --label-filter="snr" --focus="unsupported NodeDeletion strategy is rejected" ./tests/snr-operator/...`
+- **Standalone**: `ginkgo --label-filter="snr" --focus="SNR with unsupported" ./tests/snr-operator/...`
 - **Pass criteria**: API server rejects with "Unsupported value" and "NodeDeletion"
 
 ### 6. Verify SNRT with Unsupported NodeDeletion Strategy Is Rejected (Polarion OCP-60822)
@@ -92,7 +92,7 @@ NodeDeletion remediation strategy is rejected by CRD validation.
 - **Operators**: SNR v0.12.1+
 - **Cluster**: Any topology
 - **Environment**: Connected or disconnected
-- **Standalone**: `ginkgo --label-filter="snr" --focus="unsupported NodeDeletion strategy is rejected" ./tests/snr-operator/...`
+- **Standalone**: `ginkgo --label-filter="snr" --focus="SNRT with unsupported" ./tests/snr-operator/...`
 - **Pass criteria**: API server rejects with "Unsupported value" and "NodeDeletion"
 
 ### 7. Verify SNR Conditions with nhc-timed-out Annotation (Polarion OCP-60881)

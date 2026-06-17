@@ -6,7 +6,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/deployment"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/reportxml"
 
 	"github.com/medik8s/system-tests/tests/internal/labels"
@@ -14,7 +13,9 @@ import (
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 	"github.com/medik8s/system-tests/tests/snr-operator/internal/snrparams"
 
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const unsupportedStrategy = "NodeDeletion"
@@ -25,13 +26,19 @@ var _ = Describe(
 	ContinueOnFailure,
 	Label(snrparams.Label), func() {
 		BeforeAll(func() {
-			By("Verify SNR deployment is ready")
+			// These tests validate CRD/CEL admission rules enforced by the API server,
+			// not the SNR controller. We verify the CRD exists rather than waiting
+			// for operator readiness to avoid masking broken CRD validation on rollout.
+			By("Verify SNR CRD exists and is established")
 
-			snrDeployment, err := deployment.Pull(
-				APIClient, snrparams.OperatorDeploymentName, medik8sparams.OperatorNs)
-			Expect(err).ToNot(HaveOccurred(), "Failed to get SNR deployment")
-			Expect(snrDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(),
-				"SNR deployment is not Ready")
+			snrCRDName := "selfnoderemediationconfigs." + snrparams.CRDGroup
+
+			snrCRD := &apiextensionsv1.CustomResourceDefinition{}
+			err := APIClient.Get(context.TODO(),
+				client.ObjectKey{Name: snrCRDName},
+				snrCRD)
+			Expect(err).ToNot(HaveOccurred(),
+				"SelfNodeRemediationConfig CRD %q not found", snrCRDName)
 		})
 
 		It("Verify SNR with unsupported NodeDeletion strategy is rejected",

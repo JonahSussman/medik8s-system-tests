@@ -15,6 +15,8 @@ import (
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 	"github.com/medik8s/system-tests/tests/snr-operator/internal/snrparams"
 
+	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -23,10 +25,11 @@ const (
 	// nhcTimedOutAnnotationKey is the annotation that signals NHC timed out.
 	nhcTimedOutAnnotationKey = "remediation.medik8s.io/nhc-timed-out"
 
-	// nhcTimedOutAnnotationValue uses Go's reference time layout as a sentinel.
-	// The SNR controller only checks for key presence, not the value format.
-	// This matches the Python test which uses the same value.
-	nhcTimedOutAnnotationValue = "2006-01-02T15:04:05Z07:00"
+	// nhcTimedOutAnnotationValue is a non-empty timestamp string.
+	// Note: this value is syntactically invalid RFC3339 (has both Z and +07:00).
+	// The SNR controller currently checks only for key presence, not value format.
+	// If a future SNR version validates the timestamp, replace with time.Now().UTC().Format(time.RFC3339).
+	nhcTimedOutAnnotationValue = "2026-01-01T00:00:00Z"
 
 	reasonNHCTimedOut    = "RemediationTimeoutByNHC"
 	reasonNodeNotFound   = "RemediationSkippedNodeNotFound"
@@ -108,6 +111,16 @@ var _ = Describe(
 				labels.ComponentController), func() {
 				snrName := "snr-test-nonexistent-node"
 
+				By("Verifying test node name does not exist in the cluster")
+
+				nodeObj := &corev1.Node{}
+				nodeErr := APIClient.Get(context.TODO(),
+					client.ObjectKey{Name: snrName},
+					nodeObj)
+				Expect(k8serrors.IsNotFound(nodeErr)).To(BeTrue(),
+					"Node %q must not exist in the cluster to avoid triggering real fencing",
+					snrName)
+
 				By("Creating SNR with non-existent node name")
 
 				snrCR := buildSNRWithAnnotations(snrName, nil)
@@ -179,16 +192,26 @@ func verifyConditionsByType(
 			return findErr
 		}
 
-		condStatus, _, statusErr := unstructured.NestedString(condMap, "status")
+		condStatus, statusFound, statusErr := unstructured.NestedString(condMap, "status")
 		if statusErr != nil {
 			return fmt.Errorf("condition %q status field error: %w",
 				exp.conditionType, statusErr)
 		}
 
-		condReason, _, reasonErr := unstructured.NestedString(condMap, "reason")
+		if !statusFound {
+			return fmt.Errorf("condition %q status field not yet written by controller",
+				exp.conditionType)
+		}
+
+		condReason, reasonFound, reasonErr := unstructured.NestedString(condMap, "reason")
 		if reasonErr != nil {
 			return fmt.Errorf("condition %q reason field error: %w",
 				exp.conditionType, reasonErr)
+		}
+
+		if !reasonFound {
+			return fmt.Errorf("condition %q reason field not yet written by controller",
+				exp.conditionType)
 		}
 
 		if condStatus != exp.status {
