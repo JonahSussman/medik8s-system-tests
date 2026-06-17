@@ -810,10 +810,6 @@ var _ = Describe(
 				labels.ComponentController,
 				labels.FrequencyNightly,
 			), func() {
-				By("Recording baseline DaemonSet names before creating invalid SBRCs")
-
-				baselineDSNames := snapshotDaemonSetNames()
-
 				type invalidSBRCCase struct {
 					name               string
 					spec               map[string]interface{}
@@ -841,6 +837,14 @@ var _ = Describe(
 						requireNoDaemonSet: false,
 					},
 				} {
+					By(fmt.Sprintf("Recording baseline DaemonSet names before creating StorageBasedRemediationConfig with %s",
+						invalidCase.desc))
+
+					// Snapshot per-iteration so DaemonSets created by prior iterations' SBRCs
+					// (which remain alive until DeferCleanup fires after the It body) are treated
+					// as baseline and don't contaminate this iteration's Consistently check.
+					baselineDSNames := snapshotDaemonSetNames()
+
 					By(fmt.Sprintf("Creating StorageBasedRemediationConfig with %s", invalidCase.desc))
 
 					sbrc := buildSBRC(invalidCase.name, invalidCase.spec)

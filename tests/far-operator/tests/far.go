@@ -281,7 +281,21 @@ func filterRunningPods(pods []*pod.Builder) []*pod.Builder {
 	running := make([]*pod.Builder, 0, len(pods))
 
 	for _, p := range pods {
-		if p.Object.Status.Phase == corev1.PodRunning && p.Object.DeletionTimestamp == nil {
+		if p.Object.Status.Phase != corev1.PodRunning || p.Object.DeletionTimestamp != nil {
+			continue
+		}
+
+		allReady := true
+
+		for _, cs := range p.Object.Status.ContainerStatuses {
+			if !cs.Ready {
+				allReady = false
+
+				break
+			}
+		}
+
+		if allReady {
 			running = append(running, p)
 		}
 	}

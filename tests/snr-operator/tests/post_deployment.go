@@ -45,22 +45,30 @@ var _ = Describe(
 
 			By("Get SNR ClusterServiceVersion")
 
-			snrCSVs, err := olm.ListClusterServiceVersionWithNamePattern(
-				APIClient, snrparams.CSVNamePattern, medik8sparams.OperatorNs)
-			Expect(err).ToNot(HaveOccurred(), "Failed to list SNR ClusterServiceVersions")
-			Expect(len(snrCSVs)).To(BeNumerically(">", 0),
-				"At least one SNR ClusterServiceVersion should be found")
-
-			for _, csv := range snrCSVs {
-				phase, phaseErr := csv.GetPhase()
-				if phaseErr == nil && phase == "Succeeded" {
-					snrCSV = csv
-
-					break
+			Eventually(func() error {
+				snrCSVs, listErr := olm.ListClusterServiceVersionWithNamePattern(
+					APIClient, snrparams.CSVNamePattern, medik8sparams.OperatorNs)
+				if listErr != nil {
+					return fmt.Errorf("failed to list SNR ClusterServiceVersions: %w", listErr)
 				}
-			}
 
-			Expect(snrCSV).ToNot(BeNil(), "No SNR CSV in Succeeded phase found")
+				if len(snrCSVs) == 0 {
+					return fmt.Errorf("no SNR ClusterServiceVersion found in namespace %s",
+						medik8sparams.OperatorNs)
+				}
+
+				for _, csv := range snrCSVs {
+					phase, phaseErr := csv.GetPhase()
+					if phaseErr == nil && phase == "Succeeded" {
+						snrCSV = csv
+
+						return nil
+					}
+				}
+
+				return fmt.Errorf("no SNR CSV in Succeeded phase found yet")
+			}, medik8sparams.DefaultTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
+				"SNR CSV must reach Succeeded phase")
 		})
 
 		It("Verify SNR resources are installed and running",
