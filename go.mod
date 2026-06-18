@@ -97,7 +97,6 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gorm.io/gorm v1.31.1 // indirect
-	k8s.io/apiextensions-apiserver v0.34.5 // indirect
 	k8s.io/kube-openapi v0.34.2 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
@@ -105,7 +104,10 @@ require (
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
-require github.com/rh-ecosystem-edge/eco-goinfra v0.0.0-20260504223242-6b9a2708aabf
+require (
+	github.com/rh-ecosystem-edge/eco-goinfra v0.0.0-20260504223242-6b9a2708aabf
+	k8s.io/apiextensions-apiserver v0.34.5
+)
 
 replace (
 	github.com/imdario/mergo => github.com/imdario/mergo v0.3.16

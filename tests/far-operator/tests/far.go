@@ -1,7 +1,9 @@
 package tests
 
 import (
+	"context"
 	"fmt"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -15,11 +17,14 @@ import (
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/reportxml"
 
 	"github.com/medik8s/system-tests/tests/far-operator/internal/farparams"
+	"github.com/medik8s/system-tests/tests/internal/labels"
 	. "github.com/medik8s/system-tests/tests/internal/medik8sinittools"
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var _ = Describe(
@@ -27,267 +32,550 @@ var _ = Describe(
 	Ordered,
 	ContinueOnFailure,
 	Label(farparams.Label), func() {
-		var farDeployment *deployment.Builder
+		var controlPlaneTopology configv1.TopologyMode
 
 		BeforeAll(func() {
-			By("Get FAR deployment object")
+			By("Get FAR deployment object and verify it is Ready")
 
-			var err error
-
-			farDeployment, err = deployment.Pull(
+			farDeployment, err := deployment.Pull(
 				APIClient, farparams.OperatorDeploymentName, medik8sparams.OperatorNs)
 			Expect(err).ToNot(HaveOccurred(), "Failed to get FAR deployment")
+			Expect(farDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(),
+				"FAR deployment is not Ready")
 
-			By("Verify FAR deployment is Ready")
-			Expect(farDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(), "FAR deployment is not Ready")
+			By("Pull cluster topology for use in topology-aware tests")
+
+			infraConfig, infraErr := infrastructure.Pull(APIClient)
+			Expect(infraErr).ToNot(HaveOccurred(), "Failed to pull infrastructure configuration")
+
+			controlPlaneTopology = infraConfig.Object.Status.ControlPlaneTopology
 		})
-		It("Verify Fence Agents Remediation Operator pod is running", reportxml.ID("66026"), func() {
-			listOptions := metav1.ListOptions{
-				LabelSelector: fmt.Sprintf("app.kubernetes.io/name=%s", farparams.OperatorControllerPodLabel),
-			}
-			_, err := pod.WaitForAllPodsInNamespaceRunning(
-				APIClient,
-				medik8sparams.OperatorNs,
-				medik8sparams.DefaultTimeout,
-				listOptions,
-			)
-			Expect(err).ToNot(HaveOccurred(), "Pod is not ready")
-
-			By("Verifying pod count matches expected replicas")
-
-			farPods, err := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
-			Expect(err).ToNot(HaveOccurred(), "Failed to list FAR pods")
-
-			runningPods := filterRunningPods(farPods)
-
-			infraConfig, err := infrastructure.Pull(APIClient)
-			Expect(err).ToNot(HaveOccurred(), "Failed to pull infrastructure configuration")
-
-			expectedCount := farparams.ExpectedReplicas
-			if infraConfig.Object.Status.ControlPlaneTopology == configv1.SingleReplicaTopologyMode {
-				expectedCount = int32(1)
-			}
-
-			Expect(int32(len(runningPods))).To(Equal(expectedCount),
-				"Expected %d running FAR pod(s), found %d", expectedCount, len(runningPods))
-		})
-
-		It("Verify FAR CSV has required annotations", reportxml.ID("70637"), func() {
-			By("Getting FAR ClusterServiceVersion")
-
-			var farCSV *olm.ClusterServiceVersionBuilder
-
-			Eventually(func() error {
-				farCSVs, err := olm.ListClusterServiceVersionWithNamePattern(
-					APIClient, "fence-agents-remediation", medik8sparams.OperatorNs)
-				if err != nil {
-					return err
+		It("Verify Fence Agents Remediation Operator pod is running",
+			reportxml.ID("66026"),
+			Label(labels.TierSmoke, labels.DisruptionNonDestructive,
+				labels.PlatformAny, labels.ComponentController, labels.FrequencyPresubmit),
+			func() {
+				expectedCount := farparams.ExpectedReplicas
+				if controlPlaneTopology == configv1.SingleReplicaTopologyMode {
+					expectedCount = int32(1)
 				}
 
-				for _, csv := range farCSVs {
-					phase, phaseErr := csv.GetPhase()
-					if phaseErr == nil && phase == olmV1alpha1.CSVPhaseSucceeded {
-						farCSV = csv
+				listOptions := metav1.ListOptions{
+					LabelSelector: farparams.OperatorControllerPodLabelSelector,
+				}
+
+				_, err := pod.WaitForAllPodsInNamespaceRunning(
+					APIClient,
+					medik8sparams.OperatorNs,
+					medik8sparams.DefaultTimeout,
+					listOptions,
+				)
+				Expect(err).ToNot(HaveOccurred(), "Pod is not ready")
+
+				By("Verifying pod count matches expected replicas")
+
+				farPods, err := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
+				Expect(err).ToNot(HaveOccurred(), "Failed to list FAR pods")
+
+				runningPods := filterRunningPods(farPods)
+
+				Expect(int32(len(runningPods))).To(Equal(expectedCount),
+					"Expected %d running FAR pod(s), found %d", expectedCount, len(runningPods))
+			})
+
+		It("Verify FAR CSV has required annotations",
+			reportxml.ID("70637"),
+			Label(labels.TierSmoke, labels.DisruptionNonDestructive,
+				labels.PlatformAny, labels.ComponentOLM, labels.FrequencyPresubmit),
+			func() {
+				By("Getting FAR ClusterServiceVersion")
+
+				var farCSV *olm.ClusterServiceVersionBuilder
+
+				Eventually(func() error {
+					farCSVs, err := olm.ListClusterServiceVersionWithNamePattern(
+						APIClient, "fence-agents-remediation", medik8sparams.OperatorNs)
+					if err != nil {
+						return err
+					}
+
+					for _, csv := range farCSVs {
+						phase, phaseErr := csv.GetPhase()
+						if phaseErr == nil && phase == olmV1alpha1.CSVPhaseSucceeded {
+							farCSV = csv
+
+							return nil
+						}
+					}
+
+					return fmt.Errorf("no FAR CSV in Succeeded phase found yet")
+				}, medik8sparams.DefaultTimeout, farparams.DefaultPollInterval).Should(Succeed(),
+					"FAR CSV must reach Succeeded phase")
+
+				By("Checking annotation values on FAR CSV")
+
+				Expect(farCSV.Object.Annotations).ToNot(BeNil(), "CSV annotations should not be nil")
+
+				var annotationErrors []string
+
+				for annotationKey, expectedValue := range farparams.RequiredAnnotations {
+					annotationValue, exists := farCSV.Object.Annotations[annotationKey]
+					if !exists {
+						annotationErrors = append(annotationErrors,
+							fmt.Sprintf("required annotation %q is missing", annotationKey))
+
+						continue
+					}
+
+					if annotationValue != expectedValue {
+						annotationErrors = append(annotationErrors,
+							fmt.Sprintf("annotation %q: expected %q, got %q",
+								annotationKey, expectedValue, annotationValue))
+					}
+				}
+
+				if len(annotationErrors) > 0 {
+					errMsg := "CSV annotation validation failures:\n"
+					for _, msg := range annotationErrors {
+						errMsg += fmt.Sprintf("- %s\n", msg)
+					}
+
+					Fail(errMsg)
+				}
+			})
+
+		It("Verify FAR controller manager has correct number of replicas",
+			reportxml.ID("61222"),
+			Label(labels.TierSmoke, labels.DisruptionNonDestructive,
+				labels.PlatformAny, labels.ComponentController, labels.FrequencyPresubmit),
+			func() {
+				if controlPlaneTopology == configv1.SingleReplicaTopologyMode {
+					Skip("Skipping test on SNO (Single Node OpenShift) cluster")
+				}
+
+				By("Verifying replica count, ready replicas, and pod HA distribution")
+
+				Eventually(func() error {
+					liveDeploy, pullErr := deployment.Pull(
+						APIClient, farparams.OperatorDeploymentName, medik8sparams.OperatorNs)
+					if pullErr != nil {
+						return pullErr
+					}
+
+					if liveDeploy.Object.Spec.Replicas == nil {
+						return fmt.Errorf("deployment Spec.Replicas is nil")
+					}
+
+					if *liveDeploy.Object.Spec.Replicas != farparams.ExpectedReplicas {
+						return fmt.Errorf("expected %d desired replica(s), found %d",
+							farparams.ExpectedReplicas, *liveDeploy.Object.Spec.Replicas)
+					}
+
+					if liveDeploy.Object.Status.ReadyReplicas != farparams.ExpectedReplicas {
+						return fmt.Errorf("expected %d ready replica(s), found %d",
+							farparams.ExpectedReplicas, liveDeploy.Object.Status.ReadyReplicas)
+					}
+
+					listOptions := metav1.ListOptions{
+						LabelSelector: farparams.OperatorControllerPodLabelSelector,
+					}
+
+					farPods, listErr := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
+					if listErr != nil {
+						return listErr
+					}
+
+					runningPods := filterRunningPods(farPods)
+
+					if int32(len(runningPods)) != farparams.ExpectedReplicas {
+						return fmt.Errorf("expected %d running pod(s), found %d",
+							farparams.ExpectedReplicas, len(runningPods))
+					}
+
+					nodeNames := make(map[string]bool)
+
+					for _, p := range runningPods {
+						if p.Object.Spec.NodeName == "" {
+							return fmt.Errorf("pod %s has not been assigned to a node", p.Object.Name)
+						}
+
+						nodeNames[p.Object.Spec.NodeName] = true
+					}
+
+					if len(nodeNames) != int(farparams.ExpectedReplicas) {
+						return fmt.Errorf(
+							"FAR pods must run on different nodes for HA, found pods on %d unique node(s)",
+							len(nodeNames))
+					}
+
+					return nil
+				}, medik8sparams.DefaultTimeout, farparams.DefaultPollInterval).Should(Succeed(),
+					"deployment should have %d ready replicas on distinct nodes", farparams.ExpectedReplicas)
+			})
+
+		It("Verify FAR container runs as non-root user",
+			reportxml.ID("89231"),
+			Label(labels.TierSmoke, labels.DisruptionNonDestructive,
+				labels.PlatformAny, labels.ComponentController, labels.FrequencyPresubmit),
+			func() {
+				By("Waiting for FAR controller pods to be running")
+
+				listOptions := metav1.ListOptions{
+					LabelSelector: farparams.OperatorControllerPodLabelSelector,
+				}
+
+				_, err := pod.WaitForAllPodsInNamespaceRunning(
+					APIClient,
+					medik8sparams.OperatorNs,
+					medik8sparams.DefaultTimeout,
+					listOptions,
+				)
+				Expect(err).ToNot(HaveOccurred(), "FAR controller pods are not ready")
+
+				By("Listing FAR controller pods")
+
+				farPods, err := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
+				Expect(err).ToNot(HaveOccurred(), "Failed to get FAR controller pods")
+
+				runningPods := filterRunningPods(farPods)
+				Expect(runningPods).ToNot(BeEmpty(), "No running FAR controller pods found")
+
+				var errorMessages []string
+
+				for _, farPod := range runningPods {
+					By(fmt.Sprintf("Verifying security context for pod %s", farPod.Object.Name))
+
+					By("Checking pod-level runAsNonRoot security context")
+
+					if farPod.Object.Spec.SecurityContext == nil {
+						errorMessages = append(errorMessages,
+							fmt.Sprintf("Pod %s has nil SecurityContext", farPod.Object.Name))
+					} else if farPod.Object.Spec.SecurityContext.RunAsNonRoot == nil {
+						errorMessages = append(errorMessages,
+							fmt.Sprintf("Pod %s has nil runAsNonRoot", farPod.Object.Name))
+					} else if !*farPod.Object.Spec.SecurityContext.RunAsNonRoot {
+						errorMessages = append(errorMessages,
+							fmt.Sprintf("Incorrect runAsNonRoot for pod %s. Expected true, found: %v",
+								farPod.Object.Name, *farPod.Object.Spec.SecurityContext.RunAsNonRoot))
+					}
+
+					By("Checking manager container security context")
+
+					managerFound := false
+
+					for _, container := range farPod.Object.Spec.Containers {
+						if container.Name != farparams.ManagerContainerName {
+							continue
+						}
+
+						managerFound = true
+						securityContext := container.SecurityContext
+
+						if securityContext == nil {
+							errorMessages = append(errorMessages,
+								fmt.Sprintf("Container %s in pod %s has nil SecurityContext",
+									container.Name, farPod.Object.Name))
+
+							continue
+						}
+
+						if securityContext.RunAsUser != nil && *securityContext.RunAsUser == 0 {
+							errorMessages = append(errorMessages,
+								fmt.Sprintf("Container %s in pod %s runs as root (UID 0)",
+									container.Name, farPod.Object.Name))
+						}
+
+						if securityContext.AllowPrivilegeEscalation == nil || *securityContext.AllowPrivilegeEscalation {
+							errorMessages = append(errorMessages,
+								fmt.Sprintf("Container %s in pod %s: AllowPrivilegeEscalation must be explicitly false",
+									container.Name, farPod.Object.Name))
+						}
+
+						if securityContext.Capabilities == nil {
+							errorMessages = append(errorMessages,
+								fmt.Sprintf("Container %s in pod %s: Capabilities block is nil, must drop ALL",
+									container.Name, farPod.Object.Name))
+						} else {
+							hasDropAll := false
+
+							for _, cap := range securityContext.Capabilities.Drop {
+								if cap == "ALL" {
+									hasDropAll = true
+
+									break
+								}
+							}
+
+							if !hasDropAll {
+								errorMessages = append(errorMessages,
+									fmt.Sprintf("Container %s in pod %s does not drop ALL capabilities",
+										container.Name, farPod.Object.Name))
+							}
+						}
+
+						if securityContext.ReadOnlyRootFilesystem == nil || !*securityContext.ReadOnlyRootFilesystem {
+							errorMessages = append(errorMessages,
+								fmt.Sprintf(
+									"Container %s in pod %s: ReadOnlyRootFilesystem must be explicitly true",
+									container.Name, farPod.Object.Name))
+						}
+
+						seccompOk := false
+						if securityContext.SeccompProfile != nil &&
+							securityContext.SeccompProfile.Type == corev1.SeccompProfileTypeRuntimeDefault {
+							seccompOk = true
+						} else if farPod.Object.Spec.SecurityContext != nil &&
+							farPod.Object.Spec.SecurityContext.SeccompProfile != nil &&
+							farPod.Object.Spec.SecurityContext.SeccompProfile.Type == corev1.SeccompProfileTypeRuntimeDefault {
+							seccompOk = true
+						}
+
+						if !seccompOk {
+							errorMessages = append(errorMessages,
+								fmt.Sprintf("Container %s in pod %s missing RuntimeDefault seccomp profile",
+									container.Name, farPod.Object.Name))
+						}
+					}
+
+					if !managerFound {
+						errorMessages = append(errorMessages,
+							fmt.Sprintf("Pod %s has no container named %q",
+								farPod.Object.Name, farparams.ManagerContainerName))
+					}
+				}
+
+				if len(errorMessages) > 0 {
+					errMsg := "Testing security context of FAR container failed due to:\n"
+					for _, msg := range errorMessages {
+						errMsg += fmt.Sprintf("- %s\n", msg)
+					}
+
+					Fail(errMsg)
+				}
+			})
+
+		It("Verify FAR CRDs are installed and Established",
+			reportxml.ID("89548"),
+			Label(labels.TierSmoke, labels.DisruptionNonDestructive,
+				labels.PlatformAny, labels.ComponentController, labels.FrequencyPresubmit),
+			func() {
+				crdNames := []string{
+					farparams.FenceAgentsRemediationCRDName,
+					farparams.FenceAgentsRemediationTemplateCRDName,
+				}
+
+				for _, crdName := range crdNames {
+					By("Verifying CRD " + crdName + " exists with Established=True")
+
+					Eventually(func() error {
+						crd := &apiextensionsv1.CustomResourceDefinition{}
+						if err := APIClient.Get(context.TODO(), client.ObjectKey{Name: crdName}, crd); err != nil {
+							return fmt.Errorf("CRD %s should exist: %w", crdName, err)
+						}
+
+						if !crdIsEstablished(crd) {
+							return fmt.Errorf("CRD %s should have Established=True", crdName)
+						}
 
 						return nil
+					}, medik8sparams.DefaultTimeout, farparams.DefaultPollInterval).Should(Succeed())
+				}
+			})
+
+		It("Verify FAR operator namespace has correct PSA enforcement label",
+			reportxml.ID("89549"),
+			Label(labels.TierSmoke, labels.DisruptionNonDestructive,
+				labels.PlatformAny, labels.ComponentController, labels.FrequencyPresubmit),
+			func() {
+				By("Verifying operator namespace " + medik8sparams.OperatorNs + " has correct PSA labels")
+
+				Eventually(func() error {
+					namespace := &corev1.Namespace{}
+					if err := APIClient.Get(context.TODO(), client.ObjectKey{Name: medik8sparams.OperatorNs}, namespace); err != nil {
+						return fmt.Errorf("failed to get namespace %s: %w", medik8sparams.OperatorNs, err)
+					}
+
+					if namespace.Labels == nil {
+						return fmt.Errorf("namespace %s has no labels", medik8sparams.OperatorNs)
+					}
+
+					if namespace.Labels[farparams.PSAEnforceLabelKey] != farparams.PSAExpectedLevel {
+						return fmt.Errorf("namespace %s should have %s=%s, got %q",
+							medik8sparams.OperatorNs, farparams.PSAEnforceLabelKey, farparams.PSAExpectedLevel,
+							namespace.Labels[farparams.PSAEnforceLabelKey])
+					}
+
+					return nil
+				}, medik8sparams.DefaultTimeout, farparams.DefaultPollInterval).Should(Succeed())
+			})
+
+		It("Verify FAR controller manager has system-cluster-critical priority class",
+			reportxml.ID("66211"),
+			Label(labels.TierSmoke, labels.DisruptionNonDestructive,
+				labels.PlatformAny, labels.ComponentController, labels.FrequencyPresubmit),
+			func() {
+				By("Waiting for FAR controller pods to be running")
+
+				listOptions := metav1.ListOptions{
+					LabelSelector: farparams.OperatorControllerPodLabelSelector,
+				}
+
+				_, err := pod.WaitForAllPodsInNamespaceRunning(
+					APIClient,
+					medik8sparams.OperatorNs,
+					medik8sparams.DefaultTimeout,
+					listOptions,
+				)
+				Expect(err).ToNot(HaveOccurred(), "FAR controller pods are not ready")
+
+				By("Listing FAR controller pods")
+
+				farPods, err := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
+				Expect(err).ToNot(HaveOccurred(), "Failed to list FAR pods")
+
+				runningPods := filterRunningPods(farPods)
+				Expect(runningPods).ToNot(BeEmpty(), "No running FAR controller pods found")
+
+				for _, p := range runningPods {
+					By(fmt.Sprintf("Verifying priorityClassName on pod %s", p.Object.Name))
+					Expect(p.Object.Spec.PriorityClassName).To(Equal(farparams.ExpectedPriorityClassName),
+						"Pod %s has priorityClassName %q, expected %q",
+						p.Object.Name, p.Object.Spec.PriorityClassName, farparams.ExpectedPriorityClassName)
+				}
+			})
+
+		It("Verify FAR controller pod has correct Kubernetes labels",
+			reportxml.ID("66209"),
+			Label(labels.TierSmoke, labels.DisruptionNonDestructive,
+				labels.PlatformAny, labels.ComponentController, labels.FrequencyPresubmit),
+			func() {
+				By("Waiting for FAR controller pods to be running")
+
+				_, err := pod.WaitForAllPodsInNamespaceRunning(
+					APIClient,
+					medik8sparams.OperatorNs,
+					medik8sparams.DefaultTimeout,
+					metav1.ListOptions{
+						LabelSelector: farparams.OperatorControllerPodLabelSelector,
+					},
+				)
+				Expect(err).ToNot(HaveOccurred(), "FAR controller pods are not ready")
+
+				By("Listing all pods in operator namespace by deployment name prefix")
+
+				allPods, err := pod.List(APIClient, medik8sparams.OperatorNs, metav1.ListOptions{})
+				Expect(err).ToNot(HaveOccurred(), "Failed to list pods in operator namespace")
+
+				var farPods []*pod.Builder
+
+				for _, p := range allPods {
+					if strings.HasPrefix(p.Object.Name, farparams.OperatorDeploymentName) {
+						farPods = append(farPods, p)
 					}
 				}
 
-				return fmt.Errorf("no FAR CSV in Succeeded phase found yet")
-			}, medik8sparams.DefaultTimeout, farparams.DefaultPollInterval).Should(Succeed(),
-				"FAR CSV must reach Succeeded phase")
+				runningPods := filterRunningPods(farPods)
+				Expect(runningPods).ToNot(BeEmpty(),
+					"No running FAR controller pods found matching name prefix %q",
+					farparams.OperatorDeploymentName)
 
-			By("Checking annotation values on FAR CSV")
+				for _, p := range runningPods {
+					By(fmt.Sprintf("Verifying labels on pod %s", p.Object.Name))
+					Expect(p.Object.Labels).To(HaveKeyWithValue(
+						farparams.ControllerPodLabelKey, farparams.OperatorControllerPodLabel),
+						"Pod %s missing expected label", p.Object.Name)
+				}
+			})
 
-			Expect(farCSV.Object.Annotations).ToNot(BeNil(), "CSV annotations should not be nil")
+		It("Verify FAR controller container includes expected fence agents",
+			reportxml.ID("78407"),
+			Label(labels.TierSmoke, labels.DisruptionNonDestructive,
+				labels.PlatformAny, labels.ComponentController, labels.FrequencyPresubmit),
+			func() {
+				By("Waiting for FAR controller pods to be running")
 
-			for annotationKey, expectedValue := range farparams.RequiredAnnotations {
-				annotationValue, exists := farCSV.Object.Annotations[annotationKey]
-				Expect(exists).To(BeTrue(), "Required annotation %q should exist on FAR CSV", annotationKey)
-				Expect(annotationValue).To(Equal(expectedValue), "Annotation %q should have value %q", annotationKey, expectedValue)
-			}
-		})
-
-		It("Verify FAR controller manager has correct number of replicas", reportxml.ID("61222"), func() {
-			By("Checking cluster topology")
-
-			infraConfig, err := infrastructure.Pull(APIClient)
-			Expect(err).ToNot(HaveOccurred(), "Failed to pull infrastructure configuration")
-
-			if infraConfig.Object.Status.ControlPlaneTopology == configv1.SingleReplicaTopologyMode {
-				Skip("Skipping test on SNO (Single Node OpenShift) cluster")
-			}
-
-			By("Checking deployment replicas")
-			Expect(farDeployment.Object.Spec.Replicas).ToNot(BeNil(), "Deployment replicas should not be nil")
-			Expect(*farDeployment.Object.Spec.Replicas).To(Equal(farparams.ExpectedReplicas),
-				"Expected %d replica(s), found %d", farparams.ExpectedReplicas, *farDeployment.Object.Spec.Replicas)
-
-			By("Verifying ready replicas")
-			Expect(farDeployment.Object.Status.ReadyReplicas).To(Equal(farparams.ExpectedReplicas),
-				"Expected %d ready replica(s), found %d", farparams.ExpectedReplicas, farDeployment.Object.Status.ReadyReplicas)
-
-			By("Verifying pods run on different nodes")
-
-			listOptions := metav1.ListOptions{
-				LabelSelector: fmt.Sprintf("app.kubernetes.io/name=%s", farparams.OperatorControllerPodLabel),
-			}
-
-			farPods, err := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
-			Expect(err).ToNot(HaveOccurred(), "Failed to list FAR pods")
-
-			runningPods := filterRunningPods(farPods)
-
-			nodeNames := make(map[string]bool)
-
-			for _, p := range runningPods {
-				Expect(p.Object.Spec.NodeName).ToNot(BeEmpty(),
-					"Pod %s has not been assigned to a node", p.Object.Name)
-				nodeNames[p.Object.Spec.NodeName] = true
-			}
-
-			Expect(len(nodeNames)).To(Equal(int(farparams.ExpectedReplicas)),
-				"FAR pods must run on different nodes for HA, but found pods on %d unique node(s)", len(nodeNames))
-		})
-
-		It("Verify FAR container runs as non-root user", reportxml.ID("89231"), func() {
-			By("Getting FAR controller pod names")
-
-			listOptions := metav1.ListOptions{
-				LabelSelector: fmt.Sprintf("app.kubernetes.io/name=%s", farparams.OperatorControllerPodLabel),
-			}
-			farPods, err := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
-			Expect(err).ToNot(HaveOccurred(), "Failed to get FAR controller pods")
-
-			runningPods := filterRunningPods(farPods)
-			Expect(len(runningPods)).To(BeNumerically(">", 0), "No running FAR controller pods found")
-
-			var errorMessages []string
-
-			for _, farPod := range runningPods {
-				By(fmt.Sprintf("Verifying security context for pod %s", farPod.Object.Name))
-
-				By("Checking pod-level runAsNonRoot security context")
-
-				if farPod.Object.Spec.SecurityContext == nil {
-					errorMessages = append(errorMessages,
-						fmt.Sprintf("Pod %s has nil SecurityContext", farPod.Object.Name))
-				} else if farPod.Object.Spec.SecurityContext.RunAsNonRoot == nil {
-					errorMessages = append(errorMessages,
-						fmt.Sprintf("Pod %s has nil runAsNonRoot", farPod.Object.Name))
-				} else if !*farPod.Object.Spec.SecurityContext.RunAsNonRoot {
-					errorMessages = append(errorMessages,
-						fmt.Sprintf("Incorrect runAsNonRoot for pod %s. Expected true, found: %v",
-							farPod.Object.Name, *farPod.Object.Spec.SecurityContext.RunAsNonRoot))
+				listOptions := metav1.ListOptions{
+					LabelSelector: farparams.OperatorControllerPodLabelSelector,
 				}
 
-				By("Checking manager container security context")
+				_, err := pod.WaitForAllPodsInNamespaceRunning(
+					APIClient,
+					medik8sparams.OperatorNs,
+					medik8sparams.DefaultTimeout,
+					listOptions,
+				)
+				Expect(err).ToNot(HaveOccurred(), "FAR controller pods are not ready")
 
-				managerFound := false
+				By("Listing FAR controller pods")
 
-				for _, container := range farPod.Object.Spec.Containers {
-					if container.Name != farparams.ManagerContainerName {
-						continue
+				farPods, err := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
+				Expect(err).ToNot(HaveOccurred(), "Failed to list FAR pods")
+
+				runningPods := filterRunningPods(farPods)
+				Expect(runningPods).ToNot(BeEmpty(), "No running FAR controller pods found")
+
+				for _, targetPod := range runningPods {
+					By(fmt.Sprintf("Checking fence agents in container %s of pod %s",
+						farparams.ManagerContainerName, targetPod.Object.Name))
+
+					buf, err := targetPod.ExecCommand(
+						[]string{"ls", "-1", "/usr/sbin"},
+						farparams.ManagerContainerName,
+					)
+					Expect(err).ToNot(HaveOccurred(),
+						"Failed to exec in FAR controller pod %s", targetPod.Object.Name)
+
+					output := buf.String()
+
+					var availableAgents []string
+
+					for _, line := range strings.Split(output, "\n") {
+						trimmed := strings.TrimSpace(line)
+						if strings.HasPrefix(trimmed, farparams.FenceAgentBinaryPrefix) {
+							availableAgents = append(availableAgents, trimmed)
+						}
 					}
 
-					managerFound = true
-					securityContext := container.SecurityContext
+					By(fmt.Sprintf("Found %d fence agents in pod %s", len(availableAgents), targetPod.Object.Name))
+					Expect(availableAgents).ToNot(BeEmpty(),
+						"No fence agent binaries found in /usr/sbin of pod %s", targetPod.Object.Name)
 
-					if securityContext == nil {
-						errorMessages = append(errorMessages,
-							fmt.Sprintf("Container %s in pod %s has nil SecurityContext",
-								container.Name, farPod.Object.Name))
+					var missing []string
 
-						continue
-					}
+					for _, expected := range farparams.MinExpectedFenceAgents {
+						found := false
 
-					if securityContext.RunAsUser != nil && *securityContext.RunAsUser == 0 {
-						errorMessages = append(errorMessages,
-							fmt.Sprintf("Container %s in pod %s runs as root (UID 0)",
-								container.Name, farPod.Object.Name))
-					}
-
-					if securityContext.AllowPrivilegeEscalation == nil || *securityContext.AllowPrivilegeEscalation {
-						errorMessages = append(errorMessages,
-							fmt.Sprintf("Container %s in pod %s: AllowPrivilegeEscalation must be explicitly false",
-								container.Name, farPod.Object.Name))
-					}
-
-					if securityContext.Capabilities == nil {
-						errorMessages = append(errorMessages,
-							fmt.Sprintf("Container %s in pod %s: Capabilities block is nil, must drop ALL",
-								container.Name, farPod.Object.Name))
-					} else {
-						hasDropAll := false
-
-						for _, cap := range securityContext.Capabilities.Drop {
-							if cap == "ALL" {
-								hasDropAll = true
+						for _, agent := range availableAgents {
+							if agent == expected {
+								found = true
 
 								break
 							}
 						}
 
-						if !hasDropAll {
-							errorMessages = append(errorMessages,
-								fmt.Sprintf("Container %s in pod %s does not drop ALL capabilities",
-									container.Name, farPod.Object.Name))
+						if !found {
+							missing = append(missing, expected)
 						}
 					}
 
-					if securityContext.ReadOnlyRootFilesystem == nil || !*securityContext.ReadOnlyRootFilesystem {
-						errorMessages = append(errorMessages,
-							fmt.Sprintf(
-								"Container %s in pod %s: ReadOnlyRootFilesystem must be explicitly true",
-								container.Name, farPod.Object.Name))
-					}
-
-					seccompOk := false
-					if securityContext.SeccompProfile != nil &&
-						securityContext.SeccompProfile.Type == corev1.SeccompProfileTypeRuntimeDefault {
-						seccompOk = true
-					} else if farPod.Object.Spec.SecurityContext != nil &&
-						farPod.Object.Spec.SecurityContext.SeccompProfile != nil &&
-						farPod.Object.Spec.SecurityContext.SeccompProfile.Type == corev1.SeccompProfileTypeRuntimeDefault {
-						seccompOk = true
-					}
-
-					if !seccompOk {
-						errorMessages = append(errorMessages,
-							fmt.Sprintf("Container %s in pod %s missing RuntimeDefault seccomp profile",
-								container.Name, farPod.Object.Name))
-					}
+					Expect(missing).To(BeEmpty(),
+						"Pod %s missing expected fence agents: %s\nAvailable: %s",
+						targetPod.Object.Name, strings.Join(missing, ", "), strings.Join(availableAgents, ", "))
 				}
-
-				if !managerFound {
-					errorMessages = append(errorMessages,
-						fmt.Sprintf("Pod %s has no container named %q",
-							farPod.Object.Name, farparams.ManagerContainerName))
-				}
-			}
-
-			if len(errorMessages) > 0 {
-				errMsg := "Testing security context of FAR container failed due to:\n"
-				for _, msg := range errorMessages {
-					errMsg += fmt.Sprintf("- %s\n", msg)
-				}
-
-				Fail(errMsg)
-			}
-		})
+			})
 	})
 
 func filterRunningPods(pods []*pod.Builder) []*pod.Builder {
-	running := make([]*pod.Builder, 0, len(pods))
+	var running []*pod.Builder
 
-	for _, podBuilder := range pods {
-		if podBuilder.Object.Status.Phase != corev1.PodRunning || podBuilder.Object.DeletionTimestamp != nil {
+	for _, candidate := range pods {
+		if candidate.Object.Status.Phase != corev1.PodRunning || candidate.Object.DeletionTimestamp != nil {
 			continue
 		}
 
 		allReady := true
 
-		for _, cs := range podBuilder.Object.Status.ContainerStatuses {
+		for _, cs := range candidate.Object.Status.ContainerStatuses {
 			if !cs.Ready {
 				allReady = false
 
@@ -296,9 +584,19 @@ func filterRunningPods(pods []*pod.Builder) []*pod.Builder {
 		}
 
 		if allReady {
-			running = append(running, podBuilder)
+			running = append(running, candidate)
 		}
 	}
 
 	return running
+}
+
+func crdIsEstablished(crd *apiextensionsv1.CustomResourceDefinition) bool {
+	for _, cond := range crd.Status.Conditions {
+		if cond.Type == apiextensionsv1.Established {
+			return cond.Status == apiextensionsv1.ConditionTrue
+		}
+	}
+
+	return false
 }
