@@ -72,3 +72,48 @@ version, and controller replicas match expected count on multi-node clusters.
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="snr" --focus="CSV metadata" ./tests/snr-operator/...`
 - **Pass criteria**: All infrastructure annotations match expected values, suggested-namespace correct, replaces field contains "self-node-remediation", 2 ready replicas on MNO
+
+### 5. Verify CRD Description of safeTimeToAssumeNodeRebootedSeconds (Polarion OCP-60824)
+
+Validates that the SelfNodeRemediationConfig CRD schema contains the
+expected description text for the safeTimeToAssumeNodeRebootedSeconds field.
+
+- **Operators**: SNR v0.12.1+
+- **Cluster**: Any topology
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="snr" --focus="CRD description" ./tests/snr-operator/...`
+- **Pass criteria**: CRD field description contains expected substring
+
+### 6. Verify Non-Default SNRC Creation Is Rejected (Polarion OCP-50961)
+
+Validates that creating a SelfNodeRemediationConfig with a name other
+than the default is rejected by the admission webhook.
+
+- **Operators**: SNR v0.12.1+
+- **Cluster**: Any topology
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="snr" --focus="non-default SNRC" ./tests/snr-operator/...`
+- **Pass criteria**: API server rejects creation with "only one SelfNodeRemediationConfig" error
+
+### 7. Verify Invalid Values in SNRC Are Rejected (Polarion OCP-47330)
+
+Validates that creating a SelfNodeRemediationConfig with invalid string
+duration values or too-small timeout values is rejected by CRD schema
+validation and controller webhook.
+
+- **Operators**: SNR v0.12.1+
+- **Cluster**: Any topology
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="snr" --focus="invalid values" ./tests/snr-operator/...`
+- **Pass criteria**: Invalid string values rejected with "Invalid value", too-small durations rejected with minimum threshold errors
+
+### 8. Verify lastError Is Captured for Non-Existent Node (Polarion OCP-50583)
+
+Validates that creating a SelfNodeRemediation CR with a non-existent node
+name populates the lastError field in the CR status.
+
+- **Operators**: SNR v0.12.1+
+- **Cluster**: Any topology
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="snr" --focus="lastError" ./tests/snr-operator/...`
+- **Pass criteria**: lastError contains "Node not found" message, CR cleaned up after test
