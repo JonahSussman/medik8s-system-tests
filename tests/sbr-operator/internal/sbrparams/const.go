@@ -169,6 +169,15 @@ const (
 
 	// NHCNodeHangTestName is the NodeHealthCheck CR name for the node hang test (OCP-88738).
 	NHCNodeHangTestName = "nhc-sbr-node-hang"
+
+	// SBRCStorageLossWriteName is the SBRC name for the write-only storage loss test.
+	SBRCStorageLossWriteName = "test-sbrc-storage-loss-write"
+
+	// NHCWriteLossTestName is the NHC CR name for the write-only storage loss test.
+	NHCWriteLossTestName = "nhc-sbr-write-loss"
+
+	// StorageLossWriteInjectorPodName is the injector pod name prefix for the write-only test.
+	StorageLossWriteInjectorPodName = "sbr-write-injector"
 )
 
 // SBRStorageClass is the StorageClass name to use when creating SBRCs that require shared storage.
