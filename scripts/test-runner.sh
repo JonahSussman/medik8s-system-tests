@@ -62,3 +62,22 @@ cmd+=" $@ $feature_dirs"   # add user args before feature dirs
 # Execute ginkgo command
 echo $cmd
 eval $cmd
+GINKGO_EXIT=$?
+
+# Copy reportxml testrun XML to SHARED_DIR for the Polarion reporter post step.
+COPY_EXIT=0
+if [[ -n "${SHARED_DIR}" ]]; then
+    mapfile -t testrun_files < <(find "${ECO_REPORTS_DUMP_DIR}" -type f -name '*_testrun.xml' 2>/dev/null)
+    if [[ ${#testrun_files[@]} -eq 0 ]]; then
+        echo "Warning: no *_testrun.xml files found in ${ECO_REPORTS_DUMP_DIR}" >&2
+        COPY_EXIT=1
+    elif ! cp -t "${SHARED_DIR}/" "${testrun_files[@]}"; then
+        echo "Failed to copy *_testrun.xml from ${ECO_REPORTS_DUMP_DIR} to ${SHARED_DIR}" >&2
+        COPY_EXIT=1
+    fi
+fi
+
+if [[ $GINKGO_EXIT -eq 0 && $COPY_EXIT -ne 0 ]]; then
+    exit $COPY_EXIT
+fi
+exit $GINKGO_EXIT
