@@ -17,6 +17,9 @@ var (
 	// OperatorControllerPodLabel is how the controller pod is labeled.
 	OperatorControllerPodLabel = "fence-agents-remediation-operator"
 
+	// OperatorControllerPodLabelSelector selects FAR controller-manager pods by label.
+	OperatorControllerPodLabelSelector = ControllerPodLabelKey + "=" + OperatorControllerPodLabel
+
 	// ReporterNamespacesToDump tells to the reporter from where to collect logs.
 	ReporterNamespacesToDump = map[string]string{
 		medik8sparams.OperatorNs: medik8sparams.OperatorNs,
@@ -33,6 +36,17 @@ var (
 		{Cr: medik8sparams.NewUnstructuredList("fence-agents-remediation.medik8s.io", "v1alpha1",
 			"FenceAgentsRemediationTemplateList")},
 		{Cr: &coordinationv1.LeaseList{}, Namespace: &operatorNs},
+	}
+
+	// MinExpectedFenceAgents is a stable subset of fence agent binaries that must exist
+	// in every FAR controller container image, regardless of version.
+	MinExpectedFenceAgents = []string{
+		"fence_aws",
+		"fence_azure_arm",
+		"fence_gce",
+		"fence_ipmilan",
+		"fence_kubevirt",
+		"fence_redfish",
 	}
 
 	// RequiredAnnotations defines the required annotations and their expected values for FAR CSV.
