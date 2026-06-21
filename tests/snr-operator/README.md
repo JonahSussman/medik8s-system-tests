@@ -73,7 +73,7 @@ version, and controller replicas match expected count on multi-node clusters.
 - **Standalone**: `ginkgo --label-filter="snr" --focus="CSV metadata" ./tests/snr-operator/...`
 - **Pass criteria**: All infrastructure annotations match expected values, suggested-namespace correct, replaces field contains "self-node-remediation", 2 ready replicas on MNO
 
-### 5. Verify SNR with Unsupported NodeDeletion Strategy Is Rejected (Polarion OCP-60877)
+### 5. Verify SNR with Unsupported NodeDeletion Strategy Is Rejected ([OCP-60877](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-60877))
 
 Validates that creating a SelfNodeRemediation CR with the unsupported
 NodeDeletion remediation strategy is rejected by CRD validation.
@@ -84,7 +84,7 @@ NodeDeletion remediation strategy is rejected by CRD validation.
 - **Standalone**: `ginkgo --label-filter="snr" --focus="SNR with unsupported" ./tests/snr-operator/...`
 - **Pass criteria**: API server rejects with "Unsupported value" and "NodeDeletion"
 
-### 6. Verify SNRT with Unsupported NodeDeletion Strategy Is Rejected (Polarion OCP-60822)
+### 6. Verify SNRT with Unsupported NodeDeletion Strategy Is Rejected ([OCP-60822](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-60822))
 
 Validates that creating a SelfNodeRemediationTemplate with the unsupported
 NodeDeletion remediation strategy is rejected by CRD validation.
@@ -95,7 +95,7 @@ NodeDeletion remediation strategy is rejected by CRD validation.
 - **Standalone**: `ginkgo --label-filter="snr" --focus="SNRT with unsupported" ./tests/snr-operator/...`
 - **Pass criteria**: API server rejects with "Unsupported value" and "NodeDeletion"
 
-### 7. Verify SNR Conditions with nhc-timed-out Annotation (Polarion OCP-60881)
+### 7. Verify SNR Conditions with nhc-timed-out Annotation ([OCP-60881](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-60881))
 
 Validates that creating a SelfNodeRemediation CR with the nhc-timed-out
 annotation causes Processing and Succeeded conditions to reflect
@@ -107,7 +107,7 @@ RemediationTimeoutByNHC reason.
 - **Standalone**: `ginkgo --label-filter="snr" --focus="nhc-timed-out annotation" ./tests/snr-operator/...`
 - **Pass criteria**: Processing=False/RemediationTimeoutByNHC, Succeeded=False/RemediationTimeoutByNHC
 
-### 8. Verify SNR Conditions with Non-Existent Node Name (Polarion OCP-70584)
+### 8. Verify SNR Conditions with Non-Existent Node Name ([OCP-70584](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-70584))
 
 Validates that creating a SelfNodeRemediation CR with a non-existent node
 name causes Processing and Succeeded conditions to reflect

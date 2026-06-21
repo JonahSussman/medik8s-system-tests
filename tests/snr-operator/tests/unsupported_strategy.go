@@ -22,23 +22,20 @@ const unsupportedStrategy = "NodeDeletion"
 
 var _ = Describe(
 	"SNR Unsupported Strategy tests",
-	Ordered,
-	ContinueOnFailure,
 	Label(snrparams.Label), func() {
-		BeforeAll(func() {
-			// These tests validate CRD/CEL admission rules enforced by the API server,
-			// not the SNR controller. We verify the CRD exists rather than waiting
-			// for operator readiness to avoid masking broken CRD validation on rollout.
-			By("Verify SNR CRD exists and is established")
+		BeforeEach(func() {
+			// These tests validate CRD/CEL admission rules for SNR and SNRT kinds.
+			// Check the CRDs actually used by the tests to catch partial installs.
+			By("Verify SNR and SNRT CRDs exist")
 
-			snrCRDName := "selfnoderemediationconfigs." + snrparams.CRDGroup
-
-			snrCRD := &apiextensionsv1.CustomResourceDefinition{}
-			err := APIClient.Get(context.TODO(),
-				client.ObjectKey{Name: snrCRDName},
-				snrCRD)
-			Expect(err).ToNot(HaveOccurred(),
-				"SelfNodeRemediationConfig CRD %q not found", snrCRDName)
+			for _, crdName := range []string{
+				"selfnoderemediations." + snrparams.CRDGroup,
+				"selfnoderemediationtemplates." + snrparams.CRDGroup,
+			} {
+				crd := &apiextensionsv1.CustomResourceDefinition{}
+				err := APIClient.Get(context.TODO(), client.ObjectKey{Name: crdName}, crd)
+				Expect(err).ToNot(HaveOccurred(), "CRD %q not found", crdName)
+			}
 		})
 
 		It("Verify SNR with unsupported NodeDeletion strategy is rejected",
@@ -48,30 +45,19 @@ var _ = Describe(
 				labels.ComponentController), func() {
 				By("Creating SNR with NodeDeletion remediationStrategy")
 
-				snrCR := &unstructured.Unstructured{
-					Object: map[string]interface{}{
-						"apiVersion": snrparams.CRDGroup + "/" + snrparams.CRDVersion,
-						"kind":       "SelfNodeRemediation",
-						"metadata": map[string]interface{}{
-							"name":      "test-unsupported-snr",
-							"namespace": medik8sparams.OperatorNs,
-						},
-						"spec": map[string]interface{}{
-							"remediationStrategy": unsupportedStrategy,
-						},
-					},
-				}
+				snrCR := buildSNRCR("SelfNodeRemediation", "test-unsupported-snr",
+					map[string]interface{}{
+						"remediationStrategy": unsupportedStrategy,
+					})
 
 				err := APIClient.Create(context.TODO(), snrCR)
 				if err == nil {
 					deferDeleteCR(snrCR)
 				}
 
-				Expect(err).To(HaveOccurred(),
-					"Creating SNR with NodeDeletion strategy should be rejected")
-				Expect(err.Error()).To(ContainSubstring("Unsupported value"),
+				Expect(err).To(MatchError(ContainSubstring("Unsupported value")),
 					"Error should mention unsupported value")
-				Expect(err.Error()).To(ContainSubstring(unsupportedStrategy),
+				Expect(err).To(MatchError(ContainSubstring(unsupportedStrategy)),
 					"Error should mention the unsupported strategy")
 			})
 
@@ -105,11 +91,9 @@ var _ = Describe(
 					deferDeleteCR(snrtCR)
 				}
 
-				Expect(err).To(HaveOccurred(),
-					"Creating SNRT with NodeDeletion strategy should be rejected")
-				Expect(err.Error()).To(ContainSubstring("Unsupported value"),
+				Expect(err).To(MatchError(ContainSubstring("Unsupported value")),
 					"Error should mention unsupported value")
-				Expect(err.Error()).To(ContainSubstring(unsupportedStrategy),
+				Expect(err).To(MatchError(ContainSubstring(unsupportedStrategy)),
 					"Error should mention the unsupported strategy")
 			})
 	})

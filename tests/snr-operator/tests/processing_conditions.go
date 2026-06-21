@@ -25,10 +25,8 @@ const (
 	// nhcTimedOutAnnotationKey is the annotation that signals NHC timed out.
 	nhcTimedOutAnnotationKey = "remediation.medik8s.io/nhc-timed-out"
 
-	// nhcTimedOutAnnotationValue is a non-empty timestamp string.
-	// Note: this value is syntactically invalid RFC3339 (has both Z and +07:00).
+	// nhcTimedOutAnnotationValue is a valid RFC3339 timestamp.
 	// The SNR controller currently checks only for key presence, not value format.
-	// If a future SNR version validates the timestamp, replace with time.Now().UTC().Format(time.RFC3339).
 	nhcTimedOutAnnotationValue = "2026-01-01T00:00:00Z"
 
 	reasonNHCTimedOut    = "RemediationTimeoutByNHC"
@@ -53,115 +51,119 @@ var _ = Describe(
 				"SNR deployment is not Ready")
 		})
 
-		It("Verify SNR conditions with nhc-timed-out annotation",
-			reportxml.ID("60881"),
-			Label(labels.TierAcceptance, labels.DisruptionNonDestructive,
-				labels.PlatformAny, labels.FrequencyWeekly,
-				labels.ComponentController), func() {
-				snrName := "snr-test-nhc-timed-out"
+		Context("when SNR has nhc-timed-out annotation", func() {
+			It("Verify SNR conditions with nhc-timed-out annotation",
+				reportxml.ID("60881"),
+				Label(labels.TierAcceptance, labels.DisruptionNonDestructive,
+					labels.PlatformAny, labels.FrequencyWeekly,
+					labels.ComponentController), func() {
+					snrName := "snr-test-nhc-timed-out"
 
-				By("Creating SNR with nhc-timed-out annotation")
+					By("Creating SNR with nhc-timed-out annotation")
 
-				snrCR := buildSNRWithAnnotations(snrName, map[string]string{
-					nhcTimedOutAnnotationKey: nhcTimedOutAnnotationValue,
+					snrCR := buildSNRWithAnnotations(snrName, map[string]string{
+						nhcTimedOutAnnotationKey: nhcTimedOutAnnotationValue,
+					})
+
+					err := APIClient.Create(context.TODO(), snrCR)
+					Expect(err).ToNot(HaveOccurred(),
+						"Failed to create SNR with nhc-timed-out annotation")
+
+					deferDeleteCR(snrCR)
+
+					By("Waiting for Processing and Succeeded conditions to reflect NHC timed-out state")
+
+					Eventually(func() error {
+						liveSNR := &unstructured.Unstructured{}
+						liveSNR.SetGroupVersionKind(snrGVK())
+
+						getErr := APIClient.Get(context.TODO(),
+							client.ObjectKey{
+								Name:      snrName,
+								Namespace: medik8sparams.OperatorNs,
+							},
+							liveSNR)
+						if getErr != nil {
+							return getErr
+						}
+
+						return verifyConditionsByType(liveSNR,
+							expectedCondition{
+								conditionType: conditionProcessing,
+								status:        conditionStatusFalse,
+								reason:        reasonNHCTimedOut,
+							},
+							expectedCondition{
+								conditionType: conditionSucceeded,
+								status:        conditionStatusFalse,
+								reason:        reasonNHCTimedOut,
+							},
+						)
+					}, medik8sparams.DefaultTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
+						"SNR conditions should reflect NHC timed-out state")
 				})
+		})
 
-				err := APIClient.Create(context.TODO(), snrCR)
-				Expect(err).ToNot(HaveOccurred(),
-					"Failed to create SNR with nhc-timed-out annotation")
+		Context("when SNR targets a non-existent node", func() {
+			It("Verify SNR conditions with non-existent node name",
+				reportxml.ID("70584"),
+				Label(labels.TierAcceptance, labels.DisruptionNonDestructive,
+					labels.PlatformAny, labels.FrequencyWeekly,
+					labels.ComponentController), func() {
+					snrName := "snr-test-nonexistent-node"
 
-				deferDeleteCR(snrCR)
+					By("Verifying test node name does not exist in the cluster")
 
-				By("Waiting for Processing and Succeeded conditions to reflect NHC timed-out state")
+					nodeObj := &corev1.Node{}
+					nodeErr := APIClient.Get(context.TODO(),
+						client.ObjectKey{Name: snrName},
+						nodeObj)
+					Expect(k8serrors.IsNotFound(nodeErr)).To(BeTrue(),
+						"Node %q must not exist in the cluster to avoid triggering real fencing",
+						snrName)
 
-				Eventually(func() error {
-					liveSNR := &unstructured.Unstructured{}
-					liveSNR.SetGroupVersionKind(snrGVK())
+					By("Creating SNR with non-existent node name")
 
-					getErr := APIClient.Get(context.TODO(),
-						client.ObjectKey{
-							Name:      snrName,
-							Namespace: medik8sparams.OperatorNs,
-						},
-						liveSNR)
-					if getErr != nil {
-						return getErr
-					}
+					snrCR := buildSNRWithAnnotations(snrName, nil)
 
-					return verifyConditionsByType(liveSNR,
-						expectedCondition{
-							conditionType: conditionProcessing,
-							status:        conditionStatusFalse,
-							reason:        reasonNHCTimedOut,
-						},
-						expectedCondition{
-							conditionType: conditionSucceeded,
-							status:        conditionStatusFalse,
-							reason:        reasonNHCTimedOut,
-						},
-					)
-				}, medik8sparams.DefaultTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
-					"SNR conditions should reflect NHC timed-out state")
-			})
+					err := APIClient.Create(context.TODO(), snrCR)
+					Expect(err).ToNot(HaveOccurred(),
+						"Failed to create SNR with non-existent node name")
 
-		It("Verify SNR conditions with non-existent node name",
-			reportxml.ID("70584"),
-			Label(labels.TierAcceptance, labels.DisruptionNonDestructive,
-				labels.PlatformAny, labels.FrequencyWeekly,
-				labels.ComponentController), func() {
-				snrName := "snr-test-nonexistent-node"
+					deferDeleteCR(snrCR)
 
-				By("Verifying test node name does not exist in the cluster")
+					By("Waiting for Processing and Succeeded conditions to reflect node-not-found state")
 
-				nodeObj := &corev1.Node{}
-				nodeErr := APIClient.Get(context.TODO(),
-					client.ObjectKey{Name: snrName},
-					nodeObj)
-				Expect(k8serrors.IsNotFound(nodeErr)).To(BeTrue(),
-					"Node %q must not exist in the cluster to avoid triggering real fencing",
-					snrName)
+					Eventually(func() error {
+						liveSNR := &unstructured.Unstructured{}
+						liveSNR.SetGroupVersionKind(snrGVK())
 
-				By("Creating SNR with non-existent node name")
+						getErr := APIClient.Get(context.TODO(),
+							client.ObjectKey{
+								Name:      snrName,
+								Namespace: medik8sparams.OperatorNs,
+							},
+							liveSNR)
+						if getErr != nil {
+							return getErr
+						}
 
-				snrCR := buildSNRWithAnnotations(snrName, nil)
-
-				err := APIClient.Create(context.TODO(), snrCR)
-				Expect(err).ToNot(HaveOccurred(),
-					"Failed to create SNR with non-existent node name")
-
-				deferDeleteCR(snrCR)
-
-				By("Waiting for Processing and Succeeded conditions to reflect node-not-found state")
-
-				Eventually(func() error {
-					liveSNR := &unstructured.Unstructured{}
-					liveSNR.SetGroupVersionKind(snrGVK())
-
-					getErr := APIClient.Get(context.TODO(),
-						client.ObjectKey{
-							Name:      snrName,
-							Namespace: medik8sparams.OperatorNs,
-						},
-						liveSNR)
-					if getErr != nil {
-						return getErr
-					}
-
-					return verifyConditionsByType(liveSNR,
-						expectedCondition{
-							conditionType: conditionProcessing,
-							status:        conditionStatusFalse,
-							reason:        reasonNodeNotFound,
-						},
-						expectedCondition{
-							conditionType: conditionSucceeded,
-							status:        conditionStatusFalse,
-							reason:        reasonNodeNotFound,
-						},
-					)
-				}, medik8sparams.DefaultTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
-					"SNR conditions should reflect node-not-found state")
-			})
+						return verifyConditionsByType(liveSNR,
+							expectedCondition{
+								conditionType: conditionProcessing,
+								status:        conditionStatusFalse,
+								reason:        reasonNodeNotFound,
+							},
+							expectedCondition{
+								conditionType: conditionSucceeded,
+								status:        conditionStatusFalse,
+								reason:        reasonNodeNotFound,
+							},
+						)
+					}, medik8sparams.DefaultTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
+						"SNR conditions should reflect node-not-found state")
+				})
+		})
 	})
 
 // expectedCondition defines the expected values for a status condition.
