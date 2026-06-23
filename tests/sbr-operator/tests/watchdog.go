@@ -143,12 +143,13 @@ var _ = Describe(
 				devices := make([]string, 0)
 
 				for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
-					line = strings.TrimSpace(line)
-					if line == "" {
-						continue
-					}
+					for _, token := range strings.Fields(line) {
+						if token == "" {
+							continue
+						}
 
-					devices = append(devices, strings.TrimPrefix(line, "/proc/1/root"))
+						devices = append(devices, strings.TrimPrefix(token, "/proc/1/root"))
+					}
 				}
 
 				nodeWatchdogDevices[nodeName] = devices

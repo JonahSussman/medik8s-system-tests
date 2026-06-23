@@ -79,7 +79,30 @@ const (
 
 	// CSVNamePattern is the substring used to match the SBR operator ClusterServiceVersion by name.
 	CSVNamePattern = "storage-based-remediation"
+
+	// SBRRemediationFinalizer is the finalizer the controller adds to every StorageBasedRemediation CR.
+	// Sourced from internal/controller/storagebasedremediation_controller.go.
+	SBRRemediationFinalizer = "medik8s.io/sbr-remediation-finalizer"
+
+	// SBRCFunctionalTestName is the name of the temporary SBRC created in functional tests
+	// that need agent DaemonSet pods to process StorageBasedRemediation CRs.
+	// The SBRRemediationReconciler runs inside agent pods, so an SBRC (and its DaemonSet) must
+	// exist before any StorageBasedRemediation CR can be reconciled.
+	SBRCFunctionalTestName = "test-sbrc-functional"
+
+	// SBRAgentDaemonSetPrefix is the naming prefix the SBRC controller uses for agent DaemonSets.
+	// DaemonSet name = SBRAgentDaemonSetPrefix + <sbrcName>.
+	SBRAgentDaemonSetPrefix = "sbr-agent-"
+
+	// SBRCReadyTimeout is the time allowed for the SBRC's agent DaemonSet to reach at least one
+	// ready pod before a functional test begins.
+	SBRCReadyTimeout = 3 * time.Minute
 )
+
+// SBRStorageClass is the StorageClass name to use when creating SBRCs that require shared storage.
+// Set SBR_STORAGE_CLASS env var to override auto-discovery (useful in air-gapped or non-ODF environments).
+// When empty, tests auto-discover a CephFS StorageClass (provisioner containing "cephfs").
+var SBRStorageClass = os.Getenv("SBR_STORAGE_CLASS")
 
 // WatchdogDebugImage is the container image for /dev/watchdog* discovery pods.
 // Must provide sh and ls. Set SBR_WATCHDOG_DEBUG_IMAGE to override (e.g. in disconnected clusters).
