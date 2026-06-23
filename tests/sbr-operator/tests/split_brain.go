@@ -245,20 +245,53 @@ var _ = Describe(
 			By("AfterAll: deleting StorageBasedRemediationConfig")
 
 			if testSBRC != nil {
-				deleteErr := APIClient.Delete(context.TODO(), testSBRC)
-				if deleteErr != nil && !k8serrors.IsNotFound(deleteErr) {
+				if deleteErr := APIClient.Delete(context.TODO(), testSBRC); deleteErr != nil &&
+					!k8serrors.IsNotFound(deleteErr) {
 					GinkgoT().Logf("Warning: cleanup delete StorageBasedRemediationConfig %s: %v",
 						sbrparams.SBRCSplitBrainTestName, deleteErr)
+				} else {
+					Eventually(func() error {
+						getErr := APIClient.Get(context.TODO(),
+							types.NamespacedName{Name: sbrparams.SBRCSplitBrainTestName,
+								Namespace: medik8sparams.OperatorNs},
+							testSBRC.DeepCopy())
+
+						if k8serrors.IsNotFound(getErr) {
+							return nil
+						}
+
+						if getErr != nil {
+							return getErr
+						}
+
+						return fmt.Errorf("SBRC %s still present", sbrparams.SBRCSplitBrainTestName)
+					}, medik8sparams.DefaultTimeout, sbrparams.DefaultPollInterval).Should(Succeed())
 				}
 			}
 
 			By("AfterAll: removing NodeHealthCheck CR if created by this test")
 
 			if nhcCreatedByUs && nhcCR != nil {
-				deleteErr := APIClient.Delete(context.TODO(), nhcCR)
-				if deleteErr != nil && !k8serrors.IsNotFound(deleteErr) {
+				if deleteErr := APIClient.Delete(context.TODO(), nhcCR); deleteErr != nil &&
+					!k8serrors.IsNotFound(deleteErr) {
 					GinkgoT().Logf("Warning: cleanup delete NodeHealthCheck %s: %v",
 						sbrparams.NHCSplitBrainTestName, deleteErr)
+				} else {
+					Eventually(func() error {
+						getErr := APIClient.Get(context.TODO(),
+							types.NamespacedName{Name: sbrparams.NHCSplitBrainTestName},
+							nhcCR.DeepCopy())
+
+						if k8serrors.IsNotFound(getErr) {
+							return nil
+						}
+
+						if getErr != nil {
+							return getErr
+						}
+
+						return fmt.Errorf("NHC %s still present", sbrparams.NHCSplitBrainTestName)
+					}, medik8sparams.DefaultTimeout, sbrparams.DefaultPollInterval).Should(Succeed())
 				}
 			}
 
@@ -447,6 +480,7 @@ var _ = Describe(
 
 				Eventually(func() error {
 					getErr := sbrCRExists(targetNodeName)
+
 					if k8serrors.IsNotFound(getErr) {
 						return fmt.Errorf("StorageBasedRemediation/%s not yet created by NHC", targetNodeName)
 					}
@@ -518,9 +552,16 @@ var _ = Describe(
 				By("Asserting all healthy nodes remain schedulable and their boot IDs are unchanged")
 
 				for _, nodeName := range healthyNodes {
-					node, nodeErr := APIClient.CoreV1Interface.Nodes().Get(
-						context.TODO(), nodeName, metav1.GetOptions{})
-					Expect(nodeErr).ToNot(HaveOccurred(),
+					var node *corev1.Node
+
+					Eventually(func() error {
+						var getErr error
+
+						node, getErr = APIClient.CoreV1Interface.Nodes().Get(
+							context.TODO(), nodeName, metav1.GetOptions{})
+
+						return getErr
+					}, medik8sparams.DefaultTimeout, sbrparams.DefaultPollInterval).Should(Succeed(),
 						"Failed to get healthy node %q for post-test verification", nodeName)
 
 					Expect(isNodeSchedulable(node)).To(BeTrue(),
@@ -537,6 +578,7 @@ var _ = Describe(
 
 				Eventually(func() error {
 					getErr := sbrCRExists(targetNodeName)
+
 					if k8serrors.IsNotFound(getErr) {
 						return nil
 					}
