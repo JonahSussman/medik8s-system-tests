@@ -3,7 +3,6 @@ package tests
 import (
 	"context"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
@@ -25,33 +24,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 )
-
-// discoverRWXStorageClass returns the name of an RWX-capable storage class.
-// SBR_STORAGE_CLASS env var overrides auto-discovery.
-func discoverRWXStorageClass() string {
-	if sc := os.Getenv("SBR_STORAGE_CLASS"); sc != "" {
-		GinkgoWriter.Printf("Using SBR_STORAGE_CLASS=%q from environment\n", sc)
-
-		return sc
-	}
-
-	scList, err := APIClient.StorageV1Interface.StorageClasses().List(context.TODO(), metav1.ListOptions{})
-	if err != nil || len(scList.Items) == 0 {
-		return ""
-	}
-
-	for _, storClass := range scList.Items {
-		prov := strings.ToLower(storClass.Provisioner)
-		if strings.Contains(prov, "cephfs") {
-			GinkgoWriter.Printf("Auto-discovered storage class %q (provisioner: %s)\n",
-				storClass.Name, storClass.Provisioner)
-
-			return storClass.Name
-		}
-	}
-
-	return ""
-}
 
 // getNodeBootID returns the boot ID for the named node, or empty string on error.
 func getNodeBootID(nodeName string) string {

@@ -103,7 +103,7 @@ var _ = Describe(
 
 					// /proc/1/root is the host's root filesystem inside a hostPID+privileged container.
 					buf, execErr := debugPod.ExecCommand(
-						[]string{"sh", "-c", "ls /proc/1/root/dev/watchdog* 2>/dev/null || true"})
+						[]string{"sh", "-c", "ls --color=never /proc/1/root/dev/watchdog* 2>/dev/null || true"})
 
 					if _, delErr := debugPod.Delete(); delErr != nil {
 						GinkgoWriter.Printf("Warning: failed to delete watchdog debug pod for node %s: %v\n",
@@ -123,13 +123,9 @@ var _ = Describe(
 					devices := make([]string, 0)
 
 					for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
-						line = strings.TrimSpace(line)
-						if line == "" {
-							continue
+						for _, token := range strings.Fields(line) {
+							devices = append(devices, strings.TrimPrefix(token, "/proc/1/root"))
 						}
-
-						// Strip the /proc/1/root prefix to record the canonical host path.
-						devices = append(devices, strings.TrimPrefix(line, "/proc/1/root"))
 					}
 
 					WatchdogDevicesByNode[nodeName] = devices
