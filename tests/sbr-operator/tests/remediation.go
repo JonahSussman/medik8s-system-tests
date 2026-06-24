@@ -105,9 +105,8 @@ var _ = Describe(
 			// setupSBRC is created in BeforeAll to ensure the agent DaemonSet is running.
 			// The SBRRemediationReconciler runs inside agent pods (not the main operator),
 			// so without an active SBRC the finalizer on StorageBasedRemediation CRs is never
-			// added.  A minimal SBRC (no sharedStorageClass) is sufficient: it creates the
-			// DaemonSet, agents start running and can reconcile SBR CRs, but the nodeManager
-			// stays nil so no actual fencing is initiated.
+			// added. An SBRC with sharedStorageClass is required: the controller only creates
+			// the DaemonSet after the storage init job completes successfully.
 			setupSBRC *unstructured.Unstructured
 		)
 
@@ -117,16 +116,12 @@ var _ = Describe(
 			staleRef := buildSBRC(sbrparams.SBRCFunctionalTestName, map[string]interface{}{})
 			if deleteErr := APIClient.Delete(context.TODO(), staleRef); deleteErr != nil &&
 				!k8serrors.IsNotFound(deleteErr) {
-				GinkgoT().Logf("Warning: pre-cleanup delete %s: %v",
-					sbrparams.SBRCFunctionalTestName, deleteErr)
+				GinkgoT().Logf("Warning: pre-cleanup delete %s: %v", sbrparams.SBRCFunctionalTestName, deleteErr)
 			}
 
 			Eventually(func() error {
 				getErr := APIClient.Get(context.TODO(),
-					types.NamespacedName{
-						Name:      sbrparams.SBRCFunctionalTestName,
-						Namespace: medik8sparams.OperatorNs,
-					},
+					types.NamespacedName{Name: sbrparams.SBRCFunctionalTestName, Namespace: medik8sparams.OperatorNs},
 					buildSBRC(sbrparams.SBRCFunctionalTestName, map[string]interface{}{}))
 				if k8serrors.IsNotFound(getErr) {
 					return nil
@@ -137,15 +132,17 @@ var _ = Describe(
 				}
 
 				return fmt.Errorf("SBRC %s still terminating", sbrparams.SBRCFunctionalTestName)
-			}, sbrparams.SBRCReadyTimeout, sbrparams.DefaultPollInterval).Should(Succeed(),
-				"Stale SBRC must be fully gone before recreating")
+			}, sbrparams.SBRCReadyTimeout, sbrparams.DefaultPollInterval).Should(Succeed())
 
-			By("Creating StorageBasedRemediationConfig with sharedStorageClass so agent DaemonSet starts")
+			By("Discovering RWX storage class for the functional SBRC")
 
-			// sharedStorageClass is required: without it the controller never creates the
-			// storage init job, so the agent DaemonSet is never created and waitForSBRCReady
-			// times out. discoverRWXStorageClass auto-discovers CephFS or reads SBR_STORAGE_CLASS.
 			storageClass := discoverRWXStorageClass()
+			Expect(storageClass).ToNot(BeEmpty(),
+				"Could not discover a RWX storage class; set SBR_STORAGE_CLASS to override")
+
+			By(fmt.Sprintf("Creating StorageBasedRemediationConfig %q with sharedStorageClass=%q so agent pods run",
+				sbrparams.SBRCFunctionalTestName, storageClass))
+
 			setupSBRC = buildSBRC(sbrparams.SBRCFunctionalTestName, map[string]interface{}{
 				"sharedStorageClass": storageClass,
 			})
@@ -221,21 +218,6 @@ var _ = Describe(
 					By("DeferCleanup: removing StorageBasedRemediation CR and waiting for node to be schedulable")
 
 					cleanupSBRCR(targetNodeName)
-
-					// Force-removing the finalizer via cleanupSBRCR bypasses handleDeletion in
-					// the agent reconciler, which normally uncordons the node. Explicitly uncordon
-					// to ensure the node is schedulable regardless of controller cleanup state.
-					if nodeObj, getErr := APIClient.CoreV1Interface.Nodes().Get(
-						context.TODO(), targetNodeName, metav1.GetOptions{}); getErr == nil &&
-						nodeObj.Spec.Unschedulable {
-						nodeObj.Spec.Unschedulable = false
-
-						if _, updateErr := APIClient.CoreV1Interface.Nodes().Update(
-							context.TODO(), nodeObj, metav1.UpdateOptions{}); updateErr != nil {
-							GinkgoT().Logf("Warning: failed to uncordon node %s: %v",
-								targetNodeName, updateErr)
-						}
-					}
 
 					Eventually(func() error {
 						node, nodeErr := APIClient.CoreV1Interface.Nodes().Get(

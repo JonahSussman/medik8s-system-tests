@@ -15,26 +15,8 @@ import (
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 	"github.com/medik8s/system-tests/tests/sbr-operator/internal/sbrparams"
 
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
-
-// isNodeSchedulable returns true when a node is Ready and not cordoned.
-// Unschedulable or NotReady nodes are skipped so that scheduling failures
-// are not misattributed to missing watchdog support.
-func isNodeSchedulable(node *corev1.Node) bool {
-	if node.Spec.Unschedulable {
-		return false
-	}
-
-	for _, cond := range node.Status.Conditions {
-		if cond.Type == corev1.NodeReady {
-			return cond.Status == corev1.ConditionTrue
-		}
-	}
-
-	return false
-}
 
 var _ = Describe(
 	"SBR Functional — Watchdog Integration",
