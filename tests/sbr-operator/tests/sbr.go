@@ -103,7 +103,7 @@ var _ = Describe(
 
 					// /proc/1/root is the host's root filesystem inside a hostPID+privileged container.
 					buf, execErr := debugPod.ExecCommand(
-						[]string{"sh", "-c", "ls --color=never /proc/1/root/dev/watchdog* 2>/dev/null || true"})
+						[]string{"sh", "-c", "ls -1 /proc/1/root/dev/watchdog* 2>/dev/null || true"})
 
 					if _, delErr := debugPod.Delete(); delErr != nil {
 						GinkgoWriter.Printf("Warning: failed to delete watchdog debug pod for node %s: %v\n",

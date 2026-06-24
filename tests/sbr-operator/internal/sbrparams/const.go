@@ -145,6 +145,30 @@ const (
 
 	// SplitBrainHealthyNodeCheckInterval is the poll interval for the healthy-node Consistently assertion.
 	SplitBrainHealthyNodeCheckInterval = 5 * time.Second
+
+	// SBRCWatchdogPathTestName is the SBRC name used in the storage I/O loss watchdog test (OCP-88880).
+	SBRCWatchdogPathTestName = "test-sbrc-storage-loss-watchdog"
+
+	// NHCSBRTestName is the NodeHealthCheck CR name for the storage I/O loss test (OCP-88880).
+	NHCSBRTestName = "nhc-sbr-storage-loss"
+
+	// InjectorPodName is the name prefix for the privileged pod used to inject storage fault rules.
+	InjectorPodName = "sbr-storage-injector"
+
+	// FencingSucceededCondition is the condition type set on a StorageBasedRemediation CR after fencing.
+	FencingSucceededCondition = "FencingSucceeded"
+
+	// SBRCRCleanupTimeout is how long to wait for an SBR CR to be cleaned up after fencing.
+	SBRCRCleanupTimeout = 10 * time.Minute
+
+	// SBRCRCleanupPollInterval is the polling interval while waiting for SBR CR removal.
+	SBRCRCleanupPollInterval = 20 * time.Second
+
+	// SBRCNodeHangTestName is the SBRC name for the hard node hang test (OCP-88738).
+	SBRCNodeHangTestName = "test-sbrc-node-hang"
+
+	// NHCNodeHangTestName is the NodeHealthCheck CR name for the node hang test (OCP-88738).
+	NHCNodeHangTestName = "nhc-sbr-node-hang"
 )
 
 // SBRStorageClass is the StorageClass name to use when creating SBRCs that require shared storage.
