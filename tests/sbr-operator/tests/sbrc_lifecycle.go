@@ -21,6 +21,24 @@ import (
 	runtimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// waitForDaemonSetGC polls until the named DaemonSet is gone (GC'd after SBRC deletion).
+func waitForDaemonSetGC(dsName string) {
+	Eventually(func() error {
+		_, getErr := APIClient.DaemonSets(medik8sparams.OperatorNs).Get(
+			context.TODO(), dsName, metav1.GetOptions{})
+		if k8serrors.IsNotFound(getErr) {
+			return nil
+		}
+
+		if getErr != nil {
+			return getErr
+		}
+
+		return fmt.Errorf("DaemonSet %s still present; waiting for GC", dsName)
+	}, sbrparams.SBRCDaemonSetGCTimeout, sbrparams.DefaultPollInterval).Should(Succeed(),
+		"DaemonSet %s must be GC-d after its StorageBasedRemediationConfig is deleted", dsName)
+}
+
 var _ = Describe(
 	"SBR Functional - StorageBasedRemediationConfig Lifecycle",
 	Ordered,
@@ -39,9 +57,6 @@ var _ = Describe(
 			By("Discovering RWX-capable StorageClass (required for agent DaemonSet creation)")
 
 			rwxStorageClass = discoverRWXStorageClass()
-			if rwxStorageClass == "" {
-				Skip("No RWX-capable StorageClass found; skipping SBRC lifecycle test")
-			}
 
 			By("Cleaning up any leftover lifecycle test SBRCs from prior runs")
 
@@ -112,20 +127,20 @@ var _ = Describe(
 				})
 
 				DeferCleanup(func() {
-					By("DeferCleanup: deleting lifecycle SBRC A if still present")
+					for name, obj := range map[string]runtimeclient.Object{
+						sbrparams.SBRCLifecycleTestNameA: sbrcA.DeepCopy(),
+						sbrparams.SBRCLifecycleTestNameB: sbrcB.DeepCopy(),
+					} {
+						By(fmt.Sprintf("DeferCleanup: deleting lifecycle SBRC %s if still present", name))
 
-					deleteErrA := APIClient.Delete(context.TODO(), sbrcA.DeepCopy())
-					if deleteErrA != nil && !k8serrors.IsNotFound(deleteErrA) {
-						GinkgoT().Logf("Warning: DeferCleanup failed to delete SBRC %s: %v",
-							sbrparams.SBRCLifecycleTestNameA, deleteErrA)
-					}
+						_ = Eventually(func() error {
+							delErr := APIClient.Delete(context.TODO(), obj)
+							if delErr == nil || k8serrors.IsNotFound(delErr) {
+								return nil
+							}
 
-					By("DeferCleanup: deleting lifecycle SBRC B if still present")
-
-					deleteErrB := APIClient.Delete(context.TODO(), sbrcB.DeepCopy())
-					if deleteErrB != nil && !k8serrors.IsNotFound(deleteErrB) {
-						GinkgoT().Logf("Warning: DeferCleanup failed to delete SBRC %s: %v",
-							sbrparams.SBRCLifecycleTestNameB, deleteErrB)
+							return delErr
+						}, medik8sparams.DefaultTimeout, sbrparams.DefaultPollInterval).Should(Succeed())
 					}
 				})
 
@@ -146,14 +161,6 @@ var _ = Describe(
 				})
 				Expect(marshalErr).ToNot(HaveOccurred(), "Failed to marshal patch payload for SBRC A")
 
-				patchErr := APIClient.Patch(
-					context.TODO(),
-					sbrcA.DeepCopy(),
-					runtimeclient.RawPatch(types.MergePatchType, patchPayload),
-				)
-				Expect(patchErr).ToNot(HaveOccurred(),
-					"Failed to patch StorageBasedRemediationConfig %q", sbrparams.SBRCLifecycleTestNameA)
-
 				dsNameA := sbrparams.SBRAgentDaemonSetPrefix + sbrparams.SBRCLifecycleTestNameA
 
 				prePatchDS, prePatchErr := APIClient.DaemonSets(medik8sparams.OperatorNs).Get(
@@ -162,6 +169,14 @@ var _ = Describe(
 					"Failed to get DaemonSet %s before patch", dsNameA)
 
 				prePatchGen := prePatchDS.Generation
+
+				patchErr := APIClient.Patch(
+					context.TODO(),
+					sbrcA.DeepCopy(),
+					runtimeclient.RawPatch(types.MergePatchType, patchPayload),
+				)
+				Expect(patchErr).ToNot(HaveOccurred(),
+					"Failed to patch StorageBasedRemediationConfig %q", sbrparams.SBRCLifecycleTestNameA)
 
 				Eventually(func() error {
 					agentDS, getErr := APIClient.DaemonSets(medik8sparams.OperatorNs).Get(
@@ -199,20 +214,7 @@ var _ = Describe(
 				Expect(APIClient.Delete(context.TODO(), sbrcA.DeepCopy())).To(Succeed(),
 					"StorageBasedRemediationConfig %q must be deleted successfully", sbrparams.SBRCLifecycleTestNameA)
 
-				Eventually(func() error {
-					_, getErr := APIClient.DaemonSets(medik8sparams.OperatorNs).Get(
-						context.TODO(), dsNameA, metav1.GetOptions{})
-					if k8serrors.IsNotFound(getErr) {
-						return nil
-					}
-
-					if getErr != nil {
-						return getErr
-					}
-
-					return fmt.Errorf("DaemonSet %s still present; waiting for GC after SBRC A deletion", dsNameA)
-				}, sbrparams.SBRCDaemonSetGCTimeout, sbrparams.DefaultPollInterval).Should(Succeed(),
-					"DaemonSet %s must be GC-d after StorageBasedRemediationConfig A is deleted", dsNameA)
+				waitForDaemonSetGC(dsNameA)
 
 				By("Step 4: Creating StorageBasedRemediationConfig B and verifying its DaemonSet becomes ready")
 
@@ -221,39 +223,13 @@ var _ = Describe(
 				Expect(APIClient.Create(context.TODO(), sbrcB)).To(Succeed(),
 					"StorageBasedRemediationConfig %q must be created successfully", sbrparams.SBRCLifecycleTestNameB)
 
-				Eventually(func() error {
-					dsB, err := APIClient.DaemonSets(medik8sparams.OperatorNs).Get(
-						context.TODO(), dsNameB, metav1.GetOptions{})
-					if err != nil {
-						return fmt.Errorf("DaemonSet not found: %w", err)
-					}
-
-					if dsB.Status.NumberReady == 0 {
-						return fmt.Errorf("DaemonSet has 0/%d ready pods", dsB.Status.DesiredNumberScheduled)
-					}
-
-					return nil
-				}, sbrparams.SBRCReadyTimeout, sbrparams.DefaultPollInterval).Should(Succeed(),
-					"SBRC-B agent DaemonSet must have ready pods")
+				waitForSBRCReady(sbrparams.SBRCLifecycleTestNameB)
 
 				By("Step 5: Deleting StorageBasedRemediationConfig B and verifying its DaemonSet is removed")
 
 				Expect(APIClient.Delete(context.TODO(), sbrcB.DeepCopy())).To(Succeed(),
 					"StorageBasedRemediationConfig %q must be deleted successfully", sbrparams.SBRCLifecycleTestNameB)
 
-				Eventually(func() error {
-					_, getErr := APIClient.DaemonSets(medik8sparams.OperatorNs).Get(
-						context.TODO(), dsNameB, metav1.GetOptions{})
-					if k8serrors.IsNotFound(getErr) {
-						return nil
-					}
-
-					if getErr != nil {
-						return getErr
-					}
-
-					return fmt.Errorf("DaemonSet %s still present; waiting for GC after SBRC B deletion", dsNameB)
-				}, sbrparams.SBRCDaemonSetGCTimeout, sbrparams.DefaultPollInterval).Should(Succeed(),
-					"DaemonSet %s must be GC-d after StorageBasedRemediationConfig B is deleted", dsNameB)
+				waitForDaemonSetGC(dsNameB)
 			})
 	})
