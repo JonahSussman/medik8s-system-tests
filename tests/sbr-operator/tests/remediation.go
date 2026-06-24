@@ -215,20 +215,45 @@ var _ = Describe(
 				// this is a no-op if creation fails, but ensures the CR is removed if
 				// creation succeeds and a later assertion panics before any inline cleanup.
 				DeferCleanup(func() {
-					By("DeferCleanup: removing StorageBasedRemediation CR and waiting for node to be schedulable")
+					By("DeferCleanup: removing StorageBasedRemediation CR and restoring node schedulability")
 
 					cleanupSBRCR(targetNodeName)
 
+					// The operator may have cordoned the node as part of CR reconciliation.
+					// If it is still cordoned after CR removal (operator race or incomplete uncordon),
+					// patch it ourselves so subsequent tests start with a clean node state.
+					node, nodeErr := APIClient.CoreV1Interface.Nodes().Get(
+						context.TODO(), targetNodeName, metav1.GetOptions{})
+					if nodeErr != nil {
+						GinkgoT().Logf("DeferCleanup: could not get node %s: %v", targetNodeName, nodeErr)
+
+						return
+					}
+
+					if !node.Spec.Unschedulable {
+						return
+					}
+
+					GinkgoWriter.Printf(
+						"DeferCleanup: node %s still cordoned after SBR CR removal; patching to uncordon\n",
+						targetNodeName)
+
+					patch := []byte(`{"spec":{"unschedulable":false}}`)
+					if _, patchErr := APIClient.CoreV1Interface.Nodes().Patch(
+						context.TODO(), targetNodeName, types.MergePatchType, patch, metav1.PatchOptions{},
+					); patchErr != nil {
+						GinkgoT().Logf("DeferCleanup: failed to uncordon node %s: %v", targetNodeName, patchErr)
+					}
+
 					Eventually(func() error {
-						node, nodeErr := APIClient.CoreV1Interface.Nodes().Get(
+						nodeObj, getErr := APIClient.CoreV1Interface.Nodes().Get(
 							context.TODO(), targetNodeName, metav1.GetOptions{})
-						if nodeErr != nil {
-							return fmt.Errorf("failed to get node %s: %w", targetNodeName, nodeErr)
+						if getErr != nil {
+							return fmt.Errorf("failed to get node %s: %w", targetNodeName, getErr)
 						}
 
-						if node.Spec.Unschedulable {
-							return fmt.Errorf("node %s still cordoned after StorageBasedRemediation CR cleanup",
-								targetNodeName)
+						if nodeObj.Spec.Unschedulable {
+							return fmt.Errorf("node %s still cordoned", targetNodeName)
 						}
 
 						return nil

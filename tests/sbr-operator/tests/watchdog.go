@@ -106,7 +106,7 @@ var _ = Describe(
 				}, podName)
 
 				buf, execErr := debugPod.ExecCommand(
-					[]string{"sh", "-c", "ls /proc/1/root/dev/watchdog* 2>/dev/null || true"})
+					[]string{"find", "/proc/1/root/dev", "-maxdepth", "1", "-name", "watchdog*"})
 
 				if _, delErr := debugPod.Delete(); delErr != nil {
 					GinkgoWriter.Printf("Warning: failed to delete watchdog probe pod for node %s: %v\n",

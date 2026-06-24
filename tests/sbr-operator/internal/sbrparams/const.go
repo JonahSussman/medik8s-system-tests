@@ -178,6 +178,11 @@ const (
 
 	// StorageLossWriteInjectorPodName is the injector pod name prefix for the write-only test.
 	StorageLossWriteInjectorPodName = "sbr-write-injector"
+	// SBRCTransientTestName is the SBRC name for the transient storage failure self-healing test.
+	SBRCTransientTestName = "test-sbrc-transient"
+
+	// TransientInjectorPodName is the name prefix for the injector pod in the transient storage test.
+	TransientInjectorPodName = "sbr-transient-injector"
 )
 
 // SBRStorageClass is the StorageClass name to use when creating SBRCs that require shared storage.
