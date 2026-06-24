@@ -79,7 +79,78 @@ const (
 
 	// CSVNamePattern is the substring used to match the SBR operator ClusterServiceVersion by name.
 	CSVNamePattern = "storage-based-remediation"
+
+	// SBRRemediationFinalizer is the finalizer the controller adds to every StorageBasedRemediation CR.
+	// Sourced from internal/controller/storagebasedremediation_controller.go.
+	SBRRemediationFinalizer = "medik8s.io/sbr-remediation-finalizer"
+
+	// SBRCFunctionalTestName is the name of the temporary SBRC created in functional tests
+	// that need agent DaemonSet pods to process StorageBasedRemediation CRs.
+	// The SBRRemediationReconciler runs inside agent pods, so an SBRC (and its DaemonSet) must
+	// exist before any StorageBasedRemediation CR can be reconciled.
+	SBRCFunctionalTestName = "test-sbrc-functional"
+
+	// SBRAgentDaemonSetPrefix is the naming prefix the SBRC controller uses for agent DaemonSets.
+	// DaemonSet name = SBRAgentDaemonSetPrefix + <sbrcName>.
+	SBRAgentDaemonSetPrefix = "sbr-agent-"
+
+	// SBRCReadyTimeout is the time allowed for the SBRC's agent DaemonSet to reach at least one
+	// ready pod before a functional test begins.
+	SBRCReadyTimeout = 3 * time.Minute
+
+	// SBRStorageUnhealthyCondition is the node condition type set by the SBR agent when storage is unavailable.
+	SBRStorageUnhealthyCondition = "SBRStorageUnhealthy"
+
+	// StorageInjectionTimeout is how long to wait for SBRStorageUnhealthy=True after injecting faults.
+	StorageInjectionTimeout = 3 * time.Minute
+
+	// StorageInjectionPollInterval is the polling interval while waiting for the storage unhealthy condition.
+	StorageInjectionPollInterval = 10 * time.Second
+
+	// NHCCRDName is the CRD name for NodeHealthCheck, used to detect if NHC is installed.
+	NHCCRDName = "nodehealthchecks.remediation.medik8s.io"
+
+	// NHCAPIGroup is the API group for NodeHealthCheck CRs.
+	NHCAPIGroup = "remediation.medik8s.io"
+
+	// NHCAPIVersion is the API version for NodeHealthCheck CRs.
+	NHCAPIVersion = "v1alpha1"
+
+	// SBRTemplateName is the name of the StorageBasedRemediationTemplate that NHC references.
+	SBRTemplateName = "storagebasedremediationtemplate-sample"
+
+	// NHCUnhealthyDuration is how long a node must hold SBRStorageUnhealthy=True before NHC acts.
+	NHCUnhealthyDuration = "30s"
+
+	// NHCSplitBrainTestName is the NodeHealthCheck CR name used for the split-brain test.
+	NHCSplitBrainTestName = "test-nhc-sbr-split-brain"
+
+	// SBRCSplitBrainTestName is the SBRC name used in the split-brain test.
+	SBRCSplitBrainTestName = "test-sbrc-split-brain"
+
+	// NHCSBRCRCreationTimeout is how long to wait for NHC to create the StorageBasedRemediation CR.
+	NHCSBRCRCreationTimeout = 5 * time.Minute
+
+	// NHCSBRCRCreationPollInterval is the poll interval while waiting for NHC to create the SBR CR.
+	NHCSBRCRCreationPollInterval = 10 * time.Second
+
+	// NodeRebootTimeout is the maximum time to wait for a node to complete a full reboot cycle.
+	NodeRebootTimeout = 20 * time.Minute
+
+	// NodeRebootPollInterval is the polling interval while waiting for a node to become NotReady then Ready.
+	NodeRebootPollInterval = 15 * time.Second
+
+	// SplitBrainHealthyNodeCheckDuration is how long to Consistently assert no SBR CR exists for healthy nodes.
+	SplitBrainHealthyNodeCheckDuration = 60 * time.Second
+
+	// SplitBrainHealthyNodeCheckInterval is the poll interval for the healthy-node Consistently assertion.
+	SplitBrainHealthyNodeCheckInterval = 5 * time.Second
 )
+
+// SBRStorageClass is the StorageClass name to use when creating SBRCs that require shared storage.
+// Set SBR_STORAGE_CLASS env var to override auto-discovery (useful in air-gapped or non-ODF environments).
+// When empty, tests auto-discover a CephFS StorageClass (provisioner containing "cephfs").
+var SBRStorageClass = os.Getenv("SBR_STORAGE_CLASS")
 
 // WatchdogDebugImage is the container image for /dev/watchdog* discovery pods.
 // Must provide sh and ls. Set SBR_WATCHDOG_DEBUG_IMAGE to override (e.g. in disconnected clusters).

@@ -103,7 +103,7 @@ var _ = Describe(
 
 					// /proc/1/root is the host's root filesystem inside a hostPID+privileged container.
 					buf, execErr := debugPod.ExecCommand(
-						[]string{"sh", "-c", "ls /proc/1/root/dev/watchdog* 2>/dev/null || true"})
+						[]string{"sh", "-c", "ls --color=never /proc/1/root/dev/watchdog* 2>/dev/null || true"})
 
 					if _, delErr := debugPod.Delete(); delErr != nil {
 						GinkgoWriter.Printf("Warning: failed to delete watchdog debug pod for node %s: %v\n",
@@ -123,13 +123,9 @@ var _ = Describe(
 					devices := make([]string, 0)
 
 					for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
-						line = strings.TrimSpace(line)
-						if line == "" {
-							continue
+						for _, token := range strings.Fields(line) {
+							devices = append(devices, strings.TrimPrefix(token, "/proc/1/root"))
 						}
-
-						// Strip the /proc/1/root prefix to record the canonical host path.
-						devices = append(devices, strings.TrimPrefix(line, "/proc/1/root"))
 					}
 
 					WatchdogDevicesByNode[nodeName] = devices
@@ -159,6 +155,23 @@ func findActiveCSV(csvs []*olm.ClusterServiceVersionBuilder) *olm.ClusterService
 	}
 
 	return nil
+}
+
+// isNodeSchedulable returns true when a node is Ready and not cordoned.
+// NotReady and unschedulable nodes are excluded so that scheduling failures
+// are not misattributed to failures in the operator under test.
+func isNodeSchedulable(node *corev1.Node) bool {
+	if node.Spec.Unschedulable {
+		return false
+	}
+
+	for _, cond := range node.Status.Conditions {
+		if cond.Type == corev1.NodeReady {
+			return cond.Status == corev1.ConditionTrue
+		}
+	}
+
+	return false
 }
 
 func filterRunningPods(pods []*pod.Builder) []*pod.Builder {
@@ -614,11 +627,13 @@ func snapshotDaemonSetNames() map[string]bool {
 	return names
 }
 
-func buildSBRC(name string, spec map[string]interface{}) *unstructured.Unstructured {
+// buildSBRUnstructured returns an unstructured SBR CR for the given kind and name.
+// It is the shared builder for buildSBRC and buildSBR.
+func buildSBRUnstructured(kind, name string, spec map[string]interface{}) *unstructured.Unstructured {
 	return &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": sbrparams.CRDGroup + "/" + sbrparams.CRDVersion,
-			"kind":       "StorageBasedRemediationConfig",
+			"kind":       kind,
 			"metadata": map[string]interface{}{
 				"name":      name,
 				"namespace": medik8sparams.OperatorNs,
@@ -626,6 +641,59 @@ func buildSBRC(name string, spec map[string]interface{}) *unstructured.Unstructu
 			"spec": spec,
 		},
 	}
+}
+
+func buildSBRC(name string, spec map[string]interface{}) *unstructured.Unstructured {
+	return buildSBRUnstructured("StorageBasedRemediationConfig", name, spec)
+}
+
+// discoverRWXStorageClass returns a StorageClass name that supports ReadWriteMany.
+// Reads SBR_STORAGE_CLASS env var first; auto-discovers by filtering CephFS provisioners.
+// Calls Skip when no CephFS class is found and the env var is unset.
+func discoverRWXStorageClass() string {
+	if sbrparams.SBRStorageClass != "" {
+		return sbrparams.SBRStorageClass
+	}
+
+	scList, err := APIClient.StorageV1Interface.StorageClasses().List(context.TODO(), metav1.ListOptions{})
+	Expect(err).ToNot(HaveOccurred(), "Failed to list StorageClasses for RWX auto-discovery")
+
+	for idx := range scList.Items {
+		provisioner := scList.Items[idx].Provisioner
+		if strings.Contains(provisioner, "cephfs") {
+			GinkgoWriter.Printf("Auto-discovered CephFS StorageClass: %s (provisioner: %s)\n",
+				scList.Items[idx].Name, provisioner)
+
+			return scList.Items[idx].Name
+		}
+	}
+
+	Skip("No CephFS StorageClass found; set SBR_STORAGE_CLASS env var to override")
+
+	return ""
+}
+
+// waitForSBRCReady blocks until the agent DaemonSet for the named SBRC has at least one ready pod.
+// The SBRRemediationReconciler runs inside agent pods, so this must be called before creating
+// any StorageBasedRemediation CR whose reconciliation depends on active agents.
+func waitForSBRCReady(sbrcName string) {
+	dsName := sbrparams.SBRAgentDaemonSetPrefix + sbrcName
+
+	Eventually(func() error {
+		agentDS, err := APIClient.DaemonSets(medik8sparams.OperatorNs).Get(
+			context.TODO(), dsName, metav1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("DaemonSet %s not found: %w", dsName, err)
+		}
+
+		if agentDS.Status.NumberReady == 0 {
+			return fmt.Errorf("DaemonSet %s: %d/%d pods ready",
+				dsName, agentDS.Status.NumberReady, agentDS.Status.DesiredNumberScheduled)
+		}
+
+		return nil
+	}, sbrparams.SBRCReadyTimeout, sbrparams.DefaultPollInterval).Should(Succeed(),
+		"SBRC %q agent DaemonSet must have at least one ready pod before functional tests begin", sbrcName)
 }
 
 var _ = Describe(

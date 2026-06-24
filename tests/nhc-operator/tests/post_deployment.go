@@ -31,7 +31,10 @@ var _ = Describe(
 	Ordered,
 	ContinueOnFailure,
 	Label(nhcparams.Label), func() {
-		var nhcCSV *olm.ClusterServiceVersionBuilder
+		var (
+			nhcCSV               *olm.ClusterServiceVersionBuilder
+			controlPlaneTopology configv1.TopologyMode
+		)
 
 		BeforeAll(func() {
 			By("Get NHC deployment object and verify readiness")
@@ -40,6 +43,13 @@ var _ = Describe(
 				APIClient, nhcparams.OperatorDeploymentName, medik8sparams.OperatorNs)
 			Expect(err).ToNot(HaveOccurred(), "Failed to get NHC deployment")
 			Expect(nhcDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(), "NHC deployment is not Ready")
+
+			By("Pull cluster topology for use in topology-aware tests")
+
+			infraConfig, infraErr := infrastructure.Pull(APIClient)
+			Expect(infraErr).ToNot(HaveOccurred(), "Failed to pull infrastructure configuration")
+
+			controlPlaneTopology = infraConfig.Object.Status.ControlPlaneTopology
 
 			By("Get NHC ClusterServiceVersion")
 
@@ -55,13 +65,25 @@ var _ = Describe(
 						medik8sparams.OperatorNs)
 				}
 
+				var (
+					newestCSV  *olm.ClusterServiceVersionBuilder
+					newestTime metav1.Time
+				)
+
 				for _, csv := range nhcCSVs {
 					phase, phaseErr := csv.GetPhase()
 					if phaseErr == nil && phase == "Succeeded" {
-						nhcCSV = csv
-
-						return nil
+						if newestCSV == nil || csv.Object.CreationTimestamp.After(newestTime.Time) {
+							newestCSV = csv
+							newestTime = csv.Object.CreationTimestamp
+						}
 					}
+				}
+
+				if newestCSV != nil {
+					nhcCSV = newestCSV
+
+					return nil
 				}
 
 				return fmt.Errorf("no NHC CSV in Succeeded phase found yet")
@@ -70,7 +92,7 @@ var _ = Describe(
 		})
 
 		It("Verify NHC resources are installed and running",
-			reportxml.ID("89550"),
+			reportxml.ID("89629"),
 			Label(labels.OperatorNHC, labels.TierSmoke, labels.DisruptionNonDestructive,
 				labels.PlatformAny, labels.FrequencyPresubmit,
 				labels.ComponentController), func() {
@@ -103,10 +125,13 @@ var _ = Describe(
 			})
 
 		It("Verify NHC CSV annotations",
-			reportxml.ID("89551"),
+			reportxml.ID("89630"),
 			Label(labels.OperatorNHC, labels.TierSmoke, labels.DisruptionNonDestructive,
 				labels.PlatformAny, labels.FrequencyPresubmit,
 				labels.ComponentOLM), func() {
+				Expect(nhcCSV).ToNot(BeNil(),
+					"NHC CSV was not resolved in BeforeAll - is the operator installed?")
+
 				By("Checking valid-subscription annotation")
 
 				annotations := nhcCSV.Object.Annotations
@@ -138,10 +163,13 @@ var _ = Describe(
 			})
 
 		It("Verify NHC CSV metadata",
-			reportxml.ID("89552"),
+			reportxml.ID("89631"),
 			Label(labels.OperatorNHC, labels.TierSmoke, labels.DisruptionNonDestructive,
 				labels.PlatformAny, labels.FrequencyPresubmit,
 				labels.ComponentOLM), func() {
+				Expect(nhcCSV).ToNot(BeNil(),
+					"NHC CSV was not resolved in BeforeAll - is the operator installed?")
+
 				By("Checking required CSV annotations")
 
 				annotations := nhcCSV.Object.Annotations
@@ -174,19 +202,20 @@ var _ = Describe(
 					Fail(errMsg)
 				}
 
-				By("Checking replaces field")
+				By("Checking replaces field when present")
 
 				replaces := nhcCSV.Object.Spec.Replaces
-				Expect(replaces).ToNot(BeEmpty(), "CSV spec.replaces should not be empty")
-				Expect(replaces).To(ContainSubstring(nhcparams.CSVNamePattern),
-					"replaces field should contain %q, got %q", nhcparams.CSVNamePattern, replaces)
+				if replaces != "" {
+					Expect(replaces).To(ContainSubstring(nhcparams.CSVNamePattern),
+						"replaces field should contain %q, got %q", nhcparams.CSVNamePattern, replaces)
+				} else {
+					GinkgoWriter.Printf("CSV %q has empty spec.replaces (expected on first install)\n",
+						nhcCSV.Object.Name)
+				}
 
 				By("Checking cluster topology for replica validation")
 
-				infraConfig, err := infrastructure.Pull(APIClient)
-				Expect(err).ToNot(HaveOccurred(), "Failed to pull infrastructure configuration")
-
-				if infraConfig.Object.Status.ControlPlaneTopology == configv1.SingleReplicaTopologyMode {
+				if controlPlaneTopology == configv1.SingleReplicaTopologyMode {
 					Skip("Skipping replica validation on SNO (Single Node OpenShift) cluster")
 				}
 
@@ -219,7 +248,7 @@ var _ = Describe(
 			})
 
 		It("Verify NHC container runs as non-root user",
-			reportxml.ID("89553"),
+			reportxml.ID("89632"),
 			Label(labels.OperatorNHC, labels.TierSmoke, labels.DisruptionNonDestructive,
 				labels.PlatformAny, labels.FrequencyPresubmit,
 				labels.ComponentController), func() {
