@@ -20,8 +20,8 @@ const (
 	OperatorDeploymentName = "node-maintenance-operator-controller-manager"
 
 	// OperatorControllerPodLabelSelector is the label selector string to filter NMO controller pods.
-	OperatorControllerPodLabelSelector = "app.kubernetes.io/name=node-maintenance-operator," +
-		"control-plane=controller-manager"
+	// NMO's upstream pod template only defines control-plane=controller-manager (no app.kubernetes.io/name).
+	OperatorControllerPodLabelSelector = "control-plane=controller-manager"
 
 	// CSVNamePattern is the substring used to match the NMO operator ClusterServiceVersion by name.
 	CSVNamePattern = "node-maintenance-operator"
