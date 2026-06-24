@@ -124,6 +124,10 @@ var _ = Describe(
 				// distinguishable from "probe failed" (which leaves nil in the map).
 				devices := make([]string, 0)
 
+				// ls may return multiple space-separated paths on one line (e.g. when the
+				// shell expands /proc/1/root/dev/watchdog* to several matches). Split by
+				// newline first, then by whitespace within each line so that both
+				// single-path and multi-path lines are handled correctly.
 				for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
 					for _, token := range strings.Fields(line) {
 						if token == "" {
