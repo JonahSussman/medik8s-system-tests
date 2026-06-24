@@ -152,7 +152,7 @@ const (
 	// NHCSBRTestName is the NodeHealthCheck CR name for the storage I/O loss test (OCP-88880).
 	NHCSBRTestName = "nhc-sbr-storage-loss"
 
-	// InjectorPodName is the name prefix for the privileged pod used to inject storage fault rules.
+	// InjectorPodName is the name prefix for privileged host-namespace pods used in SBR disruptive tests.
 	InjectorPodName = "sbr-storage-injector"
 
 	// FencingSucceededCondition is the condition type set on a StorageBasedRemediation CR after fencing.
