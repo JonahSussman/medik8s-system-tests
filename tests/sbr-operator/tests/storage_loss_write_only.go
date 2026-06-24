@@ -100,7 +100,7 @@ func getNodeConditionWrite(ctx context.Context, nodeName, condType string) *core
 }
 
 var _ = Describe(
-	"SBR Functional — Node Failure: Write-Only Storage Loss (Fence-Message-Read Path)",
+	"SBR Functional — Write-Only Storage Loss",
 	Ordered,
 	ContinueOnFailure,
 	Label(
@@ -414,7 +414,9 @@ var _ = Describe(
 
 				preRebootBootID, preBootIDErr = getNodeBootID(targetNodeName)
 				Expect(preBootIDErr).ToNot(HaveOccurred(),
-					"Could not read boot ID from node %q before injection", targetNodeName)
+					"Failed to read boot ID from node %q before injection", targetNodeName)
+				Expect(preRebootBootID).ToNot(BeEmpty(),
+					"Boot ID must not be empty on node %q", targetNodeName)
 
 				GinkgoWriter.Printf("Pre-injection boot ID on node %q: %q\n", targetNodeName, preRebootBootID)
 
@@ -536,7 +538,9 @@ var _ = Describe(
 
 				postRebootBootID, postBootIDErr := getNodeBootID(targetNodeName)
 				Expect(postBootIDErr).ToNot(HaveOccurred(),
-					"Could not read boot ID from node %q after reboot", targetNodeName)
+					"Failed to read boot ID from node %q after reboot", targetNodeName)
+				Expect(postRebootBootID).ToNot(BeEmpty(),
+					"Boot ID must not be empty on node %q after reboot", targetNodeName)
 				Expect(postRebootBootID).ToNot(Equal(preRebootBootID),
 					"Node %q boot ID must change after reboot (pre=%q, post=%q) — "+
 						"node did not actually reboot",
