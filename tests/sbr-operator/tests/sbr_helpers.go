@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 
 	. "github.com/medik8s/system-tests/tests/internal/medik8sinittools"
 	"github.com/medik8s/system-tests/tests/sbr-operator/internal/sbrparams"
@@ -60,4 +61,50 @@ func cleanupNHCCR(name string) {
 	if err != nil && !k8serrors.IsNotFound(err) {
 		GinkgoT().Logf("Warning: cleanup NHC %s: %v", name, err)
 	}
+}
+
+// pickTargetWorkerNode returns the first schedulable worker node that does not host an SBR controller pod.
+func pickTargetWorkerNode() string {
+	controllerNodes := controllerPodNodes()
+
+	nodeList, err := APIClient.CoreV1Interface.Nodes().List(context.TODO(), metav1.ListOptions{
+		LabelSelector: "node-role.kubernetes.io/worker",
+	})
+	Expect(err).ToNot(HaveOccurred(), "Failed to list worker nodes")
+
+	for nodeIdx := range nodeList.Items {
+		node := &nodeList.Items[nodeIdx]
+		if controllerNodes[node.Name] {
+			GinkgoWriter.Printf("Skipping node %s (SBR controller pod runs there)\n", node.Name)
+
+			continue
+		}
+
+		if isNodeSchedulable(node) {
+			return node.Name
+		}
+	}
+
+	return ""
+}
+
+// getSBRCRCondition returns the named status condition from an unstructured SBR CR, or nil.
+func getSBRCRCondition(sbrObj *unstructured.Unstructured, condType string) map[string]interface{} {
+	conditions, found, err := unstructured.NestedSlice(sbrObj.Object, "status", "conditions")
+	if err != nil || !found {
+		return nil
+	}
+
+	for _, c := range conditions {
+		cond, ok := c.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		if cond["type"] == condType {
+			return cond
+		}
+	}
+
+	return nil
 }
