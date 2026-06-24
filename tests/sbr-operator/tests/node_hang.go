@@ -245,7 +245,7 @@ var _ = Describe(
 			}
 		})
 
-		It("Node hang: kernel panic path, watchdog fires, fencing completes",
+		It("Node hang: kernel panic triggers reboot, NHC fences, node recovers",
 			reportxml.ID("88738"),
 			Label(
 				labels.OperatorSBR,
