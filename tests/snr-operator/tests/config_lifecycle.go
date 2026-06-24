@@ -87,9 +87,8 @@ var _ = Describe(
 
 						By("DeferCleanup: waiting for DS pods to be running after restore")
 
-						Eventually(func() error {
-							return verifyDSPodsRunning()
-						}, snrparams.DSPodRestartTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
+						Eventually(
+							verifyDSPodsRunning, snrparams.DSPodRestartTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
 							"SNR DaemonSet pods must be running after watchdog path restore")
 					})
 
@@ -105,9 +104,8 @@ var _ = Describe(
 
 					By("Waiting for SNR DaemonSet pods to restart with updated config")
 
-					Eventually(func() error {
-						return verifyDSPodsRunning()
-					}, snrparams.DSPodRestartTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
+					Eventually(
+						verifyDSPodsRunning, snrparams.DSPodRestartTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
 						"SNR DaemonSet pods must restart after watchdog path change")
 
 					By("Checking SNR DS pod logs for softdog auto-detection message")
@@ -172,9 +170,8 @@ var _ = Describe(
 
 						By("DeferCleanup: waiting for DS pods to be running")
 
-						Eventually(func() error {
-							return verifyDSPodsRunning()
-						}, snrparams.DSPodRestartTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
+						Eventually(
+							verifyDSPodsRunning, snrparams.DSPodRestartTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
 							"SNR DaemonSet pods must be running after SNRC recreation")
 					})
 
@@ -192,9 +189,8 @@ var _ = Describe(
 
 					By("Waiting for SNR DaemonSet pods to be deleted")
 
-					Eventually(func() error {
-						return verifyDSPodsGone()
-					}, snrparams.DSPodRestartTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
+					Eventually(
+						verifyDSPodsGone, snrparams.DSPodRestartTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
 						"SNR DaemonSet pods must be deleted after SNRC removal")
 
 					By("Creating SNR CR to verify config-not-found behavior")
@@ -264,9 +260,8 @@ var _ = Describe(
 
 					By("Waiting for SNR DaemonSet pods to come back")
 
-					Eventually(func() error {
-						return verifyDSPodsRunning()
-					}, snrparams.DSPodRestartTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
+					Eventually(
+						verifyDSPodsRunning, snrparams.DSPodRestartTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
 						"SNR DaemonSet pods must be running after SNRC recreation")
 				})
 		})
