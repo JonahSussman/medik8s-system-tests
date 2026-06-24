@@ -31,7 +31,7 @@ var (
 	// NMO does not set cnf, cni, or csi annotations (unlike SBR/SNR).
 	RequiredAnnotations = map[string]string{
 		"features.operators.openshift.io/disconnected":     "true",
-		"features.operators.openshift.io/fips-compliant":   "false",
+		"features.operators.openshift.io/fips-compliant":   "true",
 		"features.operators.openshift.io/proxy-aware":      "false",
 		"features.operators.openshift.io/tls-profiles":     "false",
 		"features.operators.openshift.io/token-auth-aws":   "false",
