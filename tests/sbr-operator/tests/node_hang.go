@@ -15,6 +15,7 @@ import (
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 	"github.com/medik8s/system-tests/tests/sbr-operator/internal/sbrparams"
 
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -329,7 +330,7 @@ var _ = Describe(
 					}
 
 					for _, cond := range node.Status.Conditions {
-						if cond.Type == "Ready" && cond.Status != "True" {
+						if cond.Type == corev1.NodeReady && cond.Status != corev1.ConditionTrue {
 							return nil
 						}
 					}
@@ -418,7 +419,7 @@ var _ = Describe(
 						condType, _, _ := unstructured.NestedString(cond, "type")
 						condStatus, _, _ := unstructured.NestedString(cond, "status")
 
-						if condType == sbrparams.FencingSucceededCondition && condStatus == "True" {
+						if condType == sbrparams.FencingSucceededCondition && condStatus == string(corev1.ConditionTrue) {
 							fencingObserved = true
 
 							return nil
