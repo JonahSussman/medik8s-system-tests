@@ -10,6 +10,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/deployment"
+	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/pod"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/reportxml"
 
 	"github.com/medik8s/system-tests/tests/internal/labels"
@@ -59,24 +60,27 @@ var _ = Describe(
 					Expect(err).ToNot(HaveOccurred(),
 						"Failed to get default SNRC %q", snrparams.SNRConfigName)
 
-					originalPath, found, fieldErr := unstructured.NestedString(
+					originalPath, originalPathFound, fieldErr := unstructured.NestedString(
 						snrc.Object, "spec", "watchdogFilePath")
 					Expect(fieldErr).ToNot(HaveOccurred(),
 						"Failed to read watchdogFilePath from SNRC")
 
-					if !found {
-						originalPath = ""
-					}
-
 					DeferCleanup(func() {
 						By("DeferCleanup: restoring original watchdog path")
 
-						pathJSON, marshalErr := json.Marshal(originalPath)
-						Expect(marshalErr).ToNot(HaveOccurred(),
-							"Failed to marshal watchdog path for restore patch")
+						var restorePatch []byte
 
-						restorePatch := []byte(
-							fmt.Sprintf(`{"spec":{"watchdogFilePath":%s}}`, pathJSON))
+						if originalPathFound {
+							pathJSON, marshalErr := json.Marshal(originalPath)
+							Expect(marshalErr).ToNot(HaveOccurred(),
+								"Failed to marshal watchdog path for restore patch")
+
+							restorePatch = []byte(
+								fmt.Sprintf(`{"spec":{"watchdogFilePath":%s}}`, pathJSON))
+						} else {
+							// Field was absent -- use null to remove it via merge patch
+							restorePatch = []byte(`{"spec":{"watchdogFilePath":null}}`)
+						}
 
 						Eventually(func() error {
 							return APIClient.Patch(context.TODO(),
@@ -92,6 +96,10 @@ var _ = Describe(
 							"SNR DaemonSet pods must be running after watchdog path restore")
 					})
 
+					By("Capturing pre-patch DS pod UIDs")
+
+					prePatchUIDs := collectDSPodUIDs()
+
 					By("Patching SNRC with invalid watchdog path /dev/foo")
 
 					invalidPatch := []byte(`{"spec":{"watchdogFilePath":"/dev/foo"}}`)
@@ -102,18 +110,19 @@ var _ = Describe(
 					Expect(err).ToNot(HaveOccurred(),
 						"Failed to patch SNRC with invalid watchdog path")
 
-					By("Waiting for SNR DaemonSet pods to restart with updated config")
+					By("Waiting for DS pods to be replaced (new UIDs)")
 
-					Eventually(
-						verifyDSPodsRunning, snrparams.DSPodRestartTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
-						"SNR DaemonSet pods must restart after watchdog path change")
+					Eventually(func() error {
+						return verifyDSPodsReplaced(prePatchUIDs)
+					}, snrparams.DSPodRestartTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
+						"SNR DaemonSet pods must be replaced after watchdog path change")
 
 					By("Checking SNR DS pod logs for softdog auto-detection message")
 
 					Eventually(func() error {
 						return findMessageInDSPodLogs(
 							snrparams.SoftdogAutoDetectMessage, snrparams.DSPodRestartTimeout)
-					}, medik8sparams.DefaultTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
+					}, snrparams.DSPodRestartTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
 						"SNR DS pod logs should contain softdog auto-detection message")
 				})
 		})
@@ -263,6 +272,36 @@ var _ = Describe(
 					Eventually(
 						verifyDSPodsRunning, snrparams.DSPodRestartTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
 						"SNR DaemonSet pods must be running after SNRC recreation")
+
+					By("Verifying SNR is functionally re-enabled (Disabled condition absent)")
+
+					verifySnrCR := buildSNRCR("SelfNodeRemediation", testNodeName, nil)
+
+					verifyCreateErr := APIClient.Create(context.TODO(), verifySnrCR)
+					if verifyCreateErr == nil {
+						deferDeleteCR(verifySnrCR)
+					}
+
+					Expect(verifyCreateErr).ToNot(HaveOccurred(),
+						"Failed to create verification SNR CR for node %q", testNodeName)
+
+					verifySNR := &unstructured.Unstructured{}
+					verifySNR.SetGroupVersionKind(snrGVK())
+
+					Eventually(func() error {
+						getErr := APIClient.Get(context.TODO(),
+							client.ObjectKey{
+								Name:      testNodeName,
+								Namespace: medik8sparams.OperatorNs,
+							},
+							verifySNR)
+						if getErr != nil {
+							return getErr
+						}
+
+						return verifyConditionAbsent(verifySNR, "Disabled")
+					}, medik8sparams.DefaultTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
+						"SNR should not have Disabled condition after SNRC recreation")
 				})
 		})
 	})
@@ -309,4 +348,78 @@ func verifyConditionByType(
 	}
 
 	return fmt.Errorf("condition with type %q not found", condType)
+}
+
+// verifyConditionAbsent checks that a condition with the given type does NOT exist.
+func verifyConditionAbsent(
+	obj *unstructured.Unstructured, condType string,
+) error {
+	conditions, found, err := unstructured.NestedSlice(
+		obj.Object, "status", "conditions")
+	if err != nil {
+		return fmt.Errorf("failed to read status.conditions: %w", err)
+	}
+
+	if !found || len(conditions) == 0 {
+		return nil // no conditions at all -- absent by definition
+	}
+
+	for _, raw := range conditions {
+		condMap, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		typeName, _, _ := unstructured.NestedString(condMap, "type")
+		if typeName == condType {
+			reason, _, _ := unstructured.NestedString(condMap, "reason")
+
+			return fmt.Errorf("condition %q should be absent but found (reason=%q)",
+				condType, reason)
+		}
+	}
+
+	return nil
+}
+
+// collectDSPodUIDs returns the UIDs of all current SNR DaemonSet pods.
+func collectDSPodUIDs() map[types.UID]bool {
+	dsListOptions := metav1.ListOptions{
+		LabelSelector: snrparams.DaemonSetPodLabelSelector,
+	}
+
+	dsPods, _ := pod.List(APIClient, medik8sparams.OperatorNs, dsListOptions)
+	uids := make(map[types.UID]bool, len(dsPods))
+
+	for _, dsPod := range dsPods {
+		uids[dsPod.Object.UID] = true
+	}
+
+	return uids
+}
+
+// verifyDSPodsReplaced checks that all DS pods are Running/Ready AND none of
+// them have UIDs from the pre-patch set (confirming rollout completed).
+func verifyDSPodsReplaced(oldUIDs map[types.UID]bool) error {
+	if err := verifyDSPodsRunning(); err != nil {
+		return err
+	}
+
+	dsListOptions := metav1.ListOptions{
+		LabelSelector: snrparams.DaemonSetPodLabelSelector,
+	}
+
+	dsPods, listErr := pod.List(APIClient, medik8sparams.OperatorNs, dsListOptions)
+	if listErr != nil {
+		return fmt.Errorf("failed to list DS pods: %w", listErr)
+	}
+
+	for _, dsPod := range dsPods {
+		if oldUIDs[dsPod.Object.UID] {
+			return fmt.Errorf("pre-patch pod %q (UID %s) still running",
+				dsPod.Object.Name, dsPod.Object.UID)
+		}
+	}
+
+	return nil
 }

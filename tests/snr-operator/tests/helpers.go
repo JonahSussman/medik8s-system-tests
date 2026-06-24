@@ -179,15 +179,23 @@ func findMessageInDSPodLogs(message string, logWindow time.Duration) error {
 		return fmt.Errorf("no SNR DaemonSet pods found")
 	}
 
+	var lastLogErr error
+
 	for _, dsPod := range dsPods {
 		logStr, logErr := dsPod.GetLog(logWindow, "")
 		if logErr != nil {
+			lastLogErr = fmt.Errorf("pod %s: %w", dsPod.Object.Name, logErr)
+
 			continue
 		}
 
 		if strings.Contains(logStr, message) {
 			return nil
 		}
+	}
+
+	if lastLogErr != nil {
+		return fmt.Errorf("message %q not found; last log error: %w", message, lastLogErr)
 	}
 
 	return fmt.Errorf("message %q not found in any SNR DS pod logs (last %s)",
