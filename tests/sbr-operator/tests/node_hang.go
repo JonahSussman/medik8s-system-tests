@@ -30,6 +30,10 @@ func buildNHCNodeHang(name string) *unstructured.Unstructured {
 	nhc.SetKind("NodeHealthCheck")
 	nhc.SetName(name)
 
+	// NOTE: this selector matches ALL worker nodes. If another worker goes NotReady
+	// concurrently during the test, NHC may trigger unintended remediation on it.
+	// Narrowing to a per-node label would require labeling the target in BeforeAll
+	// and is deferred to a follow-up.
 	_ = unstructured.SetNestedField(nhc.Object, map[string]interface{}{
 		"selector": map[string]interface{}{
 			"matchExpressions": []interface{}{
