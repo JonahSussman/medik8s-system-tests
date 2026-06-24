@@ -2,6 +2,7 @@ package tests
 
 import (
 	"fmt"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -58,6 +59,24 @@ func filterRunningPods(pods []*pod.Builder) []*pod.Builder {
 	}
 
 	return running
+}
+
+func filterPodsByDeployment(pods []*pod.Builder, deploymentName string) []*pod.Builder {
+	prefix := deploymentName + "-"
+
+	var owned []*pod.Builder
+
+	for _, p := range pods {
+		for _, ref := range p.Object.OwnerReferences {
+			if ref.Kind == "ReplicaSet" && strings.HasPrefix(ref.Name, prefix) {
+				owned = append(owned, p)
+
+				break
+			}
+		}
+	}
+
+	return owned
 }
 
 func fetchActiveCSV() *olm.ClusterServiceVersionBuilder {
@@ -129,10 +148,12 @@ var _ = Describe(
 				By("Verifying pod count matches expected replicas")
 
 				Eventually(func() error {
-					mdrPods, listErr := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
+					allPods, listErr := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
 					if listErr != nil {
 						return listErr
 					}
+
+					mdrPods := filterPodsByDeployment(allPods, mdrparams.OperatorDeploymentName)
 
 					for _, mdrPod := range mdrPods {
 						if mdrPod.Object.DeletionTimestamp != nil {
@@ -158,7 +179,7 @@ var _ = Describe(
 			})
 
 		It("Verify MDR CSV has required annotations",
-			reportxml.ID("65768"),
+			reportxml.ID("70221"),
 			Label(
 				labels.DisruptionNonDestructive,
 				labels.TierSmoke,
@@ -203,7 +224,7 @@ var _ = Describe(
 			})
 
 		It("Verify MDR controller manager has correct number of replicas",
-			reportxml.ID("65769"),
+			reportxml.ID("89624"),
 			Label(
 				labels.DisruptionNonDestructive,
 				labels.TierSmoke,
@@ -244,12 +265,13 @@ var _ = Describe(
 							mdrparams.ExpectedReplicas, liveDeploy.Object.Status.ReadyReplicas)
 					}
 
-					mdrPods, listErr := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
+					allPods, listErr := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
 					if listErr != nil {
 						return listErr
 					}
 
-					runningPods := filterRunningPods(mdrPods)
+					runningPods := filterRunningPods(
+						filterPodsByDeployment(allPods, mdrparams.OperatorDeploymentName))
 
 					if len(runningPods) != int(mdrparams.ExpectedReplicas) {
 						return fmt.Errorf("expected %d running MDR pod(s) for HA check, found %d",
@@ -279,7 +301,7 @@ var _ = Describe(
 			})
 
 		It("Verify MDR container runs as non-root user",
-			reportxml.ID("65770"),
+			reportxml.ID("89625"),
 			Label(
 				labels.DisruptionNonDestructive,
 				labels.TierSmoke,
@@ -294,12 +316,13 @@ var _ = Describe(
 				var runningPods []*pod.Builder
 
 				Eventually(func() error {
-					mdrPods, listErr := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
+					allPods, listErr := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
 					if listErr != nil {
 						return listErr
 					}
 
-					running := filterRunningPods(mdrPods)
+					running := filterRunningPods(
+						filterPodsByDeployment(allPods, mdrparams.OperatorDeploymentName))
 					if len(running) == 0 {
 						return fmt.Errorf("no running MDR controller pods found")
 					}
@@ -363,6 +386,13 @@ var _ = Describe(
 									container.Name, mdrPod.Object.Name))
 						}
 
+						if securityContext.ReadOnlyRootFilesystem == nil || !*securityContext.ReadOnlyRootFilesystem {
+							errorMessages = append(errorMessages,
+								fmt.Sprintf(
+									"Container %s in pod %s: ReadOnlyRootFilesystem must be explicitly true",
+									container.Name, mdrPod.Object.Name))
+						}
+
 						if securityContext.Capabilities == nil {
 							errorMessages = append(errorMessages,
 								fmt.Sprintf(
@@ -384,6 +414,24 @@ var _ = Describe(
 									fmt.Sprintf("Container %s in pod %s does not drop ALL capabilities",
 										container.Name, mdrPod.Object.Name))
 							}
+						}
+
+						seccompOk := false
+						if securityContext.SeccompProfile != nil &&
+							securityContext.SeccompProfile.Type == corev1.SeccompProfileTypeRuntimeDefault {
+							seccompOk = true
+						} else if mdrPod.Object.Spec.SecurityContext != nil &&
+							mdrPod.Object.Spec.SecurityContext.SeccompProfile != nil &&
+							mdrPod.Object.Spec.SecurityContext.SeccompProfile.Type ==
+								corev1.SeccompProfileTypeRuntimeDefault {
+							seccompOk = true
+						}
+
+						if !seccompOk {
+							errorMessages = append(errorMessages,
+								fmt.Sprintf(
+									"Container %s in pod %s missing RuntimeDefault seccomp profile",
+									container.Name, mdrPod.Object.Name))
 						}
 					}
 
