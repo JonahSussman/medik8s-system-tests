@@ -5,11 +5,9 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	configv1 "github.com/openshift/api/config/v1"
 	oplmV1alpha1 "github.com/rh-ecosystem-edge/eco-goinfra/pkg/schemes/olm/operators/v1alpha1"
 
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/deployment"
-	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/infrastructure"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/olm"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/pod"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/reportxml"
@@ -39,6 +37,10 @@ func filterRunningPods(pods []*pod.Builder) []*pod.Builder {
 
 	for _, nmoPod := range pods {
 		if nmoPod.Object.Status.Phase != corev1.PodRunning || nmoPod.Object.DeletionTimestamp != nil {
+			continue
+		}
+
+		if len(nmoPod.Object.Status.ContainerStatuses) != len(nmoPod.Object.Spec.Containers) {
 			continue
 		}
 
@@ -91,8 +93,6 @@ var _ = Describe(
 	Ordered,
 	ContinueOnFailure,
 	Label(nmoparams.Label), func() {
-		var controlPlaneTopology configv1.TopologyMode
-
 		BeforeAll(func() {
 			By("Get NMO deployment object and verify it is Ready")
 
@@ -101,19 +101,12 @@ var _ = Describe(
 			Expect(err).ToNot(HaveOccurred(), "Failed to get NMO deployment")
 			Expect(nmoDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(),
 				"NMO deployment is not Ready")
-
-			By("Pull cluster topology for consistency with other operator suites")
-
-			infraConfig, infraErr := infrastructure.Pull(APIClient)
-			Expect(infraErr).ToNot(HaveOccurred(), "Failed to pull infrastructure configuration")
-
-			controlPlaneTopology = infraConfig.Object.Status.ControlPlaneTopology
-			_ = controlPlaneTopology
 		})
 
 		It("Verify Node Maintenance Operator pod is running",
 			reportxml.ID("46315"),
 			Label(
+				labels.OperatorNMO,
 				labels.DisruptionNonDestructive,
 				labels.TierSmoke,
 				labels.PlatformAny,
@@ -154,8 +147,9 @@ var _ = Describe(
 			})
 
 		It("Verify NMO CSV has required annotations",
-			// TODO(RHWA-1146): assign Polarion ID when test case is created
+			reportxml.ID("89626"),
 			Label(
+				labels.OperatorNMO,
 				labels.DisruptionNonDestructive,
 				labels.TierSmoke,
 				labels.PlatformAny,
@@ -199,8 +193,9 @@ var _ = Describe(
 			})
 
 		It("Verify NMO controller manager has correct number of replicas",
-			// TODO(RHWA-1146): assign Polarion ID when test case is created
+			reportxml.ID("89627"),
 			Label(
+				labels.OperatorNMO,
 				labels.DisruptionNonDestructive,
 				labels.TierSmoke,
 				labels.PlatformAny,
@@ -239,8 +234,9 @@ var _ = Describe(
 			})
 
 		It("Verify NMO container runs as non-root user",
-			// TODO(RHWA-1146): assign Polarion ID when test case is created
+			reportxml.ID("89628"),
 			Label(
+				labels.OperatorNMO,
 				labels.DisruptionNonDestructive,
 				labels.TierSmoke,
 				labels.PlatformAny,
