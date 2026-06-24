@@ -25,16 +25,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-// getNodeBootID returns the boot ID for the named node, or empty string on error.
-func getNodeBootID(nodeName string) string {
-	node, err := APIClient.CoreV1Interface.Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
-	if err != nil {
-		return ""
-	}
-
-	return node.Status.NodeInfo.BootID
-}
-
 // buildSplitBrainNHC returns an unstructured NodeHealthCheck CR for the split-brain test.
 func buildSplitBrainNHC() *unstructured.Unstructured {
 	return &unstructured.Unstructured{
@@ -376,15 +366,15 @@ var _ = Describe(
 				By(fmt.Sprintf("Recording boot IDs before injection (target=%q, healthy=%v)",
 					targetNodeName, healthyNodes))
 
-				targetBootID := getNodeBootID(targetNodeName)
-				Expect(targetBootID).ToNot(BeEmpty(),
+				targetBootID, targetBootIDErr := getNodeBootID(targetNodeName)
+				Expect(targetBootIDErr).ToNot(HaveOccurred(),
 					"Could not retrieve boot ID for target node %q", targetNodeName)
 
 				healthyBootIDs := make(map[string]string, len(healthyNodes))
 
 				for _, nodeName := range healthyNodes {
-					bid := getNodeBootID(nodeName)
-					Expect(bid).ToNot(BeEmpty(),
+					bid, bidErr := getNodeBootID(nodeName)
+					Expect(bidErr).ToNot(HaveOccurred(),
 						"Could not retrieve boot ID for healthy node %q", nodeName)
 
 					healthyBootIDs[nodeName] = bid
@@ -541,8 +531,8 @@ var _ = Describe(
 
 				By("Verifying target node boot ID changed (confirms an actual reboot occurred)")
 
-				newTargetBootID := getNodeBootID(targetNodeName)
-				Expect(newTargetBootID).ToNot(BeEmpty(),
+				newTargetBootID, newBootIDErr := getNodeBootID(targetNodeName)
+				Expect(newBootIDErr).ToNot(HaveOccurred(),
 					"Could not retrieve boot ID for target node %q after reboot", targetNodeName)
 				Expect(newTargetBootID).ToNot(Equal(targetBootID),
 					"Target node %q boot ID must change after SBR-triggered reboot "+
