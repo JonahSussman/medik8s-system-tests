@@ -252,8 +252,8 @@ var _ = Describe(
 					return '-'
 				}, strings.ToLower(targetNodeName))
 
-			if len(injectorPodName) > 253 {
-				injectorPodName = injectorPodName[:253]
+			if len(injectorPodName) > 63 {
+				injectorPodName = injectorPodName[:63]
 			}
 
 			injectorPodName = strings.TrimRight(injectorPodName, "-")
@@ -265,21 +265,29 @@ var _ = Describe(
 			By("AfterAll: deleting StorageBasedRemediationConfig")
 
 			if testSBRC != nil {
-				deleteErr := APIClient.Delete(context.TODO(), testSBRC)
-				if deleteErr != nil && !k8serrors.IsNotFound(deleteErr) {
-					GinkgoT().Logf("Warning: cleanup delete StorageBasedRemediationConfig %s: %v",
-						sbrparams.SBRCStorageLossWriteName, deleteErr)
-				}
+				Eventually(func() error {
+					deleteErr := APIClient.Delete(context.TODO(), testSBRC)
+					if deleteErr == nil || k8serrors.IsNotFound(deleteErr) {
+						return nil
+					}
+
+					return deleteErr
+				}, medik8sparams.DefaultTimeout, sbrparams.DefaultPollInterval).Should(Succeed(),
+					"Failed to delete StorageBasedRemediationConfig %s", sbrparams.SBRCStorageLossWriteName)
 			}
 
 			By("AfterAll: removing NodeHealthCheck CR if created by this test")
 
 			if nhcCreatedByUs && nhcCR != nil {
-				deleteErr := APIClient.Delete(context.TODO(), nhcCR)
-				if deleteErr != nil && !k8serrors.IsNotFound(deleteErr) {
-					GinkgoT().Logf("Warning: cleanup delete NodeHealthCheck %s: %v",
-						sbrparams.NHCWriteLossTestName, deleteErr)
-				}
+				Eventually(func() error {
+					deleteErr := APIClient.Delete(context.TODO(), nhcCR)
+					if deleteErr == nil || k8serrors.IsNotFound(deleteErr) {
+						return nil
+					}
+
+					return deleteErr
+				}, medik8sparams.DefaultTimeout, sbrparams.DefaultPollInterval).Should(Succeed(),
+					"Failed to delete NodeHealthCheck %s", sbrparams.NHCWriteLossTestName)
 			}
 
 			By("AfterAll: force-removing any leftover StorageBasedRemediation CR")
