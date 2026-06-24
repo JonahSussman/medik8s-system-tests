@@ -20,4 +20,7 @@ const (
 
 	// CSVNamePattern is the CSV name pattern used to find the NHC ClusterServiceVersion.
 	CSVNamePattern = "node-healthcheck-operator"
+
+	// ManagerContainerName is the name of the main controller container in the NHC pod.
+	ManagerContainerName = "manager"
 )

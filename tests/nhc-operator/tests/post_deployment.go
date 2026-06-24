@@ -20,6 +20,7 @@ import (
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 	"github.com/medik8s/system-tests/tests/nhc-operator/internal/nhcparams"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -216,4 +217,176 @@ var _ = Describe(
 				}, medik8sparams.DefaultTimeout, nhcparams.DefaultPollInterval).Should(Succeed(),
 					"NHC controller replicas not matching expected count")
 			})
+
+		It("Verify NHC container runs as non-root user",
+			reportxml.ID("89553"),
+			Label(labels.OperatorNHC, labels.TierSmoke, labels.DisruptionNonDestructive,
+				labels.PlatformAny, labels.FrequencyPresubmit,
+				labels.ComponentController), func() {
+				By("Waiting for NHC controller pods to be running")
+
+				listOptions := metav1.ListOptions{
+					LabelSelector: nhcparams.OperatorControllerPodLabelSelector,
+				}
+
+				_, err := pod.WaitForAllPodsInNamespaceRunning(
+					APIClient,
+					medik8sparams.OperatorNs,
+					medik8sparams.DefaultTimeout,
+					listOptions,
+				)
+				Expect(err).ToNot(HaveOccurred(), "NHC controller pods are not ready")
+
+				By("Listing NHC controller pods")
+
+				nhcPods, err := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
+				Expect(err).ToNot(HaveOccurred(), "Failed to list NHC controller pods")
+
+				runningPods := filterRunningPods(nhcPods)
+				Expect(runningPods).ToNot(BeEmpty(), "No running NHC controller pods found")
+
+				var errorMessages []string
+
+				for _, nhcPod := range runningPods {
+					By(fmt.Sprintf("Verifying security context for pod %s", nhcPod.Object.Name))
+
+					By("Checking pod-level runAsNonRoot security context")
+
+					if nhcPod.Object.Spec.SecurityContext == nil {
+						errorMessages = append(errorMessages,
+							fmt.Sprintf("Pod %s has nil SecurityContext", nhcPod.Object.Name))
+					} else if nhcPod.Object.Spec.SecurityContext.RunAsNonRoot == nil {
+						errorMessages = append(errorMessages,
+							fmt.Sprintf("Pod %s has nil runAsNonRoot", nhcPod.Object.Name))
+					} else if !*nhcPod.Object.Spec.SecurityContext.RunAsNonRoot {
+						errorMessages = append(errorMessages,
+							fmt.Sprintf("Incorrect runAsNonRoot for pod %s. Expected true, found: %v",
+								nhcPod.Object.Name,
+								*nhcPod.Object.Spec.SecurityContext.RunAsNonRoot))
+					}
+
+					By("Checking manager container security context")
+
+					managerFound := false
+
+					for _, container := range nhcPod.Object.Spec.Containers {
+						if container.Name != nhcparams.ManagerContainerName {
+							continue
+						}
+
+						managerFound = true
+						securityContext := container.SecurityContext
+
+						if securityContext == nil {
+							errorMessages = append(errorMessages,
+								fmt.Sprintf("Container %s in pod %s has nil SecurityContext",
+									container.Name, nhcPod.Object.Name))
+
+							continue
+						}
+
+						if securityContext.RunAsUser != nil && *securityContext.RunAsUser == 0 {
+							errorMessages = append(errorMessages,
+								fmt.Sprintf("Container %s in pod %s runs as root (UID 0)",
+									container.Name, nhcPod.Object.Name))
+						}
+
+						if securityContext.AllowPrivilegeEscalation == nil || *securityContext.AllowPrivilegeEscalation {
+							errorMessages = append(errorMessages,
+								fmt.Sprintf(
+									"Container %s in pod %s: AllowPrivilegeEscalation must be explicitly false",
+									container.Name, nhcPod.Object.Name))
+						}
+
+						if securityContext.Capabilities == nil {
+							errorMessages = append(errorMessages,
+								fmt.Sprintf(
+									"Container %s in pod %s: Capabilities block is nil, must drop ALL",
+									container.Name, nhcPod.Object.Name))
+						} else {
+							hasDropAll := false
+
+							for _, cap := range securityContext.Capabilities.Drop {
+								if cap == "ALL" {
+									hasDropAll = true
+
+									break
+								}
+							}
+
+							if !hasDropAll {
+								errorMessages = append(errorMessages,
+									fmt.Sprintf("Container %s in pod %s does not drop ALL capabilities",
+										container.Name, nhcPod.Object.Name))
+							}
+						}
+
+						if securityContext.ReadOnlyRootFilesystem == nil || !*securityContext.ReadOnlyRootFilesystem {
+							errorMessages = append(errorMessages,
+								fmt.Sprintf(
+									"Container %s in pod %s: ReadOnlyRootFilesystem must be explicitly true",
+									container.Name, nhcPod.Object.Name))
+						}
+
+						seccompOk := false
+						if securityContext.SeccompProfile != nil &&
+							securityContext.SeccompProfile.Type == corev1.SeccompProfileTypeRuntimeDefault {
+							seccompOk = true
+						} else if nhcPod.Object.Spec.SecurityContext != nil &&
+							nhcPod.Object.Spec.SecurityContext.SeccompProfile != nil &&
+							nhcPod.Object.Spec.SecurityContext.SeccompProfile.Type ==
+								corev1.SeccompProfileTypeRuntimeDefault {
+							seccompOk = true
+						}
+
+						if !seccompOk {
+							errorMessages = append(errorMessages,
+								fmt.Sprintf(
+									"Container %s in pod %s missing RuntimeDefault seccomp profile",
+									container.Name, nhcPod.Object.Name))
+						}
+					}
+
+					if !managerFound {
+						errorMessages = append(errorMessages,
+							fmt.Sprintf("Pod %s has no container named %q",
+								nhcPod.Object.Name, nhcparams.ManagerContainerName))
+					}
+				}
+
+				if len(errorMessages) > 0 {
+					errMsg := "Testing security context of NHC container failed due to:\n"
+					for _, msg := range errorMessages {
+						errMsg += fmt.Sprintf("- %s\n", msg)
+					}
+
+					Fail(errMsg)
+				}
+			})
 	})
+
+func filterRunningPods(pods []*pod.Builder) []*pod.Builder {
+	var running []*pod.Builder
+
+	for _, candidate := range pods {
+		if candidate.Object.Status.Phase != corev1.PodRunning || candidate.Object.DeletionTimestamp != nil {
+			continue
+		}
+
+		allReady := true
+
+		for _, cs := range candidate.Object.Status.ContainerStatuses {
+			if !cs.Ready {
+				allReady = false
+
+				break
+			}
+		}
+
+		if allReady {
+			running = append(running, candidate)
+		}
+	}
+
+	return running
+}
