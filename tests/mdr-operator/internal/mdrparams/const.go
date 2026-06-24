@@ -10,7 +10,8 @@ const (
 	Label = "mdr"
 
 	// ExpectedReplicas defines the expected number of replicas for MDR controller manager.
-	ExpectedReplicas = int32(2)
+	// MDR runs a single replica (unlike FAR which runs 2 for HA).
+	ExpectedReplicas = int32(1)
 
 	// ManagerContainerName is the name of the main controller container in the MDR pod.
 	ManagerContainerName = "manager"
