@@ -2,6 +2,7 @@ package tests
 
 import (
 	"fmt"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -62,6 +63,24 @@ func filterRunningPods(pods []*pod.Builder) []*pod.Builder {
 	return running
 }
 
+func filterPodsByDeployment(pods []*pod.Builder, deploymentName string) []*pod.Builder {
+	prefix := deploymentName + "-"
+
+	var owned []*pod.Builder
+
+	for _, p := range pods {
+		for _, ref := range p.Object.OwnerReferences {
+			if ref.Kind == "ReplicaSet" && strings.HasPrefix(ref.Name, prefix) {
+				owned = append(owned, p)
+
+				break
+			}
+		}
+	}
+
+	return owned
+}
+
 func fetchActiveCSV() *olm.ClusterServiceVersionBuilder {
 	var nmoCSV *olm.ClusterServiceVersionBuilder
 
@@ -118,10 +137,12 @@ var _ = Describe(
 				By("Verifying pod count matches expected replicas")
 
 				Eventually(func() error {
-					nmoPods, listErr := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
+					allPods, listErr := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
 					if listErr != nil {
 						return listErr
 					}
+
+					nmoPods := filterPodsByDeployment(allPods, nmoparams.OperatorDeploymentName)
 
 					for _, nmoPod := range nmoPods {
 						if nmoPod.Object.DeletionTimestamp != nil {
@@ -250,12 +271,13 @@ var _ = Describe(
 				var runningPods []*pod.Builder
 
 				Eventually(func() error {
-					nmoPods, listErr := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
+					allPods, listErr := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
 					if listErr != nil {
 						return listErr
 					}
 
-					running := filterRunningPods(nmoPods)
+					running := filterRunningPods(
+						filterPodsByDeployment(allPods, nmoparams.OperatorDeploymentName))
 					if len(running) == 0 {
 						return fmt.Errorf("no running NMO controller pods found")
 					}
