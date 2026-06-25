@@ -132,6 +132,7 @@ var _ = Describe(
 		It("Verify Machine Deletion Remediation Operator pod is running",
 			reportxml.ID("65767"),
 			Label(
+				labels.OperatorMDR,
 				labels.DisruptionNonDestructive,
 				labels.TierSmoke,
 				labels.PlatformAny,
@@ -181,6 +182,7 @@ var _ = Describe(
 		It("Verify MDR CSV has required annotations",
 			reportxml.ID("70221"),
 			Label(
+				labels.OperatorMDR,
 				labels.DisruptionNonDestructive,
 				labels.TierSmoke,
 				labels.PlatformAny,
@@ -226,6 +228,7 @@ var _ = Describe(
 		It("Verify MDR controller manager has correct number of replicas",
 			reportxml.ID("89624"),
 			Label(
+				labels.OperatorMDR,
 				labels.DisruptionNonDestructive,
 				labels.TierSmoke,
 				labels.PlatformAny,
@@ -303,6 +306,7 @@ var _ = Describe(
 		It("Verify MDR container runs as non-root user",
 			reportxml.ID("89625"),
 			Label(
+				labels.OperatorMDR,
 				labels.DisruptionNonDestructive,
 				labels.TierSmoke,
 				labels.PlatformAny,
