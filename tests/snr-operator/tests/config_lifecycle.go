@@ -388,7 +388,9 @@ func collectDSPodUIDs() map[types.UID]bool {
 		LabelSelector: snrparams.DaemonSetPodLabelSelector,
 	}
 
-	dsPods, _ := pod.List(APIClient, medik8sparams.OperatorNs, dsListOptions)
+	dsPods, listErr := pod.List(APIClient, medik8sparams.OperatorNs, dsListOptions)
+	Expect(listErr).ToNot(HaveOccurred(), "Failed to list DS pods for UID snapshot")
+
 	uids := make(map[types.UID]bool, len(dsPods))
 
 	for _, dsPod := range dsPods {
