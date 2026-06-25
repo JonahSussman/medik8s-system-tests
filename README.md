@@ -15,6 +15,25 @@ The test framework is designed to test a pre-installed OCP cluster which meets t
 
 ### Mandatory setup requirements:
 * OCP cluster installed with version >=4.13
+* Operator namespace with Pod Security Admission (PSA) labels (manual installs only):
+
+  All medik8s operators deploy into `openshift-workload-availability` and require privileged pod security
+  because remediation operators run pods with host access and elevated capabilities. If you install
+  operators manually (not via Prow CI), create the namespace and apply PSA labels before creating
+  subscriptions:
+
+  ```bash
+  kubectl create namespace openshift-workload-availability
+  kubectl label --overwrite ns openshift-workload-availability \
+    security.openshift.io/scc.podSecurityLabelSync=false \
+    pod-security.kubernetes.io/enforce=privileged \
+    pod-security.kubernetes.io/audit=privileged \
+    pod-security.kubernetes.io/warn=privileged
+  ```
+
+  > **Note:** In Prow CI, the `medik8s-operator-subscribe` step applies these labels automatically.
+  > The `enforce=privileged` label is required (validated by FAR tests); the remaining labels
+  > prevent SCC/PSA conflicts and match Prow CI behavior.
 
 ### Supported setups:
 * Regular cluster 3 master nodes (VMs or BMs) 2 workers (VMs or BMs)
