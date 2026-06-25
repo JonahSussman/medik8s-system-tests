@@ -226,7 +226,7 @@ var _ = Describe(
 					node, nodeErr := APIClient.CoreV1Interface.Nodes().Get(
 						context.TODO(), targetNodeName, metav1.GetOptions{})
 					if nodeErr != nil {
-						GinkgoT().Logf("DeferCleanup: could not get node %s: %v", targetNodeName, nodeErr)
+						GinkgoWriter.Printf("DeferCleanup: could not get node %s: %v\n", targetNodeName, nodeErr)
 
 						return
 					}
@@ -243,7 +243,7 @@ var _ = Describe(
 					if _, patchErr := APIClient.CoreV1Interface.Nodes().Patch(
 						context.TODO(), targetNodeName, types.MergePatchType, patch, metav1.PatchOptions{},
 					); patchErr != nil {
-						GinkgoT().Logf("DeferCleanup: failed to uncordon node %s: %v", targetNodeName, patchErr)
+						GinkgoWriter.Printf("DeferCleanup: failed to uncordon node %s: %v\n", targetNodeName, patchErr)
 					}
 
 					// Single re-check — do not loop. If the operator re-cordons after our patch, that is
@@ -252,9 +252,9 @@ var _ = Describe(
 					if recheckNode, recheckErr := APIClient.CoreV1Interface.Nodes().Get(
 						context.TODO(), targetNodeName, metav1.GetOptions{}); recheckErr == nil &&
 						recheckNode.Spec.Unschedulable {
-						GinkgoT().Logf(
+						GinkgoWriter.Printf(
 							"DeferCleanup: node %s still cordoned 5s after patch — operator may be re-cordoning; "+
-								"leaving for next test to handle", targetNodeName)
+								"leaving for next test to handle\n", targetNodeName)
 					}
 				})
 
