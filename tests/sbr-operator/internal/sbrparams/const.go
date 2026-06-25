@@ -183,6 +183,17 @@ const (
 
 	// TransientInjectorPodName is the name prefix for the injector pod in the transient storage test.
 	TransientInjectorPodName = "sbr-transient-injector"
+	// SBRCLifecycleTestNameA is the first SBRC name for the lifecycle test (OCP-88734).
+	SBRCLifecycleTestNameA = "test-sbrc-lifecycle-a"
+
+	// SBRCLifecycleTestNameB is the second SBRC name for the lifecycle test (OCP-88734).
+	SBRCLifecycleTestNameB = "test-sbrc-lifecycle-b"
+
+	// SBRCLifecyclePatchedTimeout is how long to wait for a patched SBRC DaemonSet to roll out.
+	SBRCLifecyclePatchedTimeout = 3 * time.Minute
+
+	// SBRCDaemonSetGCTimeout is how long to wait for a DaemonSet to be GC'd after SBRC deletion.
+	SBRCDaemonSetGCTimeout = 5 * time.Minute
 )
 
 // SBRStorageClass is the StorageClass name to use when creating SBRCs that require shared storage.
