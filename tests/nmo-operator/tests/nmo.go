@@ -341,6 +341,13 @@ var _ = Describe(
 									container.Name, nmoPod.Object.Name))
 						}
 
+						if securityContext.ReadOnlyRootFilesystem == nil || !*securityContext.ReadOnlyRootFilesystem {
+							errorMessages = append(errorMessages,
+								fmt.Sprintf(
+									"Container %s in pod %s: ReadOnlyRootFilesystem must be explicitly true",
+									container.Name, nmoPod.Object.Name))
+						}
+
 						if securityContext.Capabilities == nil {
 							errorMessages = append(errorMessages,
 								fmt.Sprintf(

@@ -63,10 +63,11 @@ cluster topologies (MNO and SNO).
 
 Validates that the NMO manager container enforces a restricted
 security context: runAsNonRoot, no privilege escalation,
-all capabilities dropped, and RuntimeDefault seccomp profile.
+read-only root filesystem, all capabilities dropped, and
+RuntimeDefault seccomp profile.
 
 - **Operators**: NMO v0.17.0+
 - **Cluster**: Any topology
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="nmo" --focus="runs as non-root" ./tests/nmo-operator/...`
-- **Pass criteria**: Pod runAsNonRoot=true, manager container allowPrivilegeEscalation=false, capabilities.drop=[ALL], seccomp profile RuntimeDefault
+- **Pass criteria**: Pod runAsNonRoot=true; expected manager container exists; manager container runAsUser != 0; allowPrivilegeEscalation=false; readOnlyRootFilesystem=true; capabilities.drop=[ALL]; seccomp profile RuntimeDefault
