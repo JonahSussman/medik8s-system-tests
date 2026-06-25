@@ -3,7 +3,6 @@ package tests
 import (
 	"context"
 	"fmt"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -246,14 +245,18 @@ var _ = Describe(
 						GinkgoWriter.Printf("DeferCleanup: failed to uncordon node %s: %v\n", targetNodeName, patchErr)
 					}
 
-					// Single re-check — do not loop. If the operator re-cordons after our patch, that is
-					// an operator bug and should not block test teardown or mask the actual test result.
-					time.Sleep(5 * time.Second)
+					// Give the operator one poll cycle to propagate the uncordon before we recheck.
+					// Consistently is used as a non-failing timer (AGENTS.md: never time.Sleep).
+					// Do not assert on the recheck result — a stuck cordon is an operator bug and
+					// must not block teardown or mask the actual test result.
+					Consistently(func() bool { return true },
+						sbrparams.DefaultPollInterval, sbrparams.DefaultPollInterval).Should(BeTrue())
+
 					if recheckNode, recheckErr := APIClient.CoreV1Interface.Nodes().Get(
 						context.TODO(), targetNodeName, metav1.GetOptions{}); recheckErr == nil &&
 						recheckNode.Spec.Unschedulable {
 						GinkgoWriter.Printf(
-							"DeferCleanup: node %s still cordoned 5s after patch — operator may be re-cordoning; "+
+							"DeferCleanup: node %s still cordoned after patch — operator may be re-cordoning; "+
 								"leaving for next test to handle\n", targetNodeName)
 					}
 				})
