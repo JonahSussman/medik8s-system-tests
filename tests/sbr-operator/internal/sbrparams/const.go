@@ -208,7 +208,27 @@ const (
 
 	// NHCInjectorPodName is the name prefix for the privileged injector pod in the NHC integration test.
 	NHCInjectorPodName = "sbr-nhc-injector"
+
+	// SBRCMetricsTestName is the SBRC name used exclusively by the metrics test suite (OCP-89202).
+	SBRCMetricsTestName = "test-sbrc-metrics"
+
+	// AgentPodLabelSelector selects SBR agent pods deployed by any SBRC.
+	AgentPodLabelSelector = "app=sbr-agent"
+
+	// AgentMetricsPort is the port on which SBR agent pods expose custom Prometheus metrics.
+	// Port 8080 is controller-runtime's built-in metrics; port 8082 is the SBR agent's own metrics.
+	AgentMetricsPort = "8082"
 )
+
+// AgentExpectedMetricNames lists the Prometheus metric names that must be present in the agent output.
+// These are SBR operator contract and are used by the metrics test suite (OCP-89202).
+var AgentExpectedMetricNames = []string{
+	"sbr_agent_status_healthy",
+	"sbr_device_io_errors_total",
+	"sbr_watchdog_pets_total",
+	"sbr_peer_status",
+	"sbr_self_fenced_total",
+}
 
 // SBRStorageClass is the StorageClass name to use when creating SBRCs that require shared storage.
 // Set SBR_STORAGE_CLASS env var to override auto-discovery (useful in air-gapped or non-ODF environments).

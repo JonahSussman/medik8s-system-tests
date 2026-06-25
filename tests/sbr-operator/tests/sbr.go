@@ -182,6 +182,10 @@ func filterRunningPods(pods []*pod.Builder) []*pod.Builder {
 			continue
 		}
 
+		if len(sbrPod.Object.Status.ContainerStatuses) == 0 {
+			continue
+		}
+
 		allReady := true
 
 		for _, cs := range sbrPod.Object.Status.ContainerStatuses {
