@@ -155,6 +155,9 @@ const (
 	// InjectorPodName is the name prefix for privileged host-namespace pods used in SBR disruptive tests.
 	InjectorPodName = "sbr-storage-injector"
 
+	// FencingInProgressCondition is the condition type set on a StorageBasedRemediation CR during fencing.
+	FencingInProgressCondition = "FencingInProgress"
+
 	// FencingSucceededCondition is the condition type set on a StorageBasedRemediation CR after fencing.
 	FencingSucceededCondition = "FencingSucceeded"
 
@@ -178,11 +181,13 @@ const (
 
 	// StorageLossWriteInjectorPodName is the injector pod name prefix for the write-only test.
 	StorageLossWriteInjectorPodName = "sbr-write-injector"
+
 	// SBRCTransientTestName is the SBRC name for the transient storage failure self-healing test.
 	SBRCTransientTestName = "test-sbrc-transient"
 
 	// TransientInjectorPodName is the name prefix for the injector pod in the transient storage test.
 	TransientInjectorPodName = "sbr-transient-injector"
+
 	// SBRCLifecycleTestNameA is the first SBRC name for the lifecycle test (OCP-88734).
 	SBRCLifecycleTestNameA = "test-sbrc-lifecycle-a"
 
@@ -194,6 +199,15 @@ const (
 
 	// SBRCDaemonSetGCTimeout is how long to wait for a DaemonSet to be GC'd after SBRC deletion.
 	SBRCDaemonSetGCTimeout = 5 * time.Minute
+
+	// SBRCNHCTestName is the SBRC name for the NHC integration test (OCP-88879).
+	SBRCNHCTestName = "test-sbrc-nhc-integration"
+
+	// NHCTestName is the NodeHealthCheck CR name for the NHC integration test (OCP-88879).
+	NHCTestName = "nhc-sbr-integration"
+
+	// NHCInjectorPodName is the name prefix for the privileged injector pod in the NHC integration test.
+	NHCInjectorPodName = "sbr-nhc-injector"
 )
 
 // SBRStorageClass is the StorageClass name to use when creating SBRCs that require shared storage.
