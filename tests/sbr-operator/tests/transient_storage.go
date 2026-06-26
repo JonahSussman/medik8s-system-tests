@@ -99,53 +99,6 @@ func transientSBRCRCount() (int, error) {
 	return len(sbrList.Items), nil
 }
 
-// transientInjectCephFSBlock inserts iptables OUTPUT REJECT rules to cut CephFS write traffic.
-// Blocking OUTPUT only is sufficient: the agent cannot write heartbeats, peers detect a stale
-// heartbeat and set SBRStorageUnhealthy=True. Uses nsenter --target 1 --net to enter the host
-// network namespace and the container's iptables binary — the same approach used in the
-// write-only storage loss test (OCP-89200), validated on RHCOS 4.22.
-//
-// Calls Skip when iptables returns a non-zero exit code so that CI runs on nodes where the
-// OUTPUT chain is not writable do not hard-fail.
-func transientInjectCephFSBlock(injectorPod *pod.Builder, nodeName string) {
-	By(fmt.Sprintf("Injecting CephFS iptables OUTPUT REJECT rules on node %s", nodeName))
-
-	rejectRules := [][]string{
-		{"nsenter", "--target", "1", "--net", "iptables", "-I", "OUTPUT",
-			"-p", "tcp", "--dport", "3300", "-j", "REJECT"},
-		{"nsenter", "--target", "1", "--net", "iptables", "-I", "OUTPUT",
-			"-p", "tcp", "--dport", "6789", "-j", "REJECT"},
-		{"nsenter", "--target", "1", "--net", "iptables", "-I", "OUTPUT",
-			"-p", "tcp", "--match", "multiport", "--dports", "6800:7300", "-j", "REJECT"},
-	}
-
-	for _, rule := range rejectRules {
-		if _, execErr := injectorPod.ExecCommand(rule); execErr != nil {
-			Skip(fmt.Sprintf("iptables OUTPUT injection not available on node %s (exit code 1): %v; "+
-				"skipping transient storage test", nodeName, execErr))
-		}
-	}
-}
-
-// transientRemoveCephFSBlock deletes the iptables OUTPUT rules added by transientInjectCephFSBlock.
-// Failures are logged as warnings; cleanup must be best-effort so the node is not left blocked.
-func transientRemoveCephFSBlock(injectorPod *pod.Builder) {
-	cleanupRules := [][]string{
-		{"nsenter", "--target", "1", "--net", "iptables", "-D", "OUTPUT",
-			"-p", "tcp", "--dport", "3300", "-j", "REJECT"},
-		{"nsenter", "--target", "1", "--net", "iptables", "-D", "OUTPUT",
-			"-p", "tcp", "--dport", "6789", "-j", "REJECT"},
-		{"nsenter", "--target", "1", "--net", "iptables", "-D", "OUTPUT",
-			"-p", "tcp", "--match", "multiport", "--dports", "6800:7300", "-j", "REJECT"},
-	}
-
-	for _, rule := range cleanupRules {
-		if _, flushErr := injectorPod.ExecCommand(rule); flushErr != nil {
-			GinkgoWriter.Printf("Warning: iptables cleanup (cmd %v): %v\n", rule, flushErr)
-		}
-	}
-}
-
 var _ = Describe(
 	"SBR Functional — Transient Storage Failure Self-Healing",
 	Ordered,
@@ -347,12 +300,12 @@ func verifyTransientStorageSelfHealing(targetNodeName *string, injectorPod **pod
 
 		By("DeferCleanup: removing CephFS iptables OUTPUT REJECT rules")
 
-		transientRemoveCephFSBlock(cleanupPod)
+		removeCephFSRejectOutput(cleanupPod)
 	})
 
 	By("Injecting CephFS port REJECT rules via iptables OUTPUT (nsenter --net)")
 
-	transientInjectCephFSBlock(*injectorPod, *targetNodeName)
+	injectCephFSRejectOutput(*injectorPod, *targetNodeName)
 
 	By(fmt.Sprintf("Waiting for node condition %q=True on node %q",
 		sbrparams.SBRStorageUnhealthyCondition, *targetNodeName))
@@ -374,7 +327,7 @@ func verifyTransientStorageSelfHealing(targetNodeName *string, injectorPod **pod
 
 	By("Removing CephFS iptables OUTPUT REJECT rules to restore storage")
 
-	transientRemoveCephFSBlock(*injectorPod)
+	removeCephFSRejectOutput(*injectorPod)
 
 	By(fmt.Sprintf("Waiting for node condition %q to clear on node %q",
 		sbrparams.SBRStorageUnhealthyCondition, *targetNodeName))

@@ -348,24 +348,7 @@ var _ = Describe(
 					}
 
 					if injectorPod != nil {
-						// Delete rules individually to avoid flushing the whole OUTPUT chain
-						// which could affect other concurrent tests.
-						outputRulesCleanup := [][]string{
-							{"nsenter", "--target", "1", "--net",
-								"iptables", "-D", "OUTPUT", "-p", "tcp", "--dport", "3300", "-j", "REJECT"},
-							{"nsenter", "--target", "1", "--net",
-								"iptables", "-D", "OUTPUT", "-p", "tcp", "--dport", "6789", "-j", "REJECT"},
-							{"nsenter", "--target", "1", "--net",
-								"iptables", "-D", "OUTPUT", "-p", "tcp", "--match", "multiport",
-								"--dports", "6800:7300", "-j", "REJECT"},
-						}
-
-						for _, cmd := range outputRulesCleanup {
-							if _, flushErr := injectorPod.ExecCommand(cmd); flushErr != nil {
-								GinkgoWriter.Printf("Warning: iptables cleanup on node %s (cmd %v): %v\n",
-									targetNodeName, cmd, flushErr)
-							}
-						}
+						removeCephFSRejectOutput(injectorPod)
 
 						if _, delErr := injectorPod.Delete(); delErr != nil {
 							GinkgoWriter.Printf("Warning: delete injector pod: %v\n", delErr)
@@ -420,30 +403,10 @@ var _ = Describe(
 
 				GinkgoWriter.Printf("Pre-injection boot ID on node %q: %q\n", targetNodeName, preRebootBootID)
 
-				By("Injecting OUTPUT-only CephFS REJECT rules (INPUT kept open for fence-message-read path)")
-
-				// Block only the write/OUTPUT path to CephFS storage:
-				//   - port 3300: msgr2 protocol
-				//   - port 6789: msgr1 protocol
-				//   - ports 6800-7300: OSD/MDS data plane
+				// Block only the write/OUTPUT path to CephFS storage.
 				// INPUT traffic is intentionally left open so the target node can still read
 				// the fence message written by peers into shared storage, which triggers self-fencing.
-				// This is the key distinction from OCP-88880 (full bidirectional block).
-				rejectRules := [][]string{
-					{"nsenter", "--target", "1", "--net",
-						"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "3300", "-j", "REJECT"},
-					{"nsenter", "--target", "1", "--net",
-						"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "6789", "-j", "REJECT"},
-					{"nsenter", "--target", "1", "--net",
-						"iptables", "-I", "OUTPUT", "-p", "tcp", "--match", "multiport",
-						"--dports", "6800:7300", "-j", "REJECT"},
-				}
-
-				for _, rule := range rejectRules {
-					_, execErr := injectorPod.ExecCommand(rule)
-					Expect(execErr).ToNot(HaveOccurred(),
-						"Failed to inject iptables OUTPUT REJECT rule %v on node %q", rule, targetNodeName)
-				}
+				injectCephFSRejectOutput(injectorPod, targetNodeName)
 
 				GinkgoWriter.Printf("CephFS OUTPUT REJECT rules applied on node %q "+
 					"(INPUT kept open for fence-message-read path)\n", targetNodeName)
