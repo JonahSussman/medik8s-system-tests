@@ -175,6 +175,9 @@ var _ = Describe(
 								return APIClient.Create(context.TODO(), recreate)
 							}, medik8sparams.DefaultTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
 								"DeferCleanup: failed to recreate default SNRC")
+						} else if getErr != nil {
+							Expect(getErr).ToNot(HaveOccurred(),
+								"DeferCleanup: failed to check if SNRC exists")
 						}
 
 						By("DeferCleanup: waiting for DS pods to be running")
