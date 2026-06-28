@@ -3,11 +3,12 @@ package mdrparams
 import "time"
 
 const (
+	// Label is the operator name used in the suite-level Labels array.
+	Label = "mdr"
 	// DefaultPollInterval is the polling interval used with Eventually calls.
 	DefaultPollInterval = 5 * time.Second
 
 	// Label represents mdr operator label that can be used for test cases selection.
-	Label = "mdr"
 
 	// ExpectedReplicas defines the expected number of replicas for MDR controller manager.
 	// MDR runs a single replica (unlike FAR which runs 2 for HA).

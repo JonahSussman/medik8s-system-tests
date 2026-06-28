@@ -6,13 +6,13 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	oplmV1alpha1 "github.com/rh-ecosystem-edge/eco-goinfra/pkg/schemes/olm/operators/v1alpha1"
 
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/deployment"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/olm"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/pod"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/reportxml"
 
+	"github.com/medik8s/system-tests/tests/internal/helpers"
 	"github.com/medik8s/system-tests/tests/internal/labels"
 	. "github.com/medik8s/system-tests/tests/internal/medik8sinittools"
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
@@ -21,65 +21,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
-
-func findActiveCSV(csvs []*olm.ClusterServiceVersionBuilder) *olm.ClusterServiceVersionBuilder {
-	for _, csv := range csvs {
-		phase, err := csv.GetPhase()
-		if err == nil && phase == oplmV1alpha1.CSVPhaseSucceeded {
-			return csv
-		}
-	}
-
-	return nil
-}
-
-func filterRunningPods(pods []*pod.Builder) []*pod.Builder {
-	var running []*pod.Builder
-
-	for _, nmoPod := range pods {
-		if nmoPod.Object.Status.Phase != corev1.PodRunning || nmoPod.Object.DeletionTimestamp != nil {
-			continue
-		}
-
-		if len(nmoPod.Object.Status.ContainerStatuses) != len(nmoPod.Object.Spec.Containers) {
-			continue
-		}
-
-		allReady := true
-
-		for _, cs := range nmoPod.Object.Status.ContainerStatuses {
-			if !cs.Ready {
-				allReady = false
-
-				break
-			}
-		}
-
-		if allReady {
-			running = append(running, nmoPod)
-		}
-	}
-
-	return running
-}
-
-func filterPodsByDeployment(pods []*pod.Builder, deploymentName string) []*pod.Builder {
-	prefix := deploymentName + "-"
-
-	var owned []*pod.Builder
-
-	for _, p := range pods {
-		for _, ref := range p.Object.OwnerReferences {
-			if ref.Kind == "ReplicaSet" && strings.HasPrefix(ref.Name, prefix) {
-				owned = append(owned, p)
-
-				break
-			}
-		}
-	}
-
-	return owned
-}
 
 func fetchActiveCSV() *olm.ClusterServiceVersionBuilder {
 	var nmoCSV *olm.ClusterServiceVersionBuilder
@@ -95,7 +36,7 @@ func fetchActiveCSV() *olm.ClusterServiceVersionBuilder {
 			return fmt.Errorf("no NMO ClusterServiceVersion found in namespace %s", medik8sparams.OperatorNs)
 		}
 
-		nmoCSV = findActiveCSV(nmoCSVs)
+		nmoCSV = helpers.FindActiveCSV(nmoCSVs)
 		if nmoCSV == nil {
 			return fmt.Errorf("no NMO CSV in Succeeded phase found yet")
 		}
@@ -111,7 +52,7 @@ var _ = Describe(
 	"NMO Post Deployment tests",
 	Ordered,
 	ContinueOnFailure,
-	Label(nmoparams.Label), func() {
+	Label(labels.OperatorNMO), func() {
 		BeforeAll(func() {
 			By("Get NMO deployment object and verify it is Ready")
 
@@ -142,7 +83,7 @@ var _ = Describe(
 						return listErr
 					}
 
-					nmoPods := filterPodsByDeployment(allPods, nmoparams.OperatorDeploymentName)
+					nmoPods := helpers.FilterPodsByDeployment(allPods, nmoparams.OperatorDeploymentName)
 
 					for _, nmoPod := range nmoPods {
 						if nmoPod.Object.DeletionTimestamp != nil {
@@ -155,7 +96,7 @@ var _ = Describe(
 						}
 					}
 
-					runningCount := int32(len(filterRunningPods(nmoPods)))
+					runningCount := int32(len(helpers.FilterRunningPods(nmoPods)))
 
 					if runningCount < nmoparams.ExpectedReplicas {
 						return fmt.Errorf("expected at least %d running NMO pod(s), found %d",
@@ -276,8 +217,8 @@ var _ = Describe(
 						return listErr
 					}
 
-					running := filterRunningPods(
-						filterPodsByDeployment(allPods, nmoparams.OperatorDeploymentName))
+					running := helpers.FilterRunningPods(
+						helpers.FilterPodsByDeployment(allPods, nmoparams.OperatorDeploymentName))
 					if len(running) == 0 {
 						return fmt.Errorf("no running NMO controller pods found")
 					}
@@ -288,122 +229,12 @@ var _ = Describe(
 				}, medik8sparams.DefaultTimeout, nmoparams.DefaultPollInterval).Should(Succeed(),
 					"At least one running NMO controller pod should be found")
 
-				var errorMessages []string
-
-				for _, nmoPod := range runningPods {
-					By(fmt.Sprintf("Verifying security context for pod %s", nmoPod.Object.Name))
-
-					By("Checking pod-level runAsNonRoot security context")
-
-					if nmoPod.Object.Spec.SecurityContext == nil {
-						errorMessages = append(errorMessages,
-							fmt.Sprintf("Pod %s has nil SecurityContext", nmoPod.Object.Name))
-					} else if nmoPod.Object.Spec.SecurityContext.RunAsNonRoot == nil {
-						errorMessages = append(errorMessages,
-							fmt.Sprintf("Pod %s has nil runAsNonRoot", nmoPod.Object.Name))
-					} else if !*nmoPod.Object.Spec.SecurityContext.RunAsNonRoot {
-						errorMessages = append(errorMessages,
-							fmt.Sprintf("Incorrect runAsNonRoot for pod %s. Expected true, found: %v",
-								nmoPod.Object.Name,
-								*nmoPod.Object.Spec.SecurityContext.RunAsNonRoot))
-					}
-
-					By("Checking manager container security context")
-
-					managerFound := false
-
-					for _, container := range nmoPod.Object.Spec.Containers {
-						if container.Name != nmoparams.ManagerContainerName {
-							continue
-						}
-
-						managerFound = true
-						securityContext := container.SecurityContext
-
-						if securityContext == nil {
-							errorMessages = append(errorMessages,
-								fmt.Sprintf("Container %s in pod %s has nil SecurityContext",
-									container.Name, nmoPod.Object.Name))
-
-							continue
-						}
-
-						if securityContext.RunAsUser != nil && *securityContext.RunAsUser == 0 {
-							errorMessages = append(errorMessages,
-								fmt.Sprintf("Container %s in pod %s runs as root (UID 0)",
-									container.Name, nmoPod.Object.Name))
-						}
-
-						if securityContext.AllowPrivilegeEscalation == nil || *securityContext.AllowPrivilegeEscalation {
-							errorMessages = append(errorMessages,
-								fmt.Sprintf(
-									"Container %s in pod %s: AllowPrivilegeEscalation must be explicitly false",
-									container.Name, nmoPod.Object.Name))
-						}
-
-						if securityContext.ReadOnlyRootFilesystem == nil || !*securityContext.ReadOnlyRootFilesystem {
-							errorMessages = append(errorMessages,
-								fmt.Sprintf(
-									"Container %s in pod %s: ReadOnlyRootFilesystem must be explicitly true",
-									container.Name, nmoPod.Object.Name))
-						}
-
-						if securityContext.Capabilities == nil {
-							errorMessages = append(errorMessages,
-								fmt.Sprintf(
-									"Container %s in pod %s: Capabilities block is nil, must drop ALL",
-									container.Name, nmoPod.Object.Name))
-						} else {
-							hasDropAll := false
-
-							for _, cap := range securityContext.Capabilities.Drop {
-								if cap == "ALL" {
-									hasDropAll = true
-
-									break
-								}
-							}
-
-							if !hasDropAll {
-								errorMessages = append(errorMessages,
-									fmt.Sprintf("Container %s in pod %s does not drop ALL capabilities",
-										container.Name, nmoPod.Object.Name))
-							}
-						}
-
-						seccompOk := false
-						if securityContext.SeccompProfile != nil &&
-							securityContext.SeccompProfile.Type == corev1.SeccompProfileTypeRuntimeDefault {
-							seccompOk = true
-						} else if nmoPod.Object.Spec.SecurityContext != nil &&
-							nmoPod.Object.Spec.SecurityContext.SeccompProfile != nil &&
-							nmoPod.Object.Spec.SecurityContext.SeccompProfile.Type ==
-								corev1.SeccompProfileTypeRuntimeDefault {
-							seccompOk = true
-						}
-
-						if !seccompOk {
-							errorMessages = append(errorMessages,
-								fmt.Sprintf(
-									"Container %s in pod %s missing RuntimeDefault seccomp profile",
-									container.Name, nmoPod.Object.Name))
-						}
-					}
-
-					if !managerFound {
-						errorMessages = append(errorMessages,
-							fmt.Sprintf("Pod %s has no container named %q",
-								nmoPod.Object.Name, nmoparams.ManagerContainerName))
-					}
-				}
+				errorMessages := helpers.ValidateNonRootSecurityContext(
+					runningPods, nmoparams.ManagerContainerName, true)
 
 				if len(errorMessages) > 0 {
-					errMsg := "Testing security context of NMO container failed due to:\n"
-					for _, msg := range errorMessages {
-						errMsg += fmt.Sprintf("- %s\n", msg)
-					}
-
-					Fail(errMsg)
+					Fail("Testing security context of NMO container failed due to:\n- " +
+						strings.Join(errorMessages, "\n- "))
 				}
 			})
 	})

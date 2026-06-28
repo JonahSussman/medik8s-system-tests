@@ -85,7 +85,7 @@ var _ = Describe(
 	"SBR Functional — NHC Integration",
 	Ordered,
 	ContinueOnFailure,
-	Label(sbrparams.Label), func() {
+	Label(labels.OperatorSBR), func() {
 		var (
 			targetNodeName  string
 			testSBRC        *unstructured.Unstructured

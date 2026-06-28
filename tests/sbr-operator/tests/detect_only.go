@@ -36,7 +36,7 @@ var _ = Describe(
 	"SBR Functional — detectOnlyMode",
 	Ordered,
 	ContinueOnFailure,
-	Label(sbrparams.Label), func() {
+	Label(labels.OperatorSBR), func() {
 		var (
 			detectOnlySBRC     *unstructured.Unstructured
 			rwxStorageClass    string

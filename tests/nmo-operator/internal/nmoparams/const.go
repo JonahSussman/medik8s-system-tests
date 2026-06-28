@@ -3,11 +3,12 @@ package nmoparams
 import "time"
 
 const (
+	// Label is the operator name used in the suite-level Labels array.
+	Label = "nmo"
 	// DefaultPollInterval is the polling interval used with Eventually calls.
 	DefaultPollInterval = 5 * time.Second
 
 	// Label represents nmo operator label that can be used for test cases selection.
-	Label = "nmo"
 
 	// ExpectedReplicas defines the expected number of replicas for NMO controller manager.
 	// NMO always runs a single replica regardless of cluster topology (MNO or SNO).

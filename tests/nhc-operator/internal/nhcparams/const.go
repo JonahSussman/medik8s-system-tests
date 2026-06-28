@@ -3,11 +3,12 @@ package nhcparams
 import "time"
 
 const (
+	// Label is the operator name used in the suite-level Labels array.
+	Label = "nhc"
 	// DefaultPollInterval is the polling interval used with Eventually calls.
 	DefaultPollInterval = 5 * time.Second
 
 	// Label represents nhc operator label that can be used for test cases selection.
-	Label = "nhc"
 
 	// ExpectedReplicas defines the expected number of replicas for NHC controller manager.
 	ExpectedReplicas = int32(2)

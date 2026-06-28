@@ -68,7 +68,7 @@ var _ = Describe(
 		labels.DisruptionDestructive,
 		labels.PlatformAny,
 		labels.ComponentRemediation,
-		sbrparams.Label,
+		labels.OperatorSBR,
 	), func() {
 		var (
 			targetNodeName   string

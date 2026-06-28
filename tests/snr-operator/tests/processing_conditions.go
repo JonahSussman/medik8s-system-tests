@@ -40,7 +40,7 @@ var _ = Describe(
 	"SNR Processing Condition tests",
 	Ordered,
 	ContinueOnFailure,
-	Label(snrparams.Label), func() {
+	Label(labels.OperatorSNR), func() {
 		BeforeAll(func() {
 			By("Verify SNR deployment is ready")
 

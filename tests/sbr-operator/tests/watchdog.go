@@ -22,7 +22,7 @@ var _ = Describe(
 	"SBR Functional — Watchdog Integration",
 	Ordered,
 	ContinueOnFailure,
-	Label(sbrparams.Label), func() {
+	Label(labels.OperatorSBR), func() {
 		// nodeWatchdogDevices maps node name → discovered /dev/watchdog* paths.
 		// Populated in BeforeAll from the shared inventory (if it already ran)
 		// or from an independent per-node probe so this suite is self-contained.

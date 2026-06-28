@@ -7,7 +7,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	configv1 "github.com/openshift/api/config/v1"
-	oplmV1alpha1 "github.com/rh-ecosystem-edge/eco-goinfra/pkg/schemes/olm/operators/v1alpha1"
 
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/deployment"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/infrastructure"
@@ -15,6 +14,7 @@ import (
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/pod"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/reportxml"
 
+	"github.com/medik8s/system-tests/tests/internal/helpers"
 	"github.com/medik8s/system-tests/tests/internal/labels"
 	. "github.com/medik8s/system-tests/tests/internal/medik8sinittools"
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
@@ -23,61 +23,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
-
-func findActiveCSV(csvs []*olm.ClusterServiceVersionBuilder) *olm.ClusterServiceVersionBuilder {
-	for _, csv := range csvs {
-		phase, err := csv.GetPhase()
-		if err == nil && phase == oplmV1alpha1.CSVPhaseSucceeded {
-			return csv
-		}
-	}
-
-	return nil
-}
-
-func filterRunningPods(pods []*pod.Builder) []*pod.Builder {
-	var running []*pod.Builder
-
-	for _, mdrPod := range pods {
-		if mdrPod.Object.Status.Phase != corev1.PodRunning || mdrPod.Object.DeletionTimestamp != nil {
-			continue
-		}
-
-		allReady := true
-
-		for _, cs := range mdrPod.Object.Status.ContainerStatuses {
-			if !cs.Ready {
-				allReady = false
-
-				break
-			}
-		}
-
-		if allReady {
-			running = append(running, mdrPod)
-		}
-	}
-
-	return running
-}
-
-func filterPodsByDeployment(pods []*pod.Builder, deploymentName string) []*pod.Builder {
-	prefix := deploymentName + "-"
-
-	var owned []*pod.Builder
-
-	for _, p := range pods {
-		for _, ref := range p.Object.OwnerReferences {
-			if ref.Kind == "ReplicaSet" && strings.HasPrefix(ref.Name, prefix) {
-				owned = append(owned, p)
-
-				break
-			}
-		}
-	}
-
-	return owned
-}
 
 func fetchActiveCSV() *olm.ClusterServiceVersionBuilder {
 	var mdrCSV *olm.ClusterServiceVersionBuilder
@@ -93,7 +38,7 @@ func fetchActiveCSV() *olm.ClusterServiceVersionBuilder {
 			return fmt.Errorf("no MDR ClusterServiceVersion found in namespace %s", medik8sparams.OperatorNs)
 		}
 
-		mdrCSV = findActiveCSV(mdrCSVs)
+		mdrCSV = helpers.FindActiveCSV(mdrCSVs)
 		if mdrCSV == nil {
 			return fmt.Errorf("no MDR CSV in Succeeded phase found yet")
 		}
@@ -109,7 +54,7 @@ var _ = Describe(
 	"MDR Post Deployment tests",
 	Ordered,
 	ContinueOnFailure,
-	Label(mdrparams.Label), func() {
+	Label(labels.OperatorMDR), func() {
 		var controlPlaneTopology configv1.TopologyMode
 
 		BeforeAll(func() {
@@ -154,7 +99,7 @@ var _ = Describe(
 						return listErr
 					}
 
-					mdrPods := filterPodsByDeployment(allPods, mdrparams.OperatorDeploymentName)
+					mdrPods := helpers.FilterPodsByDeployment(allPods, mdrparams.OperatorDeploymentName)
 
 					for _, mdrPod := range mdrPods {
 						if mdrPod.Object.DeletionTimestamp != nil {
@@ -167,7 +112,7 @@ var _ = Describe(
 						}
 					}
 
-					runningCount := int32(len(filterRunningPods(mdrPods)))
+					runningCount := int32(len(helpers.FilterRunningPods(mdrPods)))
 
 					if runningCount != expectedCount {
 						return fmt.Errorf("expected %d running MDR pod(s), found %d",
@@ -273,8 +218,8 @@ var _ = Describe(
 						return listErr
 					}
 
-					runningPods := filterRunningPods(
-						filterPodsByDeployment(allPods, mdrparams.OperatorDeploymentName))
+					runningPods := helpers.FilterRunningPods(
+						helpers.FilterPodsByDeployment(allPods, mdrparams.OperatorDeploymentName))
 
 					if len(runningPods) != int(mdrparams.ExpectedReplicas) {
 						return fmt.Errorf("expected %d running MDR pod(s) for HA check, found %d",
@@ -325,8 +270,8 @@ var _ = Describe(
 						return listErr
 					}
 
-					running := filterRunningPods(
-						filterPodsByDeployment(allPods, mdrparams.OperatorDeploymentName))
+					running := helpers.FilterRunningPods(
+						helpers.FilterPodsByDeployment(allPods, mdrparams.OperatorDeploymentName))
 					if len(running) == 0 {
 						return fmt.Errorf("no running MDR controller pods found")
 					}
@@ -337,122 +282,12 @@ var _ = Describe(
 				}, medik8sparams.DefaultTimeout, mdrparams.DefaultPollInterval).Should(Succeed(),
 					"At least one running MDR controller pod should be found")
 
-				var errorMessages []string
-
-				for _, mdrPod := range runningPods {
-					By(fmt.Sprintf("Verifying security context for pod %s", mdrPod.Object.Name))
-
-					By("Checking pod-level runAsNonRoot security context")
-
-					if mdrPod.Object.Spec.SecurityContext == nil {
-						errorMessages = append(errorMessages,
-							fmt.Sprintf("Pod %s has nil SecurityContext", mdrPod.Object.Name))
-					} else if mdrPod.Object.Spec.SecurityContext.RunAsNonRoot == nil {
-						errorMessages = append(errorMessages,
-							fmt.Sprintf("Pod %s has nil runAsNonRoot", mdrPod.Object.Name))
-					} else if !*mdrPod.Object.Spec.SecurityContext.RunAsNonRoot {
-						errorMessages = append(errorMessages,
-							fmt.Sprintf("Incorrect runAsNonRoot for pod %s. Expected true, found: %v",
-								mdrPod.Object.Name,
-								*mdrPod.Object.Spec.SecurityContext.RunAsNonRoot))
-					}
-
-					By("Checking manager container security context")
-
-					managerFound := false
-
-					for _, container := range mdrPod.Object.Spec.Containers {
-						if container.Name != mdrparams.ManagerContainerName {
-							continue
-						}
-
-						managerFound = true
-						securityContext := container.SecurityContext
-
-						if securityContext == nil {
-							errorMessages = append(errorMessages,
-								fmt.Sprintf("Container %s in pod %s has nil SecurityContext",
-									container.Name, mdrPod.Object.Name))
-
-							continue
-						}
-
-						if securityContext.RunAsUser != nil && *securityContext.RunAsUser == 0 {
-							errorMessages = append(errorMessages,
-								fmt.Sprintf("Container %s in pod %s runs as root (UID 0)",
-									container.Name, mdrPod.Object.Name))
-						}
-
-						if securityContext.AllowPrivilegeEscalation == nil || *securityContext.AllowPrivilegeEscalation {
-							errorMessages = append(errorMessages,
-								fmt.Sprintf(
-									"Container %s in pod %s: AllowPrivilegeEscalation must be explicitly false",
-									container.Name, mdrPod.Object.Name))
-						}
-
-						if securityContext.ReadOnlyRootFilesystem == nil || !*securityContext.ReadOnlyRootFilesystem {
-							errorMessages = append(errorMessages,
-								fmt.Sprintf(
-									"Container %s in pod %s: ReadOnlyRootFilesystem must be explicitly true",
-									container.Name, mdrPod.Object.Name))
-						}
-
-						if securityContext.Capabilities == nil {
-							errorMessages = append(errorMessages,
-								fmt.Sprintf(
-									"Container %s in pod %s: Capabilities block is nil, must drop ALL",
-									container.Name, mdrPod.Object.Name))
-						} else {
-							hasDropAll := false
-
-							for _, cap := range securityContext.Capabilities.Drop {
-								if cap == "ALL" {
-									hasDropAll = true
-
-									break
-								}
-							}
-
-							if !hasDropAll {
-								errorMessages = append(errorMessages,
-									fmt.Sprintf("Container %s in pod %s does not drop ALL capabilities",
-										container.Name, mdrPod.Object.Name))
-							}
-						}
-
-						seccompOk := false
-						if securityContext.SeccompProfile != nil &&
-							securityContext.SeccompProfile.Type == corev1.SeccompProfileTypeRuntimeDefault {
-							seccompOk = true
-						} else if mdrPod.Object.Spec.SecurityContext != nil &&
-							mdrPod.Object.Spec.SecurityContext.SeccompProfile != nil &&
-							mdrPod.Object.Spec.SecurityContext.SeccompProfile.Type ==
-								corev1.SeccompProfileTypeRuntimeDefault {
-							seccompOk = true
-						}
-
-						if !seccompOk {
-							errorMessages = append(errorMessages,
-								fmt.Sprintf(
-									"Container %s in pod %s missing RuntimeDefault seccomp profile",
-									container.Name, mdrPod.Object.Name))
-						}
-					}
-
-					if !managerFound {
-						errorMessages = append(errorMessages,
-							fmt.Sprintf("Pod %s has no container named %q",
-								mdrPod.Object.Name, mdrparams.ManagerContainerName))
-					}
-				}
+				errorMessages := helpers.ValidateNonRootSecurityContext(
+					runningPods, mdrparams.ManagerContainerName, true)
 
 				if len(errorMessages) > 0 {
-					errMsg := "Testing security context of MDR container failed due to:\n"
-					for _, msg := range errorMessages {
-						errMsg += fmt.Sprintf("- %s\n", msg)
-					}
-
-					Fail(errMsg)
+					Fail("Testing security context of MDR container failed due to:\n- " +
+						strings.Join(errorMessages, "\n- "))
 				}
 			})
 	})
