@@ -48,4 +48,18 @@ const (
 
 	// SNRCTestName is the name used for test SNRC CRs.
 	SNRCTestName = "test-snrc"
+
+	// DSPodRestartTimeout is the time allowed for SNR DaemonSet pods to
+	// restart or terminate after a config change.
+	DSPodRestartTimeout = 15 * time.Minute
+
+	// SoftdogAutoDetectMessage is the log message emitted by the SNR agent
+	// when it auto-detects the softdog watchdog path after an invalid path is configured.
+	SoftdogAutoDetectMessage = "auto detected softdog path"
+
+	// SNRReasonConfigNotFound is the status condition reason when SNRC is missing.
+	SNRReasonConfigNotFound = "ConfigurationNotFound"
+
+	// SNRMessageConfigNotFound is the status condition message when SNRC is missing.
+	SNRMessageConfigNotFound = "SelfNodeRemediation is disabled because configuration does not exist"
 )
