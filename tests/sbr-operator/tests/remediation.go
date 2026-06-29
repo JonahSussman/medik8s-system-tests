@@ -252,9 +252,13 @@ var _ = Describe(
 					Consistently(func() bool { return true },
 						sbrparams.DefaultPollInterval, sbrparams.DefaultPollInterval).Should(BeTrue())
 
-					if recheckNode, recheckErr := APIClient.CoreV1Interface.Nodes().Get(
-						context.TODO(), targetNodeName, metav1.GetOptions{}); recheckErr == nil &&
-						recheckNode.Spec.Unschedulable {
+					recheckNode, recheckErr := APIClient.CoreV1Interface.Nodes().Get(
+						context.TODO(), targetNodeName, metav1.GetOptions{})
+					if recheckErr != nil {
+						GinkgoWriter.Printf(
+							"DeferCleanup: failed to recheck node %s after uncordon patch: %v\n",
+							targetNodeName, recheckErr)
+					} else if recheckNode.Spec.Unschedulable {
 						GinkgoWriter.Printf(
 							"DeferCleanup: node %s still cordoned after patch — operator may be re-cordoning; "+
 								"leaving for next test to handle\n", targetNodeName)
