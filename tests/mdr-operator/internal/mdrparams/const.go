@@ -8,8 +8,6 @@ const (
 	// DefaultPollInterval is the polling interval used with Eventually calls.
 	DefaultPollInterval = 5 * time.Second
 
-	// Label represents mdr operator label that can be used for test cases selection.
-
 	// ExpectedReplicas defines the expected number of replicas for MDR controller manager.
 	// MDR runs a single replica (unlike FAR which runs 2 for HA).
 	ExpectedReplicas = int32(1)

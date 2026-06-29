@@ -8,8 +8,6 @@ const (
 	// DefaultPollInterval is the polling interval used with Eventually calls.
 	DefaultPollInterval = 5 * time.Second
 
-	// Label represents far operator label that can be used for test cases selection.
-
 	// ExpectedReplicas defines the expected number of replicas for FAR controller manager.
 	ExpectedReplicas = int32(2)
 
