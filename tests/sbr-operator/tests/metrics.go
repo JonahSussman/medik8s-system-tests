@@ -10,6 +10,7 @@ import (
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/pod"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/reportxml"
 
+	"github.com/medik8s/system-tests/tests/internal/helpers"
 	"github.com/medik8s/system-tests/tests/internal/labels"
 	. "github.com/medik8s/system-tests/tests/internal/medik8sinittools"
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
@@ -23,7 +24,7 @@ import (
 var _ = Describe(
 	"SBR Functional — Observability and Metrics",
 	Ordered,
-	Label(sbrparams.Label),
+	Label(labels.OperatorSBR),
 	func() {
 		BeforeAll(func() {
 			By("Pre-cleanup: removing any leftover metrics-test SBRC from previous runs")
@@ -193,7 +194,7 @@ var _ = Describe(
 						}
 					}
 
-					running := filterRunningPods(metricsPods)
+					running := helpers.FilterRunningPods(metricsPods)
 					if len(running) == 0 {
 						return fmt.Errorf("no Running+Ready SBR agent pods found for DaemonSet %s%s",
 							sbrparams.SBRAgentDaemonSetPrefix, sbrparams.SBRCMetricsTestName)

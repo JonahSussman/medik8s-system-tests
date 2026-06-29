@@ -16,6 +16,7 @@ import (
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/pod"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/reportxml"
 
+	"github.com/medik8s/system-tests/tests/internal/helpers"
 	"github.com/medik8s/system-tests/tests/internal/labels"
 	. "github.com/medik8s/system-tests/tests/internal/medik8sinittools"
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
@@ -55,7 +56,7 @@ func watchdogDebugPodName(nodeName string) string {
 var _ = Describe(
 	"SBR Debug — Cluster Watchdog Inventory",
 	Ordered,
-	Label(sbrparams.Label), func() {
+	Label(labels.OperatorSBR), func() {
 		It("Discover /dev/watchdog* devices on all cluster nodes",
 			Label(
 				labels.DisruptionNonDestructive,
@@ -146,17 +147,6 @@ var _ = Describe(
 			})
 	})
 
-func findActiveCSV(csvs []*olm.ClusterServiceVersionBuilder) *olm.ClusterServiceVersionBuilder {
-	for _, csv := range csvs {
-		phase, err := csv.GetPhase()
-		if err == nil && phase == oplmV1alpha1.CSVPhaseSucceeded {
-			return csv
-		}
-	}
-
-	return nil
-}
-
 // isNodeSchedulable returns true when a node is Ready and not cordoned.
 // NotReady and unschedulable nodes are excluded so that scheduling failures
 // are not misattributed to failures in the operator under test.
@@ -174,36 +164,6 @@ func isNodeSchedulable(node *corev1.Node) bool {
 	return false
 }
 
-func filterRunningPods(pods []*pod.Builder) []*pod.Builder {
-	var running []*pod.Builder
-
-	for _, sbrPod := range pods {
-		if sbrPod.Object.Status.Phase != corev1.PodRunning || sbrPod.Object.DeletionTimestamp != nil {
-			continue
-		}
-
-		if len(sbrPod.Object.Status.ContainerStatuses) == 0 {
-			continue
-		}
-
-		allReady := true
-
-		for _, cs := range sbrPod.Object.Status.ContainerStatuses {
-			if !cs.Ready {
-				allReady = false
-
-				break
-			}
-		}
-
-		if allReady {
-			running = append(running, sbrPod)
-		}
-	}
-
-	return running
-}
-
 func fetchActiveCSV() *olm.ClusterServiceVersionBuilder {
 	var sbrCSV *olm.ClusterServiceVersionBuilder
 
@@ -218,7 +178,7 @@ func fetchActiveCSV() *olm.ClusterServiceVersionBuilder {
 			return fmt.Errorf("no SBR ClusterServiceVersion found in namespace %s", medik8sparams.OperatorNs)
 		}
 
-		sbrCSV = findActiveCSV(sbrCSVs)
+		sbrCSV = helpers.FindActiveCSV(sbrCSVs)
 		if sbrCSV == nil {
 			return fmt.Errorf("no SBR CSV in Succeeded phase found yet")
 		}
@@ -234,7 +194,7 @@ var _ = Describe(
 	"SBR Post Deployment tests",
 	Ordered,
 	ContinueOnFailure,
-	Label(sbrparams.Label), func() {
+	Label(labels.OperatorSBR), func() {
 		var controlPlaneTopology configv1.TopologyMode
 
 		BeforeAll(func() {
@@ -289,7 +249,7 @@ var _ = Describe(
 						}
 					}
 
-					runningCount := int32(len(filterRunningPods(sbrPods)))
+					runningCount := int32(len(helpers.FilterRunningPods(sbrPods)))
 
 					if runningCount != expectedCount {
 						return fmt.Errorf("expected %d running SBR pod(s), found %d",
@@ -395,7 +355,7 @@ var _ = Describe(
 						return listErr
 					}
 
-					runningPods := filterRunningPods(sbrPods)
+					runningPods := helpers.FilterRunningPods(sbrPods)
 
 					if len(runningPods) != int(sbrparams.ExpectedReplicas) {
 						return fmt.Errorf("expected %d running SBR pod(s) for HA check, found %d",
@@ -445,7 +405,7 @@ var _ = Describe(
 						return listErr
 					}
 
-					running := filterRunningPods(sbrPods)
+					running := helpers.FilterRunningPods(sbrPods)
 					if len(running) == 0 {
 						return fmt.Errorf("no running SBR controller pods found")
 					}
@@ -456,115 +416,12 @@ var _ = Describe(
 				}, medik8sparams.DefaultTimeout, sbrparams.DefaultPollInterval).Should(Succeed(),
 					"At least one running SBR controller pod should be found")
 
-				var errorMessages []string
-
-				for _, sbrPod := range runningPods {
-					By(fmt.Sprintf("Verifying security context for pod %s", sbrPod.Object.Name))
-
-					By("Checking pod-level runAsNonRoot security context")
-
-					if sbrPod.Object.Spec.SecurityContext == nil {
-						errorMessages = append(errorMessages,
-							fmt.Sprintf("Pod %s has nil SecurityContext", sbrPod.Object.Name))
-					} else if sbrPod.Object.Spec.SecurityContext.RunAsNonRoot == nil {
-						errorMessages = append(errorMessages,
-							fmt.Sprintf("Pod %s has nil runAsNonRoot", sbrPod.Object.Name))
-					} else if !*sbrPod.Object.Spec.SecurityContext.RunAsNonRoot {
-						errorMessages = append(errorMessages,
-							fmt.Sprintf("Incorrect runAsNonRoot for pod %s. Expected true, found: %v",
-								sbrPod.Object.Name,
-								*sbrPod.Object.Spec.SecurityContext.RunAsNonRoot))
-					}
-
-					By("Checking manager container security context")
-
-					managerFound := false
-
-					for _, container := range sbrPod.Object.Spec.Containers {
-						if container.Name != sbrparams.ManagerContainerName {
-							continue
-						}
-
-						managerFound = true
-						securityContext := container.SecurityContext
-
-						if securityContext == nil {
-							errorMessages = append(errorMessages,
-								fmt.Sprintf("Container %s in pod %s has nil SecurityContext",
-									container.Name, sbrPod.Object.Name))
-
-							continue
-						}
-
-						if securityContext.RunAsUser != nil && *securityContext.RunAsUser == 0 {
-							errorMessages = append(errorMessages,
-								fmt.Sprintf("Container %s in pod %s runs as root (UID 0)",
-									container.Name, sbrPod.Object.Name))
-						}
-
-						if securityContext.AllowPrivilegeEscalation == nil || *securityContext.AllowPrivilegeEscalation {
-							errorMessages = append(errorMessages,
-								fmt.Sprintf(
-									"Container %s in pod %s: AllowPrivilegeEscalation must be explicitly false",
-									container.Name, sbrPod.Object.Name))
-						}
-
-						if securityContext.Capabilities == nil {
-							errorMessages = append(errorMessages,
-								fmt.Sprintf(
-									"Container %s in pod %s: Capabilities block is nil, must drop ALL",
-									container.Name, sbrPod.Object.Name))
-						} else {
-							hasDropAll := false
-
-							for _, cap := range securityContext.Capabilities.Drop {
-								if cap == "ALL" {
-									hasDropAll = true
-
-									break
-								}
-							}
-
-							if !hasDropAll {
-								errorMessages = append(errorMessages,
-									fmt.Sprintf("Container %s in pod %s does not drop ALL capabilities",
-										container.Name, sbrPod.Object.Name))
-							}
-						}
-
-						seccompOk := false
-						if securityContext.SeccompProfile != nil &&
-							securityContext.SeccompProfile.Type == corev1.SeccompProfileTypeRuntimeDefault {
-							seccompOk = true
-						} else if sbrPod.Object.Spec.SecurityContext != nil &&
-							sbrPod.Object.Spec.SecurityContext.SeccompProfile != nil &&
-							sbrPod.Object.Spec.SecurityContext.SeccompProfile.Type ==
-								corev1.SeccompProfileTypeRuntimeDefault {
-							seccompOk = true
-						}
-
-						if !seccompOk {
-							errorMessages = append(errorMessages,
-								fmt.Sprintf(
-									"Container %s in pod %s missing RuntimeDefault seccomp profile",
-									container.Name, sbrPod.Object.Name))
-						}
-					}
-
-					if !managerFound {
-						errorMessages = append(errorMessages,
-							fmt.Sprintf("Pod %s has no container named %q",
-								sbrPod.Object.Name, sbrparams.ManagerContainerName))
-					}
-				}
+				errorMessages := helpers.ValidateNonRootSecurityContext(
+					runningPods, sbrparams.ManagerContainerName, false)
 
 				if len(errorMessages) > 0 {
-					errMsg := "Testing security context of SBR container failed due to:\n"
-					for _, msg := range errorMessages {
-						errMsg += fmt.Sprintf("- %s\n", msg)
-					}
-
-					Fail(errMsg)
+					Fail("Testing security context of SBR container failed due to:\n- " +
+						strings.Join(errorMessages, "\n- "))
 				}
 			})
 
@@ -704,7 +561,7 @@ var _ = Describe(
 	"SBR Negative Tests",
 	Ordered,
 	ContinueOnFailure,
-	Label(sbrparams.Label), func() {
+	Label(labels.OperatorSBR), func() {
 		BeforeAll(func() {
 			By("Cleaning up any leftover test SBRCs from previous runs")
 

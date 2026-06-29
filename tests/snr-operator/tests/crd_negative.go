@@ -28,7 +28,7 @@ var _ = Describe(
 	"SNR CRD and Negative Validation tests",
 	Ordered,
 	ContinueOnFailure,
-	Label(snrparams.Label), func() {
+	Label(labels.OperatorSNR), func() {
 		BeforeAll(func() {
 			By("Verify SNR admission webhook is ready before running webhook-dependent tests")
 

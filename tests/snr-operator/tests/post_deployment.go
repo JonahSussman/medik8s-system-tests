@@ -15,12 +15,12 @@ import (
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/pod"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/reportxml"
 
+	"github.com/medik8s/system-tests/tests/internal/helpers"
 	"github.com/medik8s/system-tests/tests/internal/labels"
 	. "github.com/medik8s/system-tests/tests/internal/medik8sinittools"
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 	"github.com/medik8s/system-tests/tests/snr-operator/internal/snrparams"
 
-	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -32,7 +32,7 @@ var _ = Describe(
 	"SNR Post Deployment tests",
 	Ordered,
 	ContinueOnFailure,
-	Label(snrparams.Label), func() {
+	Label(labels.OperatorSNR), func() {
 		var snrCSV *olm.ClusterServiceVersionBuilder
 
 		BeforeAll(func() {
@@ -57,16 +57,12 @@ var _ = Describe(
 						medik8sparams.OperatorNs)
 				}
 
-				for _, csv := range snrCSVs {
-					phase, phaseErr := csv.GetPhase()
-					if phaseErr == nil && phase == "Succeeded" {
-						snrCSV = csv
-
-						return nil
-					}
+				snrCSV = helpers.FindActiveCSV(snrCSVs)
+				if snrCSV == nil {
+					return fmt.Errorf("no SNR CSV in Succeeded phase found yet")
 				}
 
-				return fmt.Errorf("no SNR CSV in Succeeded phase found yet")
+				return nil
 			}, medik8sparams.DefaultTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
 				"SNR CSV must reach Succeeded phase")
 		})
@@ -110,18 +106,23 @@ var _ = Describe(
 						return fmt.Errorf("no SNR DaemonSet pods found")
 					}
 
-					for _, dsPod := range dsPods {
-						if dsPod.Object.Status.Phase != corev1.PodRunning {
-							return fmt.Errorf("SNR DaemonSet pod %q is %s, expected Running",
-								dsPod.Object.Name, dsPod.Object.Status.Phase)
+					running := helpers.FilterRunningPods(dsPods)
+					if len(running) != len(dsPods) {
+						readySet := make(map[string]struct{}, len(running))
+						for _, ready := range running {
+							readySet[ready.Object.Name] = struct{}{}
 						}
 
-						for _, cs := range dsPod.Object.Status.ContainerStatuses {
-							if !cs.Ready {
-								return fmt.Errorf("container %q in pod %q is not ready",
-									cs.Name, dsPod.Object.Name)
+						var notReady []string
+
+						for _, candidate := range dsPods {
+							if _, ok := readySet[candidate.Object.Name]; !ok {
+								notReady = append(notReady, candidate.Object.Name)
 							}
 						}
+
+						return fmt.Errorf("expected %d running and ready pods, got %d; not ready: %s",
+							len(dsPods), len(running), strings.Join(notReady, ", "))
 					}
 
 					return nil

@@ -3,11 +3,10 @@ package snrparams
 import "time"
 
 const (
+	// Label is the operator name used in the suite-level Labels array.
+	Label = "snr"
 	// DefaultPollInterval is the polling interval used with Eventually calls.
 	DefaultPollInterval = 5 * time.Second
-
-	// Label represents snr operator label that can be used for test cases selection.
-	Label = "snr"
 
 	// ExpectedReplicas defines the expected number of replicas for SNR controller manager.
 	ExpectedReplicas = int32(2)

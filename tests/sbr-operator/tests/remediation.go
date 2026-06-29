@@ -99,7 +99,7 @@ var _ = Describe(
 	"SBR Functional — StorageBasedRemediation CR",
 	Ordered,
 	ContinueOnFailure,
-	Label(sbrparams.Label), func() {
+	Label(labels.OperatorSBR), func() {
 		var (
 			targetNodeName string
 			// setupSBRC is created in BeforeAll to ensure the agent DaemonSet is running.

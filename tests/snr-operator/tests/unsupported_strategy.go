@@ -22,7 +22,7 @@ const unsupportedStrategy = "NodeDeletion"
 
 var _ = Describe(
 	"SNR Unsupported Strategy tests",
-	Label(snrparams.Label), func() {
+	Label(labels.OperatorSNR), func() {
 		BeforeEach(func() {
 			// These tests validate CRD/CEL admission rules for SNR and SNRT kinds.
 			// Check the CRDs actually used by the tests to catch partial installs.

@@ -71,7 +71,7 @@ var _ = Describe(
 	"SBR Functional - Node Failure: Hard Node Hang / Kernel Freeze",
 	Ordered,
 	ContinueOnFailure,
-	Label(sbrparams.Label), func() {
+	Label(labels.OperatorSBR), func() {
 		var (
 			targetNodeName  string
 			setupSBRC       *unstructured.Unstructured

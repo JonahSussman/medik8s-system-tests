@@ -92,7 +92,7 @@ var _ = Describe(
 	"SBR Functional — Node Failure: Split-Brain (Storage Arbitration)",
 	Ordered,
 	ContinueOnFailure,
-	Label(sbrparams.Label), func() {
+	Label(labels.OperatorSBR), func() {
 		var (
 			targetNodeName  string
 			healthyNodes    []string

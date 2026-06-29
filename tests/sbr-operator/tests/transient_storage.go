@@ -150,7 +150,7 @@ var _ = Describe(
 	"SBR Functional — Transient Storage Failure Self-Healing",
 	Ordered,
 	ContinueOnFailure,
-	Label(sbrparams.Label), func() {
+	Label(labels.OperatorSBR), func() {
 		var (
 			transientSBRC    *unstructured.Unstructured
 			targetNodeName   string

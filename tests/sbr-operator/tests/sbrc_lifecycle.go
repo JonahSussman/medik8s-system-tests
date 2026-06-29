@@ -49,7 +49,7 @@ var _ = Describe(
 		labels.DisruptionNonDestructive,
 		labels.PlatformAny,
 		labels.ComponentController,
-		sbrparams.Label,
+		labels.OperatorSBR,
 	), func() {
 		var rwxStorageClass string
 
