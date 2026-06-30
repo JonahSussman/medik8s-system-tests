@@ -7,6 +7,7 @@ import (
 
 	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/medik8s/system-tests/tests/far-operator/internal/farparams"
@@ -16,26 +17,25 @@ import (
 // GetActiveFARControllerNode returns the node name hosting the active FAR
 // controller pod by inspecting the leader election lease.
 func GetActiveFARControllerNode(ctx context.Context, k8sClient client.Client) (string, error) {
-	leaseList := &coordinationv1.LeaseList{}
-	if err := k8sClient.List(ctx, leaseList, client.InNamespace(medik8sparams.OperatorNs)); err != nil {
-		return "", fmt.Errorf("failed to list leases: %w", err)
-	}
+	lease := &coordinationv1.Lease{}
 
-	var leaderLease *coordinationv1.Lease
-
-	for i := range leaseList.Items {
-		if leaseList.Items[i].Name == farparams.ControllerLeaseName {
-			leaderLease = &leaseList.Items[i]
-
-			break
+	if err := k8sClient.Get(ctx, client.ObjectKey{
+		Name:      farparams.ControllerLeaseName,
+		Namespace: medik8sparams.OperatorNs,
+	}, lease); err != nil {
+		if apierrors.IsNotFound(err) {
+			return "", fmt.Errorf("controller lease %q not found in namespace %s",
+				farparams.ControllerLeaseName, medik8sparams.OperatorNs)
 		}
+
+		return "", fmt.Errorf("failed to get controller lease: %w", err)
 	}
 
-	if leaderLease == nil || leaderLease.Spec.HolderIdentity == nil {
-		return "", fmt.Errorf("FAR leader lease not found or has no holder")
+	if lease.Spec.HolderIdentity == nil {
+		return "", fmt.Errorf("controller lease %q has no holder", farparams.ControllerLeaseName)
 	}
 
-	holderID := *leaderLease.Spec.HolderIdentity
+	holderID := *lease.Spec.HolderIdentity
 
 	podName, _, ok := strings.Cut(holderID, "_")
 	if !ok || podName == "" {
