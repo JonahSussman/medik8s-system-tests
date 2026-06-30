@@ -20,6 +20,12 @@ var (
 	// OperatorControllerPodLabelSelector selects FAR controller-manager pods by label.
 	OperatorControllerPodLabelSelector = ControllerPodLabelKey + "=" + OperatorControllerPodLabel
 
+	// OperatorControllerPodLabels is the label set for selecting FAR controller-manager pods.
+	OperatorControllerPodLabels = map[string]string{
+		ControllerPodLabelKey: OperatorControllerPodLabel,
+		"control-plane":       "controller-manager",
+	}
+
 	// ReporterNamespacesToDump tells to the reporter from where to collect logs.
 	ReporterNamespacesToDump = map[string]string{
 		medik8sparams.OperatorNs: medik8sparams.OperatorNs,
