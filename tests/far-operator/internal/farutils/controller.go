@@ -73,7 +73,8 @@ func GetFARControllerPods(ctx context.Context, k8sClient client.Client) ([]corev
 			continue
 		}
 
-		if len(pod.Status.ContainerStatuses) == 0 {
+		if len(pod.Status.ContainerStatuses) == 0 ||
+			len(pod.Status.ContainerStatuses) != len(pod.Spec.Containers) {
 			continue
 		}
 
