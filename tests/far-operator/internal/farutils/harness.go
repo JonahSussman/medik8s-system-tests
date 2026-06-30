@@ -142,7 +142,7 @@ func GetActiveFARControllerNode(ctx context.Context, k8sClient client.Client) (s
 	var leaderLease *coordinationv1.Lease
 
 	for i := range leaseList.Items {
-		if strings.HasPrefix(leaseList.Items[i].Name, farparams.ControllerLeasePrefix) {
+		if leaseList.Items[i].Name == farparams.ControllerLeaseName {
 			leaderLease = &leaseList.Items[i]
 
 			break

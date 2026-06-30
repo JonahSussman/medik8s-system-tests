@@ -69,6 +69,6 @@ const (
 	// FARConditionTimeout is how long to wait for a FAR CR condition to appear.
 	FARConditionTimeout = 2 * time.Minute
 
-	// ControllerLeasePrefix is the prefix for the FAR leader election lease name.
-	ControllerLeasePrefix = "fence-agents-remediation"
+	// ControllerLeaseName is the FAR leader election lease name (LeaderElectionID in cmd/main.go).
+	ControllerLeaseName = "cb305759.medik8s.io"
 )
