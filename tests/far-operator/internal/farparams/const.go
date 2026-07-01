@@ -7,6 +7,9 @@ const (
 	Label = "far"
 	// DefaultPollInterval is the polling interval used with Eventually calls.
 	DefaultPollInterval = 5 * time.Second
+	// BootIDPollInterval is the polling interval for reboot detection via boot ID changes.
+	// Longer than DefaultPollInterval because kubelet may lag updating status.nodeInfo.bootID.
+	BootIDPollInterval = 10 * time.Second
 
 	// ExpectedReplicas defines the expected number of replicas for FAR controller manager.
 	ExpectedReplicas = int32(2)
