@@ -3,7 +3,6 @@ package tests
 import (
 	"context"
 	"fmt"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -16,28 +15,32 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/deployment"
+
 	"github.com/medik8s/system-tests/tests/far-operator/internal/farparams"
 	"github.com/medik8s/system-tests/tests/far-operator/internal/farutils"
+	"github.com/medik8s/system-tests/tests/internal/helpers"
 	"github.com/medik8s/system-tests/tests/internal/labels"
 	. "github.com/medik8s/system-tests/tests/internal/medik8sinittools"
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 )
 
-var farGVR = schema.GroupVersionResource{
-	Group:    "fence-agents-remediation.medik8s.io",
-	Version:  "v1alpha1",
-	Resource: "fenceagentsremediations",
+var farGVK = schema.GroupVersionKind{
+	Group:   "fence-agents-remediation.medik8s.io",
+	Version: "v1alpha1",
+	Kind:    "FenceAgentsRemediation",
 }
 
-var fartGVR = schema.GroupVersionResource{
-	Group:    "fence-agents-remediation.medik8s.io",
-	Version:  "v1alpha1",
-	Resource: "fenceagentsremediationtemplates",
+var fartGVK = schema.GroupVersionKind{
+	Group:   "fence-agents-remediation.medik8s.io",
+	Version: "v1alpha1",
+	Kind:    "FenceAgentsRemediationTemplate",
 }
 
 var _ = Describe("FAR Destructive Tests",
 	Serial, Ordered, ContinueOnFailure,
-	Label(farparams.Label, labels.DisruptionDestructive,
+	Label(labels.OperatorFAR, farparams.Label,
+		labels.DisruptionDestructive,
 		labels.PlatformAWS, labels.FrequencyWeekly),
 	func() {
 		var (
@@ -63,7 +66,7 @@ var _ = Describe("FAR Destructive Tests",
 
 			var err error
 
-			platform, region, err = farutils.DetectPlatform(ctx, APIClient)
+			platform, region, err = helpers.DetectPlatform(ctx, APIClient)
 			Expect(err).ToNot(HaveOccurred())
 
 			if platform != configv1.AWSPlatformType {
@@ -79,17 +82,17 @@ var _ = Describe("FAR Destructive Tests",
 				"Platform: %s, Agent: %s, Region: %s\n",
 				platform, fenceAgent, region)
 
-			By("Verifying FAR operator has at least 1 running pod")
+			By("Verifying FAR operator deployment is ready")
 
-			farPods, err := farutils.GetFARControllerPods(ctx, APIClient)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(len(farPods)).To(
-				BeNumerically(">=", 1),
-				"FAR controller must have at least 1 running pod")
+			farDeployment, err := deployment.Pull(
+				APIClient, farparams.OperatorDeploymentName, medik8sparams.OperatorNs)
+			Expect(err).ToNot(HaveOccurred(), "Failed to get FAR deployment")
+			Expect(farDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(),
+				"FAR deployment is not Ready")
 
 			By("Verifying at least 3 Ready worker nodes")
 
-			workerCount, err := farutils.CountReadyWorkerNodes(ctx, APIClient)
+			workerCount, err := helpers.CountReadyWorkerNodes(ctx, APIClient)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(workerCount).To(
 				BeNumerically(">=", 3),
@@ -150,28 +153,38 @@ var _ = Describe("FAR Destructive Tests",
 			}
 
 			if targetNode != nil {
-				By("Safety net: ensuring kubelet is running on " +
-					targetNode.Name)
-				_ = farutils.StartKubelet(ctx, targetNode.Name)
+				nodeName := targetNode.Name
+
+				By("Safety net: ensuring kubelet is running on " + nodeName)
+
+				if err := farutils.StartKubelet(ctx, nodeName); err != nil {
+					GinkgoWriter.Printf(
+						"Warning: safety net failed to start kubelet on %s: %v\n",
+						nodeName, err)
+				}
 
 				By("Safety net: waiting for node to become Ready")
 
-				_ = farutils.WaitForNodeReady(
-					ctx, APIClient, targetNode.Name,
-					farparams.NodeReadyTimeout)
+				if err := farutils.WaitForNodeReady(
+					ctx, APIClient, nodeName,
+					farparams.NodeReadyTimeout); err != nil {
+					GinkgoWriter.Printf(
+						"Warning: safety net node %s did not become Ready: %v\n",
+						nodeName, err)
+				}
 
 				targetNode = nil
 			}
 
 			if currentFARName != "" {
 				By("Safety net: deleting FAR CR " + currentFARName)
-				deleteFARCR(ctx, APIClient, currentFARName)
+				deleteRemediationCR(ctx, APIClient, farGVK, currentFARName)
 				currentFARName = ""
 			}
 
 			if currentFARTName != "" {
 				By("Safety net: deleting FART " + currentFARTName)
-				deleteFARTCR(ctx, APIClient, currentFARTName)
+				deleteRemediationCR(ctx, APIClient, fartGVK, currentFARTName)
 				currentFARTName = ""
 			}
 		})
@@ -183,9 +196,10 @@ var _ = Describe("FAR Destructive Tests",
 			//   2. Record boot ID
 			//   3. Create FART + deploy workload pod
 			//   4. Stop kubelet (simulate unhealthy node)
-			//   5. Create FAR CR (trigger remediation)
-			//   6. Verify: taint applied, node rebooted, pod evicted
-			//   7. Cleanup via DeferCleanup + JustAfterEach safety net
+			//   5. WaitForNodeNotReady (verify kubelet actually stopped)
+			//   6. Create FAR CR (trigger remediation)
+			//   7. Verify: taint applied, node rebooted, pod evicted
+			//   8. Cleanup via DeferCleanup + JustAfterEach safety net
 		})
 
 		Context("NHC+FAR interop", func() {
@@ -227,80 +241,49 @@ func buildFARTUnstructured(
 	}
 }
 
-func deleteFARCR(
-	ctx context.Context, k8sClient client.Client, name string,
+func deleteRemediationCR(
+	ctx context.Context, k8sClient client.Client,
+	gvk schema.GroupVersionKind, name string,
 ) {
-	far := &unstructured.Unstructured{}
-	far.SetGroupVersionKind(schema.GroupVersionKind{
-		Group:   farGVR.Group,
-		Version: farGVR.Version,
-		Kind:    "FenceAgentsRemediation",
-	})
+	obj := &unstructured.Unstructured{}
+	obj.SetGroupVersionKind(gvk)
 
 	key := client.ObjectKey{Name: name, Namespace: medik8sparams.OperatorNs}
 
-	err := k8sClient.Get(ctx, key, far)
+	err := k8sClient.Get(ctx, key, obj)
 	if k8serrors.IsNotFound(err) {
 		return
 	}
 
 	if err != nil {
-		GinkgoWriter.Printf("Warning: failed to get FAR CR %s for cleanup: %v\n", name, err)
+		GinkgoWriter.Printf("Warning: failed to get %s %s for cleanup: %v\n", gvk.Kind, name, err)
 
 		return
 	}
 
-	if delErr := k8sClient.Delete(ctx, far); delErr != nil {
-		GinkgoWriter.Printf("Warning: failed to delete FAR CR %s: %v\n", name, delErr)
+	if delErr := k8sClient.Delete(ctx, obj); delErr != nil {
+		GinkgoWriter.Printf("Warning: failed to delete %s %s: %v\n", gvk.Kind, name, delErr)
 
 		return
 	}
 
-	_ = wait.PollUntilContextTimeout(
-		ctx, farparams.DefaultPollInterval, 2*time.Minute, true,
+	if waitErr := wait.PollUntilContextTimeout(
+		ctx, farparams.DefaultPollInterval, farparams.RemediationCRDeletionTimeout, true,
 		func(ctx context.Context) (bool, error) {
-			err := k8sClient.Get(ctx, key, far)
+			err := k8sClient.Get(ctx, key, obj)
+			if k8serrors.IsNotFound(err) {
+				return true, nil
+			}
 
-			return k8serrors.IsNotFound(err), nil
+			if err != nil {
+				return false, err
+			}
+
+			return false, nil
 		},
-	)
-}
-
-func deleteFARTCR(
-	ctx context.Context, k8sClient client.Client, name string,
-) {
-	fart := &unstructured.Unstructured{}
-	fart.SetGroupVersionKind(schema.GroupVersionKind{
-		Group:   fartGVR.Group,
-		Version: fartGVR.Version,
-		Kind:    "FenceAgentsRemediationTemplate",
-	})
-
-	key := client.ObjectKey{Name: name, Namespace: medik8sparams.OperatorNs}
-
-	err := k8sClient.Get(ctx, key, fart)
-	if k8serrors.IsNotFound(err) {
-		return
+	); waitErr != nil {
+		GinkgoWriter.Printf(
+			"Warning: %s %s not fully deleted within %s: %v\n",
+			gvk.Kind, name, farparams.RemediationCRDeletionTimeout, waitErr)
 	}
-
-	if err != nil {
-		GinkgoWriter.Printf("Warning: failed to get FART %s for cleanup: %v\n", name, err)
-
-		return
-	}
-
-	if delErr := k8sClient.Delete(ctx, fart); delErr != nil {
-		GinkgoWriter.Printf("Warning: failed to delete FART %s: %v\n", name, delErr)
-
-		return
-	}
-
-	_ = wait.PollUntilContextTimeout(
-		ctx, farparams.DefaultPollInterval, 2*time.Minute, true,
-		func(ctx context.Context) (bool, error) {
-			err := k8sClient.Get(ctx, key, fart)
-
-			return k8serrors.IsNotFound(err), nil
-		},
-	)
 }

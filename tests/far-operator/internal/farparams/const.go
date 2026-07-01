@@ -72,6 +72,9 @@ const (
 	// FARConditionTimeout is how long to wait for a FAR CR condition to appear.
 	FARConditionTimeout = 2 * time.Minute
 
+	// RemediationCRDeletionTimeout is how long to wait for a FAR/FART CR to be fully deleted.
+	RemediationCRDeletionTimeout = 2 * time.Minute
+
 	// ControllerLeaseName is the FAR leader election lease name (LeaderElectionID in cmd/main.go).
 	ControllerLeaseName = "cb305759.medik8s.io"
 )
