@@ -22,6 +22,14 @@ func RunOnNode(
 	ctx context.Context, nodeName string, timeout time.Duration,
 	cmd ...string,
 ) (string, error) {
+	if nodeName == "" {
+		return "", fmt.Errorf("RunOnNode: nodeName must not be empty")
+	}
+
+	if len(cmd) == 0 {
+		return "", fmt.Errorf("RunOnNode: cmd must not be empty")
+	}
+
 	args := append(
 		[]string{"debug", "node/" + nodeName, "--", "chroot", "/host"},
 		cmd...,
@@ -72,7 +80,6 @@ func StopKubelet(
 			strings.Contains(errMsg, "lost connection") ||
 			strings.Contains(errMsg, "closed network connection") ||
 			strings.Contains(errMsg, "broken pipe") ||
-			strings.Contains(errMsg, "EOF") ||
 			strings.Contains(errMsg, "transport is closing") {
 			fmt.Fprintf(os.Stderr,
 				"StopKubelet(%s): suppressed expected connection-loss error "+
@@ -147,54 +154,29 @@ func WaitForNodeNotReady(
 	ctx context.Context, k8sClient client.Client, nodeName string,
 	pollInterval, timeout time.Duration,
 ) error {
-	err := wait.PollUntilContextTimeout(
-		ctx, pollInterval, timeout, true,
-		func(ctx context.Context) (bool, error) {
-			node := &corev1.Node{}
-			if err := k8sClient.Get(
-				ctx, client.ObjectKey{Name: nodeName}, node,
-			); err != nil {
-				if k8serrors.IsNotFound(err) {
-					return false, fmt.Errorf(
-						"node %s was deleted during readiness wait: %w",
-						nodeName, err)
-				}
-
-				if k8serrors.IsForbidden(err) || k8serrors.IsUnauthorized(err) {
-					return false, fmt.Errorf(
-						"permanent API error fetching node %s: %w",
-						nodeName, err)
-				}
-
-				fmt.Fprintf(os.Stderr,
-					"WaitForNodeNotReady(%s): transient API error, retrying: %v\n",
-					nodeName, err)
-
-				return false, nil
-			}
-
-			return !IsNodeReady(node), nil
-		},
+	return waitForNodeCondition(
+		ctx, k8sClient, nodeName, pollInterval, timeout,
+		func(node *corev1.Node) bool { return !IsNodeReady(node) },
+		"NotReady",
 	)
-	if err != nil {
-		if wait.Interrupted(err) {
-			return fmt.Errorf(
-				"timed out after %s waiting for node %s to become NotReady: %w",
-				timeout, nodeName, err)
-		}
-
-		return fmt.Errorf(
-			"failed waiting for node %s to become NotReady: %w",
-			nodeName, err)
-	}
-
-	return nil
 }
 
 // WaitForNodeReady polls until the node's Ready condition is True.
 func WaitForNodeReady(
 	ctx context.Context, k8sClient client.Client, nodeName string,
 	pollInterval, timeout time.Duration,
+) error {
+	return waitForNodeCondition(
+		ctx, k8sClient, nodeName, pollInterval, timeout,
+		IsNodeReady,
+		"Ready",
+	)
+}
+
+func waitForNodeCondition(
+	ctx context.Context, k8sClient client.Client, nodeName string,
+	pollInterval, timeout time.Duration,
+	conditionFn func(*corev1.Node) bool, conditionDesc string,
 ) error {
 	err := wait.PollUntilContextTimeout(
 		ctx, pollInterval, timeout, true,
@@ -216,25 +198,25 @@ func WaitForNodeReady(
 				}
 
 				fmt.Fprintf(os.Stderr,
-					"WaitForNodeReady(%s): transient API error, retrying: %v\n",
-					nodeName, err)
+					"waitForNodeCondition(%s, %s): transient API error, retrying: %v\n",
+					nodeName, conditionDesc, err)
 
 				return false, nil
 			}
 
-			return IsNodeReady(node), nil
+			return conditionFn(node), nil
 		},
 	)
 	if err != nil {
 		if wait.Interrupted(err) {
 			return fmt.Errorf(
-				"timed out after %s waiting for node %s to become Ready: %w",
-				timeout, nodeName, err)
+				"timed out after %s waiting for node %s to become %s: %w",
+				timeout, nodeName, conditionDesc, err)
 		}
 
 		return fmt.Errorf(
-			"failed waiting for node %s to become Ready: %w",
-			nodeName, err)
+			"failed waiting for node %s to become %s: %w",
+			nodeName, conditionDesc, err)
 	}
 
 	return nil
