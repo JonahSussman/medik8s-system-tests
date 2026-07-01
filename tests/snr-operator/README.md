@@ -1,7 +1,7 @@
-# SNR Operator Post-Deployment Tests
+# SNR Operator Tests
 
 Automated tests validating the Self Node Remediation (SNR) operator
-deployment, configuration, and OLM metadata.
+deployment, configuration, OLM metadata, CRD validation, and config lifecycle.
 
 ## Prerequisites
 
@@ -118,3 +118,76 @@ RemediationSkippedNodeNotFound reason.
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="snr" --focus="non-existent node name" ./tests/snr-operator/...`
 - **Pass criteria**: Processing=False/RemediationSkippedNodeNotFound, Succeeded=False/RemediationSkippedNodeNotFound
+
+### 9. Verify CRD Description of safeTimeToAssumeNodeRebootedSeconds ([OCP-60824](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-60824))
+
+Validates that the SelfNodeRemediationConfig CRD schema contains the
+expected description text for the safeTimeToAssumeNodeRebootedSeconds
+field in the storage version.
+
+- **Operators**: SNR v0.12.1+
+- **Cluster**: Any topology
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="snr" --focus="CRD description" ./tests/snr-operator/...`
+- **Pass criteria**: Field description contains expected text about safe time to assume node rebooted
+
+### 10. Verify Non-Default SNRC Creation Is Rejected ([OCP-50961](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-50961))
+
+Validates that creating a second SelfNodeRemediationConfig with a
+non-default name is rejected, enforcing the single-instance constraint.
+
+- **Operators**: SNR v0.12.1+
+- **Cluster**: Any topology
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="snr" --focus="non-default SNRC" ./tests/snr-operator/...`
+- **Pass criteria**: API server rejects with error mentioning single SNRC enforcement
+
+### 11. Verify Invalid Values in SNRC Are Rejected ([OCP-47330](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-47330))
+
+Validates that creating a SelfNodeRemediationConfig with invalid string
+values or too-small duration values is rejected by the webhook with
+specific validation error messages for each field.
+
+- **Operators**: SNR v0.12.1+
+- **Cluster**: Any topology
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="snr" --focus="invalid values in SNRC" ./tests/snr-operator/...`
+- **Pass criteria**: Invalid string values rejected; too-small durations rejected with per-field minimum messages
+
+### 12. Verify lastError Is Captured for Non-Existent Node ([OCP-50583](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-50583))
+
+Validates that creating a SelfNodeRemediation CR targeting a node name
+that does not exist in the cluster causes the lastError status field to
+be populated with a "not found" message.
+
+- **Operators**: SNR v0.12.1+
+- **Cluster**: Any topology
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="snr" --focus="lastError is captured" ./tests/snr-operator/...`
+- **Pass criteria**: lastError field contains node-not-found message
+
+### 13. Verify SNR Auto-Detects Softdog Path ([OCP-50770](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-50770))
+
+Validates that when the SNRC watchdogFilePath is set to an invalid path,
+the SNR agent auto-detects the softdog path and logs a message. The test
+patches the SNRC, waits for DS pods to restart, checks logs, and
+restores the original path.
+
+- **Operators**: SNR v0.12.1+
+- **Cluster**: Any topology with softdog support
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="snr" --focus="auto-detects softdog" ./tests/snr-operator/...`
+- **Pass criteria**: DS pods restart after config change; at least one pod log contains softdog auto-detection message
+
+### 14. Verify SNRC Deletion Disables SNR and Recreation Re-Enables It ([OCP-74298](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-74298))
+
+Validates the full SNRC lifecycle: deleting the default SNRC removes DS
+pods and disables remediation (Disabled condition with
+ConfigurationNotFound reason); recreating the SNRC brings DS pods back
+and the Disabled condition disappears.
+
+- **Operators**: SNR v0.12.1+
+- **Cluster**: Any topology with at least one worker node
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="snr" --focus="SNRC deletion disables" ./tests/snr-operator/...`
+- **Pass criteria**: DS pods deleted after SNRC removal; SNR CR shows Disabled/ConfigurationNotFound; after SNRC recreation DS pods return and Disabled condition is absent
