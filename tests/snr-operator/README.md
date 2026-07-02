@@ -25,7 +25,7 @@ make run-tests
 
 ## Tests
 
-### 1. Verify SNR Resources Are Installed and Running (Polarion OCP-54205)
+### 1. Verify SNR Resources Are Installed and Running ([OCP-54205](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-54205))
 
 Validates that the SelfNodeRemediationConfig CR exists, DaemonSet pods
 are running, and controller-manager pods are in Running state.
@@ -36,7 +36,7 @@ are running, and controller-manager pods are in Running state.
 - **Standalone**: `ginkgo --label-filter="snr" --focus="resources are installed" ./tests/snr-operator/...`
 - **Pass criteria**: SNRC exists by name, at least one DS pod running, all controller pods running
 
-### 2. Verify Only Automatic Remediation Template Exists (Polarion OCP-71010)
+### 2. Verify Only Automatic Remediation Template Exists ([OCP-71010](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-71010))
 
 Validates that the "Automatic" SelfNodeRemediationTemplate exists with
 the correct remediation strategy, and that unsupported templates
@@ -48,7 +48,7 @@ the correct remediation strategy, and that unsupported templates
 - **Standalone**: `ginkgo --label-filter="snr" --focus="Automatic remediation template" ./tests/snr-operator/...`
 - **Pass criteria**: Automatic template exists with strategy "Automatic", ResourceDeletion and NodeDeletion templates return NotFound
 
-### 3. Verify SNR CSV Annotations (Polarion OCP-52136)
+### 3. Verify SNR CSV Annotations ([OCP-52136](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-52136))
 
 Validates that the active SNR ClusterServiceVersion (in Succeeded phase)
 has required OLM annotations: valid-subscription, support contact,
@@ -60,7 +60,7 @@ repository URL, and at least one maintainer.
 - **Standalone**: `ginkgo --label-filter="snr" --focus="CSV annotations" ./tests/snr-operator/...`
 - **Pass criteria**: All required annotations present, maintainers list non-empty
 
-### 4. Verify SNR CSV Metadata (Polarion OCP-70705)
+### 4. Verify SNR CSV Metadata ([OCP-70705](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-70705))
 
 Validates infrastructure feature annotations (disconnected, fips-compliant,
 proxy-aware, etc.), suggested-namespace points to
