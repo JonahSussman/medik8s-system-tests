@@ -246,7 +246,7 @@ var _ = Describe(
 					}
 
 					// Give the operator one poll cycle to propagate the uncordon before we recheck.
-					// Consistently is used as a non-failing timer (AGENTS.md: never time.Sleep).
+					// Consistently is used as a non-failing, interruptible timer.
 					// Do not assert on the recheck result — a stuck cordon is an operator bug and
 					// must not block teardown or mask the actual test result.
 					Consistently(func() bool { return true },
