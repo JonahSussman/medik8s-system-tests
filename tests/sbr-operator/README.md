@@ -102,7 +102,6 @@ a DaemonSet for it.
 
 ### 7. Verify StorageBasedRemediationConfig Controller Handles Invalid Inputs Without Scheduling Agent Pods ([OCP-88741](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-88741))
 
-
 Validates that the SBR controller does not schedule agent DaemonSets when
 `StorageBasedRemediationConfig` resources specify inputs the controller cannot
 act on:
