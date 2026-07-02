@@ -250,33 +250,23 @@ func deleteRemediationCR(
 
 	key := client.ObjectKey{Name: name, Namespace: medik8sparams.OperatorNs}
 
-	err := k8sClient.Get(ctx, key, obj)
-	if k8serrors.IsNotFound(err) {
-		return
-	}
-
-	if err != nil {
-		GinkgoWriter.Printf("Warning: failed to get %s %s for cleanup: %v\n", gvk.Kind, name, err)
-
-		return
-	}
-
-	if delErr := k8sClient.Delete(ctx, obj); delErr != nil {
-		GinkgoWriter.Printf("Warning: failed to delete %s %s: %v\n", gvk.Kind, name, delErr)
-
-		return
-	}
-
 	if waitErr := wait.PollUntilContextTimeout(
 		ctx, farparams.DefaultPollInterval, farparams.RemediationCRDeletionTimeout, true,
 		func(ctx context.Context) (bool, error) {
-			err := k8sClient.Get(ctx, key, obj)
-			if k8serrors.IsNotFound(err) {
-				return true, nil
+			if err := k8sClient.Get(ctx, key, obj); err != nil {
+				if k8serrors.IsNotFound(err) {
+					return true, nil
+				}
+
+				return false, nil
 			}
 
-			if err != nil {
-				return false, err
+			if delErr := k8sClient.Delete(ctx, obj); delErr != nil {
+				if k8serrors.IsNotFound(delErr) {
+					return true, nil
+				}
+
+				return false, nil
 			}
 
 			return false, nil
