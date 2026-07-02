@@ -17,7 +17,7 @@ ginkgo --label-filter="sbr" ./tests/sbr-operator/...
 
 ## Tests
 
-### 1. Verify SBR Operator Pod is Running ([Polarion OCP-89232](https://polarion.engineering.redhat.com/polarion/#/project/OCPQE/workitem?id=OCP-89232))
+### 1. Verify SBR Operator Pod is Running ([OCP-89232](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-89232))
 
 Validates that SBR controller-manager pods are in Running state and the
 pod count matches the cluster topology (2 on multi-node, 1 on SNO).
@@ -29,7 +29,7 @@ pod count matches the cluster topology (2 on multi-node, 1 on SNO).
 - **Standalone**: `ginkgo --label-filter="sbr" --focus="pod is running" ./tests/sbr-operator/...`
 - **Pass criteria**: All pods Running, count matches expected replicas
 
-### 2. Verify SBR CSV Has Required Annotations ([Polarion OCP-89233](https://polarion.engineering.redhat.com/polarion/#/project/OCPQE/workitem?id=OCP-89233))
+### 2. Verify SBR CSV Has Required Annotations ([OCP-89233](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-89233))
 
 Validates that the active SBR ClusterServiceVersion (in Succeeded phase)
 has all required OLM feature annotations: disconnected support, FIPS
@@ -42,7 +42,7 @@ compliance flag, suggested namespace, and feature flags.
 - **Standalone**: `ginkgo --label-filter="sbr" --focus="required annotations" ./tests/sbr-operator/...`
 - **Pass criteria**: Required annotations present with expected values
 
-### 3. Verify SBR Controller Replicas and Node Distribution ([Polarion OCP-89234](https://polarion.engineering.redhat.com/polarion/#/project/OCPQE/workitem?id=OCP-89234))
+### 3. Verify SBR Controller Replicas and Node Distribution ([OCP-89234](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-89234))
 
 Validates that 2 replicas are running and scheduled on different nodes
 for high availability. Skipped on SNO clusters where only 1 replica is
@@ -55,7 +55,7 @@ expected.
 - **Standalone**: `ginkgo --label-filter="sbr" --focus="correct number of replicas" ./tests/sbr-operator/...`
 - **Pass criteria**: 2 ready replicas on 2 different nodes
 
-### 4. Verify SBR Container Security Context ([Polarion OCP-89235](https://polarion.engineering.redhat.com/polarion/#/project/OCPQE/workitem?id=OCP-89235))
+### 4. Verify SBR Container Security Context ([OCP-89235](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-89235))
 
 Validates the manager container follows the restricted security posture:
 runAsNonRoot at pod level, allowPrivilegeEscalation=false,
@@ -69,7 +69,7 @@ or pod level). Only checks the `manager` container, not sidecars.
 - **Standalone**: `ginkgo --label-filter="sbr" --focus="non-root user" ./tests/sbr-operator/...`
 - **Pass criteria**: All security context fields match restricted profile
 
-### 5. Verify SBR Uses Correct API and OLM Naming ([Polarion OCP-88822](https://polarion.engineering.redhat.com/polarion/#/project/OCPQE/workitem?id=OCP-88822))
+### 5. Verify SBR Uses Correct API and OLM Naming ([OCP-88822](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-88822))
 
 Validates that the active SBR CSV display name uses "Storage-Based Remediation"
 (not the legacy "SBD" branding) and that all owned CRDs are registered under the
@@ -82,7 +82,7 @@ correct API group `storage-based-remediation.medik8s.io`.
 - **Standalone**: `ginkgo --label-filter="sbr" --focus="correct API and OLM naming" ./tests/sbr-operator/...`
 - **Pass criteria**: CSV display name contains "Storage-Based Remediation", does not contain "SBD", all CRD API groups match expected value
 
-### 6. Verify StorageBasedRemediationConfig CRD Schema Rejects Invalid Values ([Polarion OCP-88881](https://polarion.engineering.redhat.com/polarion/#/project/OCPQE/workitem?id=OCP-88881))
+### 6. Verify StorageBasedRemediationConfig CRD Schema Rejects Invalid Values ([OCP-88881](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-88881))
 
 Validates two layers of StorageBasedRemediationConfig validation:
 
@@ -100,7 +100,7 @@ a DaemonSet for it.
 - **Standalone**: `ginkgo --label-filter="sbr" --focus="StorageBasedRemediationConfig" ./tests/sbr-operator/...`
 - **Pass criteria**: Out-of-range StorageBasedRemediationConfig fields rejected; invalid-StorageClass StorageBasedRemediationConfig admitted but no DaemonSet created
 
-### 7. Verify StorageBasedRemediationConfig Controller Handles Invalid Inputs Without Scheduling Agent Pods ([Polarion OCP-88741](https://polarion.engineering.redhat.com/polarion/#/project/OCPQE/workitem?id=OCP-88741))
+### 7. Verify StorageBasedRemediationConfig Controller Handles Invalid Inputs Without Scheduling Agent Pods ([OCP-88741](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-88741))
 
 
 Validates that the SBR controller does not schedule agent DaemonSets when
@@ -121,7 +121,7 @@ act on:
 - **Standalone**: `ginkgo --label-filter="sbr" --focus="invalid watchdog path and non-matching nodeSelector" ./tests/sbr-operator/...`
 - **Pass criteria**: No agent pods scheduled for either invalid StorageBasedRemediationConfig input; StorageBasedRemediationConfig CRs remain present after controller reconciliation
 
-### 8. Verify Watchdog Device Accessibility and Softdog Module Availability ([Polarion OCP-88878](https://polarion.engineering.redhat.com/polarion/#/project/OCPQE/workitem?id=OCP-88878))
+### 8. Verify Watchdog Device Accessibility and Softdog Module Availability ([OCP-88878](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-88878))
 
 Validates that every schedulable cluster node either has accessible hardware watchdog character
 devices or has the softdog kernel module available as a fallback.
