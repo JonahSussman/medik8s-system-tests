@@ -25,7 +25,7 @@ make run-tests
 
 ## Tests
 
-### 1. Verify Node Maintenance Operator Pod Is Running (Polarion OCP-46315)
+### 1. Verify Node Maintenance Operator Pod Is Running ([OCP-46315](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-46315))
 
 Validates that the NMO controller-manager pod is in Running state
 with all containers ready.
@@ -36,7 +36,7 @@ with all containers ready.
 - **Standalone**: `ginkgo --label-filter="nmo" --focus="pod is running" ./tests/nmo-operator/...`
 - **Pass criteria**: At least 1 running NMO controller pod with all containers ready
 
-### 2. Verify NMO CSV Has Required Annotations
+### 2. Verify NMO CSV Has Required Annotations ([OCP-89626](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-89626))
 
 Validates that the active NMO ClusterServiceVersion (in Succeeded phase)
 has all required OLM infrastructure annotations with expected values.
@@ -47,7 +47,7 @@ has all required OLM infrastructure annotations with expected values.
 - **Standalone**: `ginkgo --label-filter="nmo" --focus="CSV has required annotations" ./tests/nmo-operator/...`
 - **Pass criteria**: All 8 required annotations present with correct values (disconnected, fips-compliant, proxy-aware, tls-profiles, token-auth-aws/azure/gcp, suggested-namespace)
 
-### 3. Verify NMO Controller Manager Has Correct Number of Replicas
+### 3. Verify NMO Controller Manager Has Correct Number of Replicas ([OCP-89627](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-89627))
 
 Validates that the NMO deployment has the expected replica count
 and all replicas are ready. NMO runs a single replica on all
@@ -59,7 +59,7 @@ cluster topologies (MNO and SNO).
 - **Standalone**: `ginkgo --label-filter="nmo" --focus="correct number of replicas" ./tests/nmo-operator/...`
 - **Pass criteria**: spec.replicas == 1 and status.readyReplicas == 1
 
-### 4. Verify NMO Container Runs as Non-Root User
+### 4. Verify NMO Container Runs as Non-Root User ([OCP-89628](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-89628))
 
 Validates that the NMO manager container enforces a restricted
 security context: runAsNonRoot, no privilege escalation,
