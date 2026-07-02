@@ -94,6 +94,8 @@ var _ = Describe("FAR Destructive Tests",
 
 			workerCount, err := helpers.CountReadyWorkerNodes(ctx, APIClient)
 			Expect(err).ToNot(HaveOccurred())
+			// 3 workers: FAR leader (excluded from fencing) + target (fenced/rebooted) +
+			// at least 1 spare to keep the cluster schedulable while the target is down.
 			Expect(workerCount).To(
 				BeNumerically(">=", 3),
 				"Destructive tests require at least 3 Ready worker nodes")
