@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -22,6 +23,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
+
+var validWatchdogDevice = regexp.MustCompile(`^/dev/watchdog[0-9]*$`)
 
 var _ = Describe(
 	"SBR Functional — Watchdog Integration",
@@ -175,7 +178,7 @@ var _ = Describe(
 					}
 
 					device := strings.TrimPrefix(line, "/proc/1/root")
-					if device != "" {
+					if device != "" && validWatchdogDevice.MatchString(device) {
 						devices = append(devices, device)
 					}
 				}
@@ -462,7 +465,7 @@ func watchdogProbeLogs(podName, namespace string, builder *pod.Builder) (string,
 	defer stream.Close()
 
 	var buf bytes.Buffer
-	if _, copyErr := io.Copy(&buf, stream); copyErr != nil {
+	if _, copyErr := io.Copy(&buf, io.LimitReader(stream, 64*1024)); copyErr != nil {
 		return "", copyErr
 	}
 
