@@ -142,6 +142,7 @@ var _ = Describe("FAR Destructive Tests",
 			Expect(err).ToNot(HaveOccurred())
 			GinkgoWriter.Printf("FAR leader is on node: %s\n", leaderNode)
 
+			// TODO(RHWA-963): remove when destructive test specs consume these variables.
 			_ = nodeIDParam
 			_ = sharedParams
 			_ = nodeParams
