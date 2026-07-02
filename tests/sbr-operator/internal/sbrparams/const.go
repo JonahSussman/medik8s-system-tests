@@ -96,7 +96,7 @@ const (
 
 	// SBRCReadyTimeout is the time allowed for the SBRC's agent DaemonSet to have all scheduled
 	// pods reach Ready before a functional test begins.
-	SBRCReadyTimeout = 5 * time.Minute
+	SBRCReadyTimeout = 7 * time.Minute
 
 	// SBRStorageUnhealthyCondition is the node condition type set by the SBR agent when storage is unavailable.
 	SBRStorageUnhealthyCondition = "SBRStorageUnhealthy"
