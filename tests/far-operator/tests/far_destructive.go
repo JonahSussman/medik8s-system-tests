@@ -154,30 +154,6 @@ var _ = Describe("FAR Destructive Tests",
 					"Test failed - running safety net cleanup")
 			}
 
-			if targetNode != nil {
-				nodeName := targetNode.Name
-
-				By("Safety net: ensuring kubelet is running on " + nodeName)
-
-				if err := farutils.StartKubelet(ctx, nodeName); err != nil {
-					GinkgoWriter.Printf(
-						"Warning: safety net failed to start kubelet on %s: %v\n",
-						nodeName, err)
-				}
-
-				By("Safety net: waiting for node to become Ready")
-
-				if err := farutils.WaitForNodeReady(
-					ctx, APIClient, nodeName,
-					farparams.NodeReadyTimeout); err != nil {
-					GinkgoWriter.Printf(
-						"Warning: safety net node %s did not become Ready: %v\n",
-						nodeName, err)
-				}
-
-				targetNode = nil
-			}
-
 			if currentFARName != "" {
 				By("Safety net: deleting FAR CR " + currentFARName)
 				deleteRemediationCR(ctx, APIClient, farGVK, currentFARName)
@@ -188,6 +164,21 @@ var _ = Describe("FAR Destructive Tests",
 				By("Safety net: deleting FART " + currentFARTName)
 				deleteRemediationCR(ctx, APIClient, fartGVK, currentFARTName)
 				currentFARTName = ""
+			}
+
+			if targetNode != nil {
+				nodeName := targetNode.Name
+				targetNode = nil
+
+				By("Safety net: ensuring kubelet is running on " + nodeName)
+				Expect(farutils.StartKubelet(ctx, nodeName)).To(Succeed(),
+					"safety net: failed to restart kubelet on %s", nodeName)
+
+				By("Safety net: waiting for node to become Ready")
+				Expect(farutils.WaitForNodeReady(
+					ctx, APIClient, nodeName,
+					farparams.NodeReadyTimeout)).To(Succeed(),
+					"safety net: node %s did not become Ready", nodeName)
 			}
 		})
 
