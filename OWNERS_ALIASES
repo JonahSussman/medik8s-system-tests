@@ -3,7 +3,6 @@
 aliases:
   approvers:
     - mshitrit
-    - slintes
     - razo7
     - beekhof
     - clobrano
@@ -16,7 +15,6 @@ aliases:
 
   code-reviewers:
     - mshitrit
-    - slintes
     - razo7
     - beekhof
     - clobrano
