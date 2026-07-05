@@ -17,7 +17,6 @@ import (
 	"github.com/medik8s/system-tests/tests/sbr-operator/internal/sbrparams"
 
 	corev1 "k8s.io/api/core/v1"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -25,40 +24,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-// buildSplitBrainNHC returns an unstructured NodeHealthCheck CR for the split-brain test.
 func buildSplitBrainNHC() *unstructured.Unstructured {
-	return &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"apiVersion": sbrparams.NHCAPIGroup + "/" + sbrparams.NHCAPIVersion,
-			"kind":       "NodeHealthCheck",
-			"metadata": map[string]interface{}{
-				"name": sbrparams.NHCSplitBrainTestName,
-			},
-			"spec": map[string]interface{}{
-				"selector": map[string]interface{}{
-					"matchExpressions": []interface{}{
-						map[string]interface{}{
-							"key":      "node-role.kubernetes.io/worker",
-							"operator": "Exists",
-						},
-					},
-				},
-				"unhealthyConditions": []interface{}{
-					map[string]interface{}{
-						"type":     sbrparams.SBRStorageUnhealthyCondition,
-						"status":   "True",
-						"duration": sbrparams.NHCUnhealthyDuration,
-					},
-				},
-				"remediationTemplate": map[string]interface{}{
-					"apiVersion": sbrparams.CRDGroup + "/" + sbrparams.CRDVersion,
-					"kind":       "StorageBasedRemediationTemplate",
-					"name":       sbrparams.SBRTemplateName,
-					"namespace":  medik8sparams.OperatorNs,
-				},
-			},
-		},
-	}
+	return buildNHC(sbrparams.NHCSplitBrainTestName)
 }
 
 // sbrCRExists checks whether a StorageBasedRemediation CR exists for the given node name.
@@ -106,16 +73,9 @@ var _ = Describe(
 		BeforeAll(func() {
 			By("Checking whether NHC CRD is installed")
 
-			crd := &apiextensionsv1.CustomResourceDefinition{}
-			crdErr := APIClient.Get(context.TODO(),
-				types.NamespacedName{Name: sbrparams.NHCCRDName}, crd)
-
-			if k8serrors.IsNotFound(crdErr) {
+			if !isNHCCRDInstalled() {
 				Skip("NodeHealthCheck CRD not found — NHC operator not installed; skipping split-brain test")
 			}
-
-			Expect(crdErr).ToNot(HaveOccurred(),
-				"Unexpected error while checking for NodeHealthCheck CRD")
 
 			By("Listing schedulable worker nodes (need at least 3)")
 
@@ -300,20 +260,7 @@ var _ = Describe(
 
 			cleanupPod, pullErr := pod.Pull(APIClient, injectorPodName, medik8sparams.OperatorNs)
 			if pullErr == nil {
-				_, flushErr := cleanupPod.ExecCommand([]string{
-					"nsenter", "--target", "1", "--net", "--",
-					"sh", "-c",
-					"iptables -D OUTPUT -p tcp --dport 3300 -j REJECT 2>/dev/null || true; " +
-						"iptables -D INPUT -p tcp --sport 3300 -j REJECT 2>/dev/null || true; " +
-						"iptables -D OUTPUT -p tcp --dport 6789 -j REJECT 2>/dev/null || true; " +
-						"iptables -D INPUT -p tcp --sport 6789 -j REJECT 2>/dev/null || true; " +
-						"iptables -D OUTPUT -p tcp --dport 6800:7300 -j REJECT 2>/dev/null || true; " +
-						"iptables -D INPUT -p tcp --sport 6800:7300 -j REJECT 2>/dev/null || true",
-				})
-				if flushErr != nil {
-					GinkgoWriter.Printf("Warning: iptables -D cleanup in AfterAll on node %s: %v\n",
-						targetNodeName, flushErr)
-				}
+				removeCephFSRejectBidirectional(cleanupPod)
 
 				if _, delErr := cleanupPod.Delete(); delErr != nil {
 					GinkgoWriter.Printf("Warning: delete injector pod in AfterAll: %v\n", delErr)
@@ -336,19 +283,7 @@ var _ = Describe(
 
 					cleanupPod, pullErr := pod.Pull(APIClient, injectorPodName, medik8sparams.OperatorNs)
 					if pullErr == nil {
-						_, flushErr := cleanupPod.ExecCommand([]string{
-							"nsenter", "--target", "1", "--net", "--",
-							"sh", "-c",
-							"iptables -D OUTPUT -p tcp --dport 3300 -j REJECT 2>/dev/null || true; " +
-								"iptables -D INPUT -p tcp --sport 3300 -j REJECT 2>/dev/null || true; " +
-								"iptables -D OUTPUT -p tcp --dport 6789 -j REJECT 2>/dev/null || true; " +
-								"iptables -D INPUT -p tcp --sport 6789 -j REJECT 2>/dev/null || true; " +
-								"iptables -D OUTPUT -p tcp --dport 6800:7300 -j REJECT 2>/dev/null || true; " +
-								"iptables -D INPUT -p tcp --sport 6800:7300 -j REJECT 2>/dev/null || true",
-						})
-						if flushErr != nil {
-							GinkgoWriter.Printf("Warning: iptables -D cleanup failed: %v\n", flushErr)
-						}
+						removeCephFSRejectBidirectional(cleanupPod)
 
 						if _, delErr := cleanupPod.Delete(); delErr != nil {
 							GinkgoWriter.Printf("Warning: delete injector pod: %v\n", delErr)
@@ -392,31 +327,7 @@ var _ = Describe(
 				Expect(createErr).ToNot(HaveOccurred(),
 					"Failed to create injector pod on node %q", targetNodeName)
 
-				By("Injecting CephFS port REJECT rules (INPUT+OUTPUT) on target node only via nsenter")
-
-				// CephFS uses: 3300 (msgr2), 6789 (msgr1 mon), 6800-7300 (OSD/MDS).
-				// REJECT causes immediate RST so the SBR agent detects storage loss quickly.
-				// Both INPUT and OUTPUT are blocked so the isolated node cannot reach monitors/OSDs.
-				rejectRules := [][]string{
-					{"nsenter", "--target", "1", "--net", "--",
-						"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "3300", "-j", "REJECT"},
-					{"nsenter", "--target", "1", "--net", "--",
-						"iptables", "-I", "INPUT", "-p", "tcp", "--sport", "3300", "-j", "REJECT"},
-					{"nsenter", "--target", "1", "--net", "--",
-						"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "6789", "-j", "REJECT"},
-					{"nsenter", "--target", "1", "--net", "--",
-						"iptables", "-I", "INPUT", "-p", "tcp", "--sport", "6789", "-j", "REJECT"},
-					{"nsenter", "--target", "1", "--net", "--",
-						"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "6800:7300", "-j", "REJECT"},
-					{"nsenter", "--target", "1", "--net", "--",
-						"iptables", "-I", "INPUT", "-p", "tcp", "--sport", "6800:7300", "-j", "REJECT"},
-				}
-
-				for _, rule := range rejectRules {
-					_, execErr := injectorPod.ExecCommand(rule)
-					Expect(execErr).ToNot(HaveOccurred(),
-						"Failed to inject iptables rule %v on node %q", rule, targetNodeName)
-				}
+				injectCephFSRejectBidirectional(injectorPod, targetNodeName)
 
 				GinkgoWriter.Printf("CephFS port REJECT rules (INPUT+OUTPUT) applied on node %q only\n",
 					targetNodeName)

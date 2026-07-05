@@ -44,41 +44,8 @@ func getNodeConditionNHC(ctx context.Context, nodeName, condType string) *corev1
 	return nil
 }
 
-// buildNHCUnstructured returns an unstructured NodeHealthCheck CR configured to
-// trigger SBR remediation when SBRStorageUnhealthy=True for NHCUnhealthyDuration.
 func buildNHCUnstructured() *unstructured.Unstructured {
-	return &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"apiVersion": sbrparams.NHCAPIGroup + "/" + sbrparams.NHCAPIVersion,
-			"kind":       "NodeHealthCheck",
-			"metadata": map[string]interface{}{
-				"name": sbrparams.NHCTestName,
-			},
-			"spec": map[string]interface{}{
-				"selector": map[string]interface{}{
-					"matchExpressions": []interface{}{
-						map[string]interface{}{
-							"key":      "node-role.kubernetes.io/worker",
-							"operator": "Exists",
-						},
-					},
-				},
-				"unhealthyConditions": []interface{}{
-					map[string]interface{}{
-						"type":     sbrparams.SBRStorageUnhealthyCondition,
-						"status":   string(corev1.ConditionTrue),
-						"duration": sbrparams.NHCUnhealthyDuration,
-					},
-				},
-				"remediationTemplate": map[string]interface{}{
-					"apiVersion": sbrparams.CRDGroup + "/" + sbrparams.CRDVersion,
-					"kind":       "StorageBasedRemediationTemplate",
-					"name":       sbrparams.SBRTemplateName,
-					"namespace":  medik8sparams.OperatorNs,
-				},
-			},
-		},
-	}
+	return buildNHC(sbrparams.NHCTestName)
 }
 
 var _ = Describe(
@@ -337,19 +304,7 @@ var _ = Describe(
 
 					cleanupPod, pullErr := pod.Pull(APIClient, injectorPodName, medik8sparams.OperatorNs)
 					if pullErr == nil {
-						deleteRules := [][]string{
-							{"nsenter", "--target", "1", "--net", "--",
-								"sh", "-c", "iptables -D OUTPUT -p tcp --dport 3300 -j REJECT 2>/dev/null || true"},
-							{"nsenter", "--target", "1", "--net", "--",
-								"sh", "-c", "iptables -D OUTPUT -p tcp --dport 6789 -j REJECT 2>/dev/null || true"},
-							{"nsenter", "--target", "1", "--net", "--",
-								"sh", "-c", "iptables -D OUTPUT -p tcp --dport 6800:7300 -j REJECT 2>/dev/null || true"},
-						}
-						for _, rule := range deleteRules {
-							if _, delRuleErr := cleanupPod.ExecCommand(rule); delRuleErr != nil {
-								GinkgoWriter.Printf("Warning: iptables delete rule on node %s: %v\n", targetNodeName, delRuleErr)
-							}
-						}
+						removeCephFSRejectOutput(cleanupPod)
 
 						if _, delErr := cleanupPod.Delete(); delErr != nil {
 							GinkgoWriter.Printf("Warning: delete injector pod: %v\n", delErr)
@@ -382,26 +337,7 @@ var _ = Describe(
 				Expect(createErr).ToNot(HaveOccurred(),
 					"Failed to create injector pod on node %q", targetNodeName)
 
-				By("Injecting CephFS port REJECT rules via nsenter into host network namespace")
-
-				// CephFS ports: 3300 (msgr2), 6789 (msgr1), 6800-7300 (OSD/MDS).
-				// REJECT causes immediate TCP RST so the SBR agent detects storage loss quickly.
-				rejectRules := [][]string{
-					{"nsenter", "--target", "1", "--net",
-						"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "3300", "-j", "REJECT"},
-					{"nsenter", "--target", "1", "--net",
-						"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "6789", "-j", "REJECT"},
-					{"nsenter", "--target", "1", "--net",
-						"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "6800:7300", "-j", "REJECT"},
-				}
-
-				for _, rule := range rejectRules {
-					_, execErr := injectorPod.ExecCommand(rule)
-					Expect(execErr).ToNot(HaveOccurred(),
-						"Failed to inject iptables rule %v on node %q", rule, targetNodeName)
-				}
-
-				GinkgoWriter.Printf("CephFS port REJECT rules applied on node %q\n", targetNodeName)
+				injectCephFSRejectOutput(injectorPod, targetNodeName)
 
 				By(fmt.Sprintf("Waiting for node %q to acquire SBRStorageUnhealthy=True condition", targetNodeName))
 
