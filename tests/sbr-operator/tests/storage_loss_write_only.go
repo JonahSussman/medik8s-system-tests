@@ -176,7 +176,7 @@ var _ = Describe(
 			Expect(createErr).ToNot(HaveOccurred(),
 				"Failed to create StorageBasedRemediationConfig %q", sbrparams.SBRCStorageLossWriteName)
 
-			By("Waiting for agent DaemonSet to have at least one ready pod")
+			By("Waiting for agent DaemonSet to have all pods ready")
 
 			waitForSBRCReady(sbrparams.SBRCStorageLossWriteName)
 

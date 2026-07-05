@@ -192,7 +192,7 @@ var _ = Describe(
 			Expect(createErr).ToNot(HaveOccurred(),
 				"Failed to create StorageBasedRemediationConfig %q", sbrparams.SBRCSplitBrainTestName)
 
-			By("Waiting for SBRC agent DaemonSet to have at least one ready pod")
+			By("Waiting for SBRC agent DaemonSet to have all pods ready")
 
 			waitForSBRCReady(sbrparams.SBRCSplitBrainTestName)
 

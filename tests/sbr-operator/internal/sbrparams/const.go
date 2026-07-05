@@ -94,9 +94,9 @@ const (
 	// DaemonSet name = SBRAgentDaemonSetPrefix + <sbrcName>.
 	SBRAgentDaemonSetPrefix = "sbr-agent-"
 
-	// SBRCReadyTimeout is the time allowed for the SBRC's agent DaemonSet to reach at least one
-	// ready pod before a functional test begins.
-	SBRCReadyTimeout = 3 * time.Minute
+	// SBRCReadyTimeout is the time allowed for the SBRC's agent DaemonSet to have all scheduled
+	// pods reach Ready before a functional test begins.
+	SBRCReadyTimeout = 7 * time.Minute
 
 	// SBRStorageUnhealthyCondition is the node condition type set by the SBR agent when storage is unavailable.
 	SBRStorageUnhealthyCondition = "SBRStorageUnhealthy"

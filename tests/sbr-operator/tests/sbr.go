@@ -534,9 +534,11 @@ func discoverRWXStorageClass() string {
 	return ""
 }
 
-// waitForSBRCReady blocks until the agent DaemonSet for the named SBRC has at least one ready pod.
+// waitForSBRCReady blocks until all pods in the agent DaemonSet for the named SBRC are ready.
 // The SBRRemediationReconciler runs inside agent pods, so this must be called before creating
-// any StorageBasedRemediation CR whose reconciliation depends on active agents.
+// any StorageBasedRemediation CR whose reconciliation depends on active agents. Waiting for all
+// pods (not just the first) ensures the target node's agent has had time to complete its initial
+// storage health check before a CR targeting that node is created.
 func waitForSBRCReady(sbrcName string) {
 	dsName := sbrparams.SBRAgentDaemonSetPrefix + sbrcName
 
@@ -547,14 +549,14 @@ func waitForSBRCReady(sbrcName string) {
 			return fmt.Errorf("DaemonSet %s not found: %w", dsName, err)
 		}
 
-		if agentDS.Status.NumberReady == 0 {
+		if agentDS.Status.DesiredNumberScheduled == 0 || agentDS.Status.NumberReady < agentDS.Status.DesiredNumberScheduled {
 			return fmt.Errorf("DaemonSet %s: %d/%d pods ready",
 				dsName, agentDS.Status.NumberReady, agentDS.Status.DesiredNumberScheduled)
 		}
 
 		return nil
 	}, sbrparams.SBRCReadyTimeout, sbrparams.DefaultPollInterval).Should(Succeed(),
-		"SBRC %q agent DaemonSet must have at least one ready pod before functional tests begin", sbrcName)
+		"SBRC %q agent DaemonSet must have all pods ready before functional tests begin", sbrcName)
 }
 
 var _ = Describe(
