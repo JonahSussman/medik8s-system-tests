@@ -24,41 +24,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-// buildWriteLossNHCUnstructured returns an unstructured NodeHealthCheck CR that triggers
-// SBR remediation when SBRStorageUnhealthy=True for NHCUnhealthyDuration.
 func buildWriteLossNHCUnstructured() *unstructured.Unstructured {
-	return &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"apiVersion": sbrparams.NHCAPIGroup + "/" + sbrparams.NHCAPIVersion,
-			"kind":       "NodeHealthCheck",
-			"metadata": map[string]interface{}{
-				"name": sbrparams.NHCWriteLossTestName,
-			},
-			"spec": map[string]interface{}{
-				"selector": map[string]interface{}{
-					"matchExpressions": []interface{}{
-						map[string]interface{}{
-							"key":      "node-role.kubernetes.io/worker",
-							"operator": "Exists",
-						},
-					},
-				},
-				"unhealthyConditions": []interface{}{
-					map[string]interface{}{
-						"type":     sbrparams.SBRStorageUnhealthyCondition,
-						"status":   "True",
-						"duration": sbrparams.NHCUnhealthyDuration,
-					},
-				},
-				"remediationTemplate": map[string]interface{}{
-					"apiVersion": sbrparams.CRDGroup + "/" + sbrparams.CRDVersion,
-					"kind":       "StorageBasedRemediationTemplate",
-					"name":       sbrparams.SBRTemplateName,
-					"namespace":  medik8sparams.OperatorNs,
-				},
-			},
-		},
-	}
+	return buildNHC(sbrparams.NHCWriteLossTestName)
 }
 
 // getSBRCRConditionWrite returns the named status condition from an unstructured SBR CR, or nil.

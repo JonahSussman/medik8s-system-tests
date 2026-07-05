@@ -22,39 +22,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-// buildNHCForSBRStorageLoss returns an unstructured NodeHealthCheck CR that watches the
-// SBRStorageUnhealthy condition and triggers SBR via a StorageBasedRemediationTemplate.
 func buildNHCForSBRStorageLoss(nhcName string) *unstructured.Unstructured {
-	nhc := &unstructured.Unstructured{}
-	nhc.SetAPIVersion(sbrparams.NHCAPIGroup + "/" + sbrparams.NHCAPIVersion)
-	nhc.SetKind("NodeHealthCheck")
-	nhc.SetName(nhcName)
-
-	_ = unstructured.SetNestedField(nhc.Object, map[string]interface{}{
-		"selector": map[string]interface{}{
-			"matchExpressions": []interface{}{
-				map[string]interface{}{
-					"key":      "node-role.kubernetes.io/worker",
-					"operator": "Exists",
-				},
-			},
-		},
-		"unhealthyConditions": []interface{}{
-			map[string]interface{}{
-				"type":     sbrparams.SBRStorageUnhealthyCondition,
-				"status":   "True",
-				"duration": sbrparams.NHCUnhealthyDuration,
-			},
-		},
-		"remediationTemplate": map[string]interface{}{
-			"apiVersion": sbrparams.CRDGroup + "/" + sbrparams.CRDVersion,
-			"kind":       "StorageBasedRemediationTemplate",
-			"name":       sbrparams.SBRTemplateName,
-			"namespace":  medik8sparams.OperatorNs,
-		},
-	}, "spec")
-
-	return nhc
+	return buildNHC(nhcName)
 }
 
 var _ = Describe(

@@ -44,41 +44,8 @@ func getNodeConditionNHC(ctx context.Context, nodeName, condType string) *corev1
 	return nil
 }
 
-// buildNHCUnstructured returns an unstructured NodeHealthCheck CR configured to
-// trigger SBR remediation when SBRStorageUnhealthy=True for NHCUnhealthyDuration.
 func buildNHCUnstructured() *unstructured.Unstructured {
-	return &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"apiVersion": sbrparams.NHCAPIGroup + "/" + sbrparams.NHCAPIVersion,
-			"kind":       "NodeHealthCheck",
-			"metadata": map[string]interface{}{
-				"name": sbrparams.NHCTestName,
-			},
-			"spec": map[string]interface{}{
-				"selector": map[string]interface{}{
-					"matchExpressions": []interface{}{
-						map[string]interface{}{
-							"key":      "node-role.kubernetes.io/worker",
-							"operator": "Exists",
-						},
-					},
-				},
-				"unhealthyConditions": []interface{}{
-					map[string]interface{}{
-						"type":     sbrparams.SBRStorageUnhealthyCondition,
-						"status":   string(corev1.ConditionTrue),
-						"duration": sbrparams.NHCUnhealthyDuration,
-					},
-				},
-				"remediationTemplate": map[string]interface{}{
-					"apiVersion": sbrparams.CRDGroup + "/" + sbrparams.CRDVersion,
-					"kind":       "StorageBasedRemediationTemplate",
-					"name":       sbrparams.SBRTemplateName,
-					"namespace":  medik8sparams.OperatorNs,
-				},
-			},
-		},
-	}
+	return buildNHC(sbrparams.NHCTestName)
 }
 
 var _ = Describe(
