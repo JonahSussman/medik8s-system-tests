@@ -98,6 +98,14 @@ const (
 	// pods reach Ready before a functional test begins.
 	SBRCReadyTimeout = 7 * time.Minute
 
+	// WatchdogProbeLogTimeout is the deadline for reading a completed watchdog probe pod's logs
+	// via the in-cluster API.
+	WatchdogProbeLogTimeout = 30 * time.Second
+
+	// PVCheckTimeout is how long to wait for a PV in a static StorageClass to appear before
+	// creating an SBRC. Kept short so NFS infrastructure failures surface quickly.
+	PVCheckTimeout = 30 * time.Second
+
 	// SBRStorageUnhealthyCondition is the node condition type set by the SBR agent when storage is unavailable.
 	SBRStorageUnhealthyCondition = "SBRStorageUnhealthy"
 

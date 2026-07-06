@@ -14,6 +14,7 @@ import (
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 	"github.com/medik8s/system-tests/tests/sbr-operator/internal/sbrparams"
 
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -139,6 +140,42 @@ var _ = Describe(
 			storageClass := discoverRWXStorageClass()
 			Expect(storageClass).ToNot(BeEmpty(),
 				"Could not discover a RWX storage class; set SBR_STORAGE_CLASS to override")
+
+			// Pre-check: for static provisioners (e.g. NFS in disconnected clusters),
+			// fail fast if no PV exists rather than waiting for the full 3-minute
+			// waitForSBRCReady timeout. Only triggers for kubernetes.io/no-provisioner
+			// (the provisioner used by our manually-created NFS StorageClass). All other
+			// provisioners are assumed to create PVs dynamically and skip this check.
+			scObj, scGetErr := APIClient.StorageV1Interface.StorageClasses().Get(
+				context.TODO(), storageClass, metav1.GetOptions{})
+			if scGetErr != nil {
+				GinkgoWriter.Printf("Warning: could not fetch StorageClass %q: %v; skipping static PV pre-check\n",
+					storageClass, scGetErr)
+			} else if scObj.Provisioner == "kubernetes.io/no-provisioner" {
+				By(fmt.Sprintf("Verifying an Available or Bound PV exists for static StorageClass %q", storageClass))
+
+				Eventually(func() error {
+					pvList, listErr := APIClient.CoreV1Interface.PersistentVolumes().List(
+						context.TODO(), metav1.ListOptions{})
+					if listErr != nil {
+						return listErr
+					}
+
+					for i := range pvList.Items {
+						pvItem := &pvList.Items[i]
+						if pvItem.Spec.StorageClassName == storageClass &&
+							(pvItem.Status.Phase == corev1.VolumeAvailable || pvItem.Status.Phase == corev1.VolumeBound) {
+							return nil
+						}
+					}
+
+					return fmt.Errorf("no Available or Bound PV found for StorageClass %q", storageClass)
+				}, sbrparams.PVCheckTimeout, sbrparams.DefaultPollInterval).Should(Succeed(),
+					"a PV for static StorageClass %q must exist before creating the SBRC", storageClass)
+			} else {
+				GinkgoWriter.Printf("Skipping PV pre-check for provisioner %q; PVs may be created dynamically\n",
+					scObj.Provisioner)
+			}
 
 			By(fmt.Sprintf("Creating StorageBasedRemediationConfig %q with sharedStorageClass=%q so agent pods run",
 				sbrparams.SBRCFunctionalTestName, storageClass))

@@ -1,8 +1,11 @@
 package tests
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"regexp"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -15,8 +18,13 @@ import (
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 	"github.com/medik8s/system-tests/tests/sbr-operator/internal/sbrparams"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
+
+var validWatchdogDevice = regexp.MustCompile(`^/dev/watchdog[0-9]*$`)
 
 var _ = Describe(
 	"SBR Functional — Watchdog Integration",
@@ -49,11 +57,19 @@ var _ = Describe(
 					}
 
 					devs, ok := WatchdogDevicesByNode[node.Name]
-					if !ok {
-						GinkgoWriter.Printf("Warning: node %s missing from watchdog inventory; treating as no hardware watchdog\n",
+					if !ok || devs == nil {
+						// !ok: node missing from inventory entirely.
+						// devs == nil: inventory probe failed (e.g. ExecCommand failed in disconnected
+						// cluster before the slow-path fix applied to this suite).
+						// Preserve nil so the test case can distinguish "probe failed" from
+						// "no hardware watchdog" and skip accordingly.
+						GinkgoWriter.Printf(
+							"Warning: node %s missing from or probe-failed in watchdog inventory; skipping\n",
 							node.Name)
 
-						devs = []string{}
+						nodeWatchdogDevices[node.Name] = nil
+
+						continue
 					}
 
 					nodeWatchdogDevices[node.Name] = devs
@@ -82,12 +98,23 @@ var _ = Describe(
 
 				podName := watchdogDebugPodName(nodeName)
 
-				debugPod, createErr := pod.NewBuilder(
+				// Run a pod to completion instead of exec-ing into a long-running one.
+				// ExecCommand uses SPDY/WebSocket to the kube API exec endpoint, which
+				// requires resolving the external API hostname. In disconnected clusters the
+				// test binary runs inside the cluster and uses in-cluster DNS (172.30.x.x),
+				// which has no entry for the external hostname — causing every exec to fail.
+				// A run-to-completion pod sidesteps this: pod creation uses standard REST,
+				// and logs are read via watchdogProbeLogs which uses kubernetes.default.svc.
+				probePod, createErr := pod.NewBuilder(
 					APIClient, podName, medik8sparams.OperatorNs, sbrparams.WatchdogDebugImage).
 					DefineOnNode(nodeName).
 					WithHostPid(true).
 					WithPrivilegedFlag().
-					CreateAndWaitUntilRunning(medik8sparams.DefaultTimeout)
+					WithRestartPolicy(corev1.RestartPolicyNever).
+					RedefineDefaultCMD([]string{
+						"sh", "-c", "ls -1 /proc/1/root/dev/watchdog* 2>/dev/null || true",
+					}).
+					Create()
 				if createErr != nil {
 					GinkgoWriter.Printf("Warning: could not create watchdog probe pod for node %s: %v\n",
 						nodeName, createErr)
@@ -105,16 +132,29 @@ var _ = Describe(
 					}
 				}, podName)
 
-				buf, execErr := debugPod.ExecCommand(
-					[]string{"find", "/proc/1/root/dev", "-maxdepth", "1", "-name", "watchdog*"})
+				if waitErr := probePod.WaitUntilInStatus(corev1.PodSucceeded, medik8sparams.DefaultTimeout); waitErr != nil {
+					GinkgoWriter.Printf("Warning: watchdog probe pod for node %s did not complete: %v\n",
+						nodeName, waitErr)
+					nodeWatchdogDevices[nodeName] = nil
 
-				if _, delErr := debugPod.Delete(); delErr != nil {
+					if _, delErr := probePod.Delete(); delErr != nil {
+						GinkgoWriter.Printf("Warning: failed to delete watchdog probe pod for node %s: %v\n",
+							nodeName, delErr)
+					}
+
+					continue
+				}
+
+				logContent, logErr := watchdogProbeLogs(podName, medik8sparams.OperatorNs, probePod)
+
+				if _, delErr := probePod.Delete(); delErr != nil {
 					GinkgoWriter.Printf("Warning: failed to delete watchdog probe pod for node %s: %v\n",
 						nodeName, delErr)
 				}
 
-				if execErr != nil {
-					GinkgoWriter.Printf("Warning: exec failed on node %s: %v\n", nodeName, execErr)
+				if logErr != nil {
+					GinkgoWriter.Printf("Warning: could not read watchdog probe pod logs for node %s: %v\n",
+						nodeName, logErr)
 					nodeWatchdogDevices[nodeName] = nil
 
 					continue
@@ -124,17 +164,22 @@ var _ = Describe(
 				// distinguishable from "probe failed" (which leaves nil in the map).
 				devices := make([]string, 0)
 
-				// ls may return multiple space-separated paths on one line (e.g. when the
-				// shell expands /proc/1/root/dev/watchdog* to several matches). Split by
-				// newline first, then by whitespace within each line so that both
-				// single-path and multi-path lines are handled correctly.
-				for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
-					for _, token := range strings.Fields(line) {
-						if token == "" {
-							continue
-						}
+				for _, line := range strings.Split(strings.TrimSpace(logContent), "\n") {
+					line = strings.TrimSpace(line)
+					if line == "" {
+						continue
+					}
 
-						devices = append(devices, strings.TrimPrefix(token, "/proc/1/root"))
+					if !strings.HasPrefix(line, "/proc/1/root/dev/watchdog") {
+						GinkgoWriter.Printf("Warning: ignoring unexpected watchdog probe output on node %s: %q\n",
+							nodeName, line)
+
+						continue
+					}
+
+					device := strings.TrimPrefix(line, "/proc/1/root")
+					if device != "" && validWatchdogDevice.MatchString(device) {
+						devices = append(devices, device)
 					}
 				}
 
@@ -202,14 +247,29 @@ var _ = Describe(
 
 					By(fmt.Sprintf("Checking hardware watchdog on node %s: %v", nodeName, devices))
 
+					if len(devices) == 0 {
+						continue
+					}
+
 					podName := watchdogDebugPodName("hwchk-" + nodeName)
 
-					debugPod, createErr := pod.NewBuilder(
+					var testCmds []string
+					for _, device := range devices {
+						testCmds = append(testCmds,
+							fmt.Sprintf("test -c '/proc/1/root%s' && echo '%s OK' || echo '%s FAIL'",
+								device, device, device))
+					}
+
+					hwCheckCmd := []string{"sh", "-c", strings.Join(testCmds, "; ")}
+
+					hwPod, createErr := pod.NewBuilder(
 						APIClient, podName, medik8sparams.OperatorNs, sbrparams.WatchdogDebugImage).
 						DefineOnNode(nodeName).
 						WithHostPid(true).
 						WithPrivilegedFlag().
-						CreateAndWaitUntilRunning(medik8sparams.DefaultTimeout)
+						WithRestartPolicy(corev1.RestartPolicyNever).
+						RedefineDefaultCMD(hwCheckCmd).
+						Create()
 					if createErr != nil {
 						errorMessages = append(errorMessages,
 							fmt.Sprintf("node %s: failed to create debug pod: %v", nodeName, createErr))
@@ -225,19 +285,55 @@ var _ = Describe(
 						}
 					}, podName)
 
-					for _, device := range devices {
-						hostPath := "/proc/1/root" + device
+					if waitErr := hwPod.WaitUntilInStatus(corev1.PodSucceeded, medik8sparams.DefaultTimeout); waitErr != nil {
+						errorMessages = append(errorMessages,
+							fmt.Sprintf("node %s: hardware watchdog check pod did not complete: %v", nodeName, waitErr))
 
-						_, execErr := debugPod.ExecCommand([]string{"test", "-c", hostPath})
-						if execErr != nil {
+						if _, delErr := hwPod.Delete(); delErr != nil {
+							GinkgoWriter.Printf("Warning: failed to delete debug pod %s: %v\n", podName, delErr)
+						}
+
+						continue
+					}
+
+					hwLog, hwLogErr := watchdogProbeLogs(podName, medik8sparams.OperatorNs, hwPod)
+					if _, delErr := hwPod.Delete(); delErr != nil {
+						GinkgoWriter.Printf("Warning: failed to delete debug pod %s: %v\n", podName, delErr)
+					}
+
+					if hwLogErr != nil {
+						errorMessages = append(errorMessages,
+							fmt.Sprintf("node %s: failed to read hardware watchdog check pod logs: %v", nodeName, hwLogErr))
+
+						continue
+					}
+
+					seenDevices := make(map[string]bool, len(devices))
+
+					for _, line := range strings.Split(strings.TrimSpace(hwLog), "\n") {
+						line = strings.TrimSpace(line)
+
+						switch {
+						case line == "":
+							continue
+						case strings.HasSuffix(line, " OK"):
+							seenDevices[strings.TrimSuffix(line, " OK")] = true
+						case strings.HasSuffix(line, " FAIL"):
+							device := strings.TrimSuffix(line, " FAIL")
+							seenDevices[device] = true
 							errorMessages = append(errorMessages,
-								fmt.Sprintf("node %s: watchdog device %s is not a character device or check failed: %v",
-									nodeName, device, execErr))
+								fmt.Sprintf("node %s: watchdog device %s is not a character device", nodeName, device))
+						default:
+							errorMessages = append(errorMessages,
+								fmt.Sprintf("node %s: unexpected hardware watchdog check output: %q", nodeName, line))
 						}
 					}
 
-					if _, delErr := debugPod.Delete(); delErr != nil {
-						GinkgoWriter.Printf("Warning: failed to delete debug pod %s: %v\n", podName, delErr)
+					for _, device := range devices {
+						if !seenDevices[device] {
+							errorMessages = append(errorMessages,
+								fmt.Sprintf("node %s: no result for watchdog device %s — log may be truncated", nodeName, device))
+						}
 					}
 				}
 
@@ -252,12 +348,28 @@ var _ = Describe(
 
 					podName := watchdogDebugPodName("softdog-" + nodeName)
 
-					debugPod, createErr := pod.NewBuilder(
+					// Three-step check (first match wins, always exits 0):
+					// 1. A watchdog device exists already (softdog or hw not in inventory).
+					// 2. softdog.ko* is present under /usr/lib/modules (RHCOS standard location).
+					// 3. softdog.ko* is present under /lib/modules (fallback for other layouts).
+					softdogCmd := []string{
+						"sh", "-c",
+						"ls /proc/1/root/dev/watchdog* 2>/dev/null | head -1 | grep -q . && echo loaded && exit 0;" +
+							"ls -R /proc/1/root/usr/lib/modules 2>/dev/null | grep -q 'softdog\\.ko' " +
+							"&& echo available && exit 0;" +
+							"ls -R /proc/1/root/lib/modules 2>/dev/null | grep -q 'softdog\\.ko' " +
+							"&& echo available && exit 0;" +
+							"echo missing",
+					}
+
+					softdogPod, createErr := pod.NewBuilder(
 						APIClient, podName, medik8sparams.OperatorNs, sbrparams.WatchdogDebugImage).
 						DefineOnNode(nodeName).
 						WithHostPid(true).
 						WithPrivilegedFlag().
-						CreateAndWaitUntilRunning(medik8sparams.DefaultTimeout)
+						WithRestartPolicy(corev1.RestartPolicyNever).
+						RedefineDefaultCMD(softdogCmd).
+						Create()
 					if createErr != nil {
 						errorMessages = append(errorMessages,
 							fmt.Sprintf("node %s: failed to create softdog check pod: %v", nodeName, createErr))
@@ -273,32 +385,30 @@ var _ = Describe(
 						}
 					}, podName)
 
-					// Three-step check (first match wins, always exits 0):
-					// 1. A watchdog device exists already (softdog or hw not in inventory).
-					// 2. softdog.ko* is present under /usr/lib/modules (RHCOS standard location).
-					// 3. softdog.ko* is present under /lib/modules (fallback for other layouts).
-					buf, execErr := debugPod.ExecCommand([]string{
-						"sh", "-c",
-						"ls /proc/1/root/dev/watchdog* 2>/dev/null | head -1 | grep -q . && echo loaded && exit 0;" +
-							"find /proc/1/root/usr/lib/modules -name 'softdog.ko*' 2>/dev/null | head -1 | grep -q . " +
-							"&& echo available && exit 0;" +
-							"find /proc/1/root/lib/modules -name 'softdog.ko*' 2>/dev/null | head -1 | grep -q . " +
-							"&& echo available && exit 0;" +
-							"echo missing",
-					})
-
-					if _, delErr := debugPod.Delete(); delErr != nil {
-						GinkgoWriter.Printf("Warning: failed to delete softdog check pod %s: %v\n", podName, delErr)
-					}
-
-					if execErr != nil {
+					if waitErr := softdogPod.WaitUntilInStatus(corev1.PodSucceeded, medik8sparams.DefaultTimeout); waitErr != nil {
 						errorMessages = append(errorMessages,
-							fmt.Sprintf("node %s: failed to check softdog status: %v", nodeName, execErr))
+							fmt.Sprintf("node %s: failed to check softdog status: %v", nodeName, waitErr))
+
+						if _, delErr := softdogPod.Delete(); delErr != nil {
+							GinkgoWriter.Printf("Warning: failed to delete softdog check pod %s: %v\n", podName, delErr)
+						}
 
 						continue
 					}
 
-					switch result := strings.TrimSpace(buf.String()); result {
+					softdogLog, softdogLogErr := watchdogProbeLogs(podName, medik8sparams.OperatorNs, softdogPod)
+					if _, delErr := softdogPod.Delete(); delErr != nil {
+						GinkgoWriter.Printf("Warning: failed to delete softdog check pod %s: %v\n", podName, delErr)
+					}
+
+					if softdogLogErr != nil {
+						errorMessages = append(errorMessages,
+							fmt.Sprintf("node %s: failed to read softdog check pod logs: %v", nodeName, softdogLogErr))
+
+						continue
+					}
+
+					switch result := strings.TrimSpace(softdogLog); result {
 					case "loaded":
 						GinkgoWriter.Printf("  node %s: watchdog device already present\n", nodeName)
 					case "available":
@@ -320,3 +430,44 @@ var _ = Describe(
 				}
 			})
 	})
+
+// watchdogProbeLogs reads the completed probe pod's logs.
+// When running inside a cluster pod (in-cluster config available), it uses the
+// kubernetes.default.svc endpoint to avoid external API hostname DNS failures in
+// disconnected clusters. Otherwise it falls back to the eco-goinfra GetFullLog.
+func watchdogProbeLogs(podName, namespace string, builder *pod.Builder) (string, error) {
+	cfg, err := rest.InClusterConfig()
+	if err != nil {
+		return builder.GetFullLog("test")
+	}
+
+	client, clientErr := kubernetes.NewForConfig(cfg)
+	if clientErr != nil {
+		return builder.GetFullLog("test")
+	}
+
+	req := client.CoreV1().Pods(namespace).GetLogs(podName, &corev1.PodLogOptions{Container: "test"})
+
+	streamCtx, streamCancel := context.WithTimeout(context.Background(), sbrparams.WatchdogProbeLogTimeout)
+	defer streamCancel()
+
+	stream, streamErr := req.Stream(streamCtx)
+	if streamErr != nil {
+		// Fall back to eco-goinfra client when the in-cluster service account
+		// lacks pods/log RBAC (common in CI where the test pod's SA is scoped
+		// differently from the kubeconfig used by eco-goinfra).
+		GinkgoWriter.Printf("Warning: in-cluster log stream for pod %s failed: %v; falling back to eco-goinfra\n",
+			podName, streamErr)
+
+		return builder.GetFullLog("test")
+	}
+
+	defer stream.Close()
+
+	var buf bytes.Buffer
+	if _, copyErr := io.Copy(&buf, io.LimitReader(stream, 64*1024)); copyErr != nil {
+		return "", copyErr
+	}
+
+	return buf.String(), nil
+}
