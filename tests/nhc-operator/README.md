@@ -8,6 +8,7 @@ deployment, OLM metadata, and security posture.
 - OpenShift cluster with NHC operator installed via OLM
 - `KUBECONFIG` set with cluster-admin access
 - NHC installed in `openshift-workload-availability` namespace
+- Minimum tested version: NHC v0.12.0 (RHWA 4.22 GA baseline)
 
 ## Running
 
@@ -35,7 +36,7 @@ containers ready.
 - **Cluster**: Any topology (MNO or SNO)
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="nhc" --focus="resources are installed" ./tests/nhc-operator/...`
-- **Pass criteria**: NodeHealthCheck API is listable; all controller-manager pods are Running
+- **Pass criteria**: NodeHealthCheck API is listable; all controller-manager pods are Running with all containers ready
 
 ### 2. Verify NHC CSV Annotations ([OCP-89630](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-89630))
 
@@ -51,16 +52,16 @@ repository URL, and at least one maintainer.
 
 ### 3. Verify NHC CSV Metadata ([OCP-89631](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-89631))
 
-Validates infrastructure feature annotations (disconnected, fips-compliant,
-proxy-aware, etc.) match expected values, replaces field references
-previous NHC version when present, and controller replicas match
+Validates that infrastructure feature annotations (disconnected, fips-compliant,
+proxy-aware, etc.) match expected values, the `replaces` field references
+the previous NHC version when present, and controller replicas match the
 expected count on multi-node clusters. Skips replica validation on SNO.
 
 - **Operators**: NHC v0.12.0+
 - **Cluster**: Multi-node for replica check (skips replica validation on SNO)
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="nhc" --focus="CSV metadata" ./tests/nhc-operator/...`
-- **Pass criteria**: All infrastructure annotations match expected values, replaces field contains "node-healthcheck-operator" when set, 2 ready replicas on MNO
+- **Pass criteria**: All infrastructure annotations match expected values, suggested-namespace correct, replaces field contains "node-healthcheck-operator" when set, 2 ready replicas on MNO
 
 ### 4. Verify NHC Container Runs as Non-Root User ([OCP-89632](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-89632))
 
@@ -74,4 +75,4 @@ container or pod level). Only checks the `manager` container.
 - **Cluster**: Any topology
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="nhc" --focus="runs as non-root" ./tests/nhc-operator/...`
-- **Pass criteria**: Pod runAsNonRoot=true; manager container runAsUser != 0; allowPrivilegeEscalation=false; readOnlyRootFilesystem=true; capabilities.drop=[ALL]; seccomp profile RuntimeDefault
+- **Pass criteria**: Pod runAsNonRoot=true; expected manager container exists; manager container runAsUser != 0; allowPrivilegeEscalation=false; readOnlyRootFilesystem=true; capabilities.drop=[ALL]; seccomp profile RuntimeDefault
