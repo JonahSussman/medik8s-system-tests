@@ -532,7 +532,7 @@ func waitForRemediationComplete(
 
 // createWorkloadPodOnNode creates a pause container pod pinned to the
 // given node, registers DeferCleanup for deletion, and waits until the
-// pod reaches Running phase.
+// pod reaches Running phase with all containers ready.
 func createWorkloadPodOnNode(ctx context.Context, nodeName string) *corev1.Pod {
 	workloadPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -557,18 +557,27 @@ func createWorkloadPodOnNode(ctx context.Context, nodeName string) *corev1.Pod {
 	Expect(APIClient.Create(ctx, workloadPod)).To(Succeed(),
 		"Failed to create test workload pod on node %s", nodeName)
 
-	Eventually(func() corev1.PodPhase {
+	Eventually(func() bool {
 		p := &corev1.Pod{}
 		if getErr := APIClient.Get(ctx, client.ObjectKey{
 			Name: workloadPod.Name, Namespace: workloadPod.Namespace,
 		}, p); getErr != nil {
-			return corev1.PodPending
+			return false
 		}
 
-		return p.Status.Phase
-	}, snrparams.WorkloadPodReadyTimeout, snrparams.DefaultPollInterval).Should(
-		Equal(corev1.PodRunning),
-		"Workload pod did not reach Running phase on node %s", nodeName)
+		if p.Status.Phase != corev1.PodRunning {
+			return false
+		}
+
+		for _, cs := range p.Status.ContainerStatuses {
+			if !cs.Ready {
+				return false
+			}
+		}
+
+		return true
+	}, snrparams.WorkloadPodReadyTimeout, snrparams.DefaultPollInterval).Should(BeTrue(),
+		"Workload pod did not reach Running/Ready phase on node %s", nodeName)
 
 	return workloadPod
 }
