@@ -28,7 +28,7 @@ make run-tests
 ### 1. Verify Machine Deletion Remediation Operator Pod Is Running ([OCP-65767](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-65767))
 
 Validates that MDR controller-manager pods are in Running state and the
-pod count matches the cluster topology (1 on MNO, 1 on SNO). Filters
+pod count matches the expected replica count (1). Filters
 pods by deployment ownership to avoid counting unrelated pods with the
 same label selector.
 
@@ -47,7 +47,7 @@ has all required OLM infrastructure annotations with expected values.
 - **Cluster**: Any topology
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="mdr" --focus="CSV has required annotations" ./tests/mdr-operator/...`
-- **Pass criteria**: All required annotations present with correct values (disconnected, fips-compliant, proxy-aware, tls-profiles, token-auth-aws/azure/gcp, suggested-namespace)
+- **Pass criteria**: All required annotations present with correct values (disconnected, fips-compliant, proxy-aware, tls-profiles, cnf, cni, csi, token-auth-aws/azure/gcp, suggested-namespace)
 
 ### 3. Verify MDR Controller Manager Has Correct Number of Replicas ([OCP-89624](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-89624))
 
@@ -73,4 +73,4 @@ container or pod level). Only checks the `manager` container.
 - **Cluster**: Any topology
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="mdr" --focus="runs as non-root" ./tests/mdr-operator/...`
-- **Pass criteria**: Pod runAsNonRoot=true; manager container runAsUser != 0; allowPrivilegeEscalation=false; readOnlyRootFilesystem=true; capabilities.drop=[ALL]; seccomp profile RuntimeDefault
+- **Pass criteria**: Pod runAsNonRoot=true; expected manager container exists; manager container runAsUser != 0; allowPrivilegeEscalation=false; readOnlyRootFilesystem=true; capabilities.drop=[ALL]; seccomp profile RuntimeDefault
