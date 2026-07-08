@@ -75,7 +75,7 @@ var _ = Describe(
 
 					Eventually(func() error {
 						liveSNR := &unstructured.Unstructured{}
-						liveSNR.SetGroupVersionKind(snrGVK())
+						liveSNR.SetGroupVersionKind(snrGVK)
 
 						getErr := APIClient.Get(context.TODO(),
 							client.ObjectKey{
@@ -136,7 +136,7 @@ var _ = Describe(
 
 					Eventually(func() error {
 						liveSNR := &unstructured.Unstructured{}
-						liveSNR.SetGroupVersionKind(snrGVK())
+						liveSNR.SetGroupVersionKind(snrGVK)
 
 						getErr := APIClient.Get(context.TODO(),
 							client.ObjectKey{

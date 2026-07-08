@@ -1,18 +1,28 @@
 # SNR Operator Tests
 
 Automated tests validating the Self Node Remediation (SNR) operator
-deployment, configuration, OLM metadata, CRD validation, and config lifecycle.
+deployment, configuration, OLM metadata, CRD validation, config lifecycle,
+and destructive remediation (kubelet stop, node reboot via NHC detection).
 
 ## Prerequisites
 
 - OpenShift cluster with SNR operator installed via OLM
 - `KUBECONFIG` set with cluster-admin access
 - SNR installed in `openshift-workload-availability` namespace
+- For destructive tests (15-19): NHC operator installed, 2+ worker nodes,
+  3+ master nodes for etcd quorum safety
 
 ## Running
 
 ```bash
+# All SNR tests (non-destructive + destructive)
 ginkgo --label-filter="snr" ./tests/snr-operator/...
+
+# Non-destructive tests only
+ginkgo --label-filter="snr && disruption:nondestructive" ./tests/snr-operator/...
+
+# Destructive remediation tests only
+ginkgo --label-filter="snr && disruption:destructive" ./tests/snr-operator/...
 ```
 
 Or via the test runner:
@@ -191,3 +201,70 @@ and the Disabled condition disappears.
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="snr" --focus="SNRC deletion disables" ./tests/snr-operator/...`
 - **Pass criteria**: DS pods deleted after SNRC removal; SNR CR shows Disabled/ConfigurationNotFound; after SNRC recreation DS pods return and Disabled condition is absent
+
+### Destructive Tests
+
+Tests that stop kubelet on nodes, triggering NHC-based health detection
+and SNR remediation with node reboots. Require NHC operator installed,
+2+ worker nodes, and 3+ master nodes. Run time: ~5-10 minutes per test.
+
+### 15. Verify Worker Node Remediation After Kubelet Stop ([OCP-52416](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-52416))
+
+Stops kubelet on a worker node, NHC detects the unhealthy node and
+creates an SNR CR, SNR remediates by rebooting the node, then verifies
+the node recovers. Also validates that the OutOfServiceTaint strategy
+was auto-selected (OCP 4.15+) via controller-manager logs.
+
+- **Operators**: SNR v0.13.0+, NHC v0.12.0+
+- **Cluster**: Multi-node with 2+ workers
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="snr" --focus="kubelet stop via NHC" ./tests/snr-operator/...`
+- **Pass criteria**: Node rebooted (boot ID changed), creation timestamp unchanged (not deleted/recreated), OutOfServiceTaint auto-selected log message found
+
+### 16. Verify ResourceDeletion Strategy Evicts Workload Pod ([OCP-50772](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-50772))
+
+Creates a ResourceDeletion SNRT, deploys a test workload pod on the
+target worker, stops kubelet, and verifies the pod is evicted from the
+remediated node after SNR completes the remediation cycle.
+
+- **Operators**: SNR v0.13.0+, NHC v0.12.0+
+- **Cluster**: Multi-node with 2+ workers (skips if insufficient)
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="snr" --focus="ResourceDeletion" ./tests/snr-operator/...`
+- **Pass criteria**: Node rebooted, workload pod evicted (deleted or moved off remediated node)
+
+### 17. Verify OutOfServiceTaint Strategy Evicts Workload Pod ([OCP-61594](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-61594))
+
+Creates an OutOfServiceTaint SNRT, deploys a test workload pod on the
+target worker, stops kubelet, and verifies the pod is evicted from the
+remediated node after SNR completes the remediation cycle.
+
+- **Operators**: SNR v0.13.0+, NHC v0.12.0+
+- **Cluster**: Multi-node with 2+ workers (skips if insufficient)
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="snr" --focus="OutOfServiceTaint" ./tests/snr-operator/...`
+- **Pass criteria**: Node rebooted, workload pod evicted (deleted or moved off remediated node)
+
+### 18. Verify Master Node Remediation After Kubelet Stop ([OCP-55059](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-55059))
+
+Stops kubelet on a master/control-plane node, NHC detects the unhealthy
+node and creates an SNR CR, SNR remediates by rebooting the node, then
+verifies the node recovers and was not deleted/recreated.
+
+- **Operators**: SNR v0.13.0+, NHC v0.12.0+
+- **Cluster**: Multi-node with 3+ masters (etcd quorum safety)
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="snr" --focus="master node" ./tests/snr-operator/...`
+- **Pass criteria**: Master rebooted (boot ID changed), creation timestamp unchanged, etcd cluster healthy
+
+### 19. Verify Simultaneous Master and Worker Remediation ([OCP-56069](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-56069))
+
+Stops kubelet on both a master and a worker node simultaneously, creates
+separate NHC CRs for each role, and verifies both nodes are remediated
+concurrently -- both reboot and recover independently.
+
+- **Operators**: SNR v0.13.0+, NHC v0.12.0+
+- **Cluster**: Multi-node with 3+ masters and 2+ workers
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="snr" --focus="simultaneously" ./tests/snr-operator/...`
+- **Pass criteria**: Both nodes rebooted (boot IDs changed), both recovered to Ready state

@@ -49,7 +49,7 @@ var _ = Describe(
 					By("Reading current SNRC to preserve original watchdog path")
 
 					snrc := &unstructured.Unstructured{}
-					snrc.SetGroupVersionKind(snrcGVK())
+					snrc.SetGroupVersionKind(snrcGVK)
 
 					err := APIClient.Get(context.TODO(),
 						client.ObjectKey{
@@ -136,7 +136,7 @@ var _ = Describe(
 					By("Saving current SNRC spec for later recreation")
 
 					snrc := &unstructured.Unstructured{}
-					snrc.SetGroupVersionKind(snrcGVK())
+					snrc.SetGroupVersionKind(snrcGVK)
 
 					err := APIClient.Get(context.TODO(),
 						client.ObjectKey{
@@ -158,7 +158,7 @@ var _ = Describe(
 						By("DeferCleanup: ensuring SNRC exists")
 
 						checkSNRC := &unstructured.Unstructured{}
-						checkSNRC.SetGroupVersionKind(snrcGVK())
+						checkSNRC.SetGroupVersionKind(snrcGVK)
 
 						getErr := APIClient.Get(context.TODO(),
 							client.ObjectKey{
@@ -228,7 +228,7 @@ var _ = Describe(
 					By("Verifying SNR status shows configuration not found")
 
 					liveSNR := &unstructured.Unstructured{}
-					liveSNR.SetGroupVersionKind(snrGVK())
+					liveSNR.SetGroupVersionKind(snrGVK)
 
 					Eventually(func() error {
 						getErr := APIClient.Get(context.TODO(),
@@ -289,7 +289,7 @@ var _ = Describe(
 						"Failed to create verification SNR CR for node %q", testNodeName)
 
 					verifySNR := &unstructured.Unstructured{}
-					verifySNR.SetGroupVersionKind(snrGVK())
+					verifySNR.SetGroupVersionKind(snrGVK)
 
 					Eventually(func() error {
 						getErr := APIClient.Get(context.TODO(),
