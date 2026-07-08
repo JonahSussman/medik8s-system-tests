@@ -27,7 +27,7 @@ var _ = Describe("SNR Functional - Master Node Remediation",
 		var (
 			ctx              context.Context
 			targetMasterName string
-			targetWorkerName string // for Test 11
+			targetWorkerName string // for simultaneous master/worker test (OCP-56069)
 			currentNHCNames  []string
 		)
 
@@ -65,6 +65,13 @@ var _ = Describe("SNR Functional - Master Node Remediation",
 
 			targetMasterName = masterNode.Name
 			GinkgoWriter.Printf("Target master node: %s\n", targetMasterName)
+
+			By("Verifying at least 1 Ready worker node (for simultaneous test OCP-56069)")
+
+			workerCount, err := helpers.CountReadyWorkerNodes(ctx, APIClient)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(workerCount).To(BeNumerically(">=", 1),
+				"Simultaneous test requires at least 1 Ready worker node")
 
 			By("Selecting target worker node (for simultaneous test)")
 
@@ -217,6 +224,16 @@ var _ = Describe("SNR Functional - Master Node Remediation",
 				Expect(err).ToNot(HaveOccurred(),
 					"Must read boot ID from worker %s", targetWorkerName)
 
+				masterNode := &corev1.Node{}
+				Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetMasterName}, masterNode)).To(Succeed())
+
+				masterCreationTS := masterNode.CreationTimestamp
+
+				workerNode := &corev1.Node{}
+				Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetWorkerName}, workerNode)).To(Succeed())
+
+				workerCreationTS := workerNode.CreationTimestamp
+
 				GinkgoWriter.Printf(
 					"Pre-remediation boot IDs: master=%s, worker=%s\n",
 					oldMasterBootID, oldWorkerBootID)
@@ -240,7 +257,11 @@ var _ = Describe("SNR Functional - Master Node Remediation",
 
 				currentNHCNames = []string{snrparams.NHCMasterTestName, snrparams.NHCTestName}
 
-				By(fmt.Sprintf("Stopping kubelet on master %s AND worker %s simultaneously",
+				// Note: stops are sequential (each oc debug can take up to
+				// OcDebugTimeout). True simultaneity would require goroutines,
+				// but the stagger is acceptable -- NHC's 60s unhealthy
+				// threshold means both nodes are detected in the same cycle.
+				By(fmt.Sprintf("Stopping kubelet on master %s and worker %s",
 					targetMasterName, targetWorkerName))
 
 				Expect(stopKubeletForRemediation(ctx, targetMasterName)).To(Succeed(),
@@ -271,6 +292,18 @@ var _ = Describe("SNR Functional - Master Node Remediation",
 					ctx, APIClient, targetWorkerName,
 					snrparams.DefaultPollInterval, snrparams.NodeReadyTimeout,
 				)).To(Succeed(), "Worker %s did not become Ready", targetWorkerName)
+
+				By("Verifying both nodes were rebooted, not re-created")
+
+				updatedMaster := &corev1.Node{}
+				Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetMasterName}, updatedMaster)).To(Succeed())
+				Expect(updatedMaster.CreationTimestamp.Equal(&masterCreationTS)).To(BeTrue(),
+					"Master creation timestamp changed -- node was re-created instead of rebooted")
+
+				updatedWorker := &corev1.Node{}
+				Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetWorkerName}, updatedWorker)).To(Succeed())
+				Expect(updatedWorker.CreationTimestamp.Equal(&workerCreationTS)).To(BeTrue(),
+					"Worker creation timestamp changed -- node was re-created instead of rebooted")
 
 				GinkgoWriter.Printf(
 					"Both nodes rebooted and recovered: master=%s, worker=%s\n",

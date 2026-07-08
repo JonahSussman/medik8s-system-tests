@@ -255,7 +255,7 @@ verifies the node recovers and was not deleted/recreated.
 - **Cluster**: Multi-node with 3+ masters (etcd quorum safety)
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="snr" --focus="master node" ./tests/snr-operator/...`
-- **Pass criteria**: Master rebooted (boot ID changed), creation timestamp unchanged, etcd cluster healthy
+- **Pass criteria**: Master rebooted (boot ID changed), creation timestamp unchanged (not deleted/recreated), node returns to Ready
 
 ### 19. Verify Simultaneous Master and Worker Remediation ([OCP-56069](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-56069))
 

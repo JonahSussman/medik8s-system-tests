@@ -278,8 +278,8 @@ func stopKubeletForRemediation(ctx context.Context, nodeName string) error {
 }
 
 // nhcGVK is the GroupVersionKind for NodeHealthCheck CRs.
-// Uses the same API group/version as sbrparams.NHCAPIGroup/NHCAPIVersion
-// to ease future extraction to a shared package.
+// Uses snrparams.NHCAPIGroup/NHCAPIVersion (same values as sbrparams
+// equivalents, to ease future extraction to a shared package).
 var nhcGVK = schema.GroupVersionKind{
 	Group:   snrparams.NHCAPIGroup,
 	Version: snrparams.NHCAPIVersion,
@@ -389,9 +389,10 @@ func buildNHCForWorkers(name, snrtName string) *unstructured.Unstructured {
 
 // buildNHCForMasters builds an unstructured NodeHealthCheck CR that
 // monitors master/control-plane nodes and triggers SNR remediation.
-// Uses "master" label which is present on all current OCP 4.x clusters.
+// Uses "control-plane" label for OCP 4.14+ compatibility (older OCP
+// has both "master" and "control-plane"; newer may only have "control-plane").
 func buildNHCForMasters(name, snrtName string) *unstructured.Unstructured {
-	return buildNHC(name, snrtName, "node-role.kubernetes.io/master")
+	return buildNHC(name, snrtName, "node-role.kubernetes.io/control-plane")
 }
 
 // buildNHC builds an unstructured NodeHealthCheck CR with a selector
@@ -550,12 +551,12 @@ func createWorkloadPodOnNode(ctx context.Context, nodeName string) *corev1.Pod {
 		},
 	}
 
+	Expect(APIClient.Create(ctx, workloadPod)).To(Succeed(),
+		"Failed to create test workload pod on node %s", nodeName)
+
 	DeferCleanup(func() {
 		_ = APIClient.Delete(context.TODO(), workloadPod)
 	})
-
-	Expect(APIClient.Create(ctx, workloadPod)).To(Succeed(),
-		"Failed to create test workload pod on node %s", nodeName)
 
 	Eventually(func() bool {
 		p := &corev1.Pod{}

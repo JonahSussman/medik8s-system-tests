@@ -232,10 +232,15 @@ var _ = Describe("SNR Functional - Worker Node Remediation",
 
 				workloadPod := createWorkloadPodOnNode(ctx, targetWorkerName)
 
-				By("Recording boot ID before remediation")
+				By("Recording boot ID and creation timestamp before remediation")
 
 				oldBootID, err := helpers.GetNodeBootIDFromAPI(ctx, APIClient, targetWorkerName)
 				Expect(err).ToNot(HaveOccurred())
+
+				node := &corev1.Node{}
+				Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetWorkerName}, node)).To(Succeed())
+
+				creationTimestamp := node.CreationTimestamp
 
 				By("Pre-cleaning any stale NHC CR from previous runs")
 
@@ -266,6 +271,13 @@ var _ = Describe("SNR Functional - Worker Node Remediation",
 					ctx, APIClient, targetWorkerName,
 					snrparams.DefaultPollInterval, snrparams.NodeReadyTimeout,
 				)).To(Succeed())
+
+				By("Verifying node was rebooted, not re-created")
+
+				updatedNode := &corev1.Node{}
+				Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetWorkerName}, updatedNode)).To(Succeed())
+				Expect(updatedNode.CreationTimestamp.Equal(&creationTimestamp)).To(BeTrue(),
+					"Node creation timestamp changed -- node was re-created instead of rebooted")
 
 				By("Verifying workload pod was evicted from remediated node")
 
@@ -313,10 +325,15 @@ var _ = Describe("SNR Functional - Worker Node Remediation",
 
 				workloadPod := createWorkloadPodOnNode(ctx, targetWorkerName)
 
-				By("Recording boot ID before remediation")
+				By("Recording boot ID and creation timestamp before remediation")
 
 				oldBootID, err := helpers.GetNodeBootIDFromAPI(ctx, APIClient, targetWorkerName)
 				Expect(err).ToNot(HaveOccurred())
+
+				node := &corev1.Node{}
+				Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetWorkerName}, node)).To(Succeed())
+
+				creationTimestamp := node.CreationTimestamp
 
 				By("Pre-cleaning any stale NHC CR from previous runs")
 
@@ -346,6 +363,13 @@ var _ = Describe("SNR Functional - Worker Node Remediation",
 					ctx, APIClient, targetWorkerName,
 					snrparams.DefaultPollInterval, snrparams.NodeReadyTimeout,
 				)).To(Succeed())
+
+				By("Verifying node was rebooted, not re-created")
+
+				updatedNode := &corev1.Node{}
+				Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetWorkerName}, updatedNode)).To(Succeed())
+				Expect(updatedNode.CreationTimestamp.Equal(&creationTimestamp)).To(BeTrue(),
+					"Node creation timestamp changed -- node was re-created instead of rebooted")
 
 				By("Verifying workload pod was evicted from remediated node")
 
