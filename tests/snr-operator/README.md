@@ -9,7 +9,8 @@ and destructive remediation (kubelet stop, node reboot via NHC detection).
 - OpenShift cluster with SNR operator installed via OLM
 - `KUBECONFIG` set with cluster-admin access
 - SNR installed in `openshift-workload-availability` namespace
-- For destructive tests (15-19): NHC operator installed, 2+ worker nodes,
+- For destructive worker tests (15-17): NHC operator installed, 2+ worker nodes
+- For destructive master tests (18-19): NHC operator installed, 1+ worker nodes,
   3+ master nodes for etcd quorum safety
 
 ## Running
@@ -229,9 +230,9 @@ remediated node after SNR completes the remediation cycle.
 
 - **Operators**: SNR v0.13.0+, NHC v0.12.0+
 - **Cluster**: Multi-node with 2+ workers (skips if insufficient)
-- **Environment**: Connected or disconnected
+- **Environment**: Connected (workload pod uses `registry.k8s.io/pause:3.9`)
 - **Standalone**: `ginkgo --label-filter="snr" --focus="ResourceDeletion" ./tests/snr-operator/...`
-- **Pass criteria**: Node rebooted, workload pod evicted (deleted or moved off remediated node)
+- **Pass criteria**: Node rebooted, creation timestamp unchanged, workload pod evicted (deleted or moved off remediated node)
 
 ### 17. Verify OutOfServiceTaint Strategy Evicts Workload Pod ([OCP-61594](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-61594))
 
@@ -241,9 +242,9 @@ remediated node after SNR completes the remediation cycle.
 
 - **Operators**: SNR v0.13.0+, NHC v0.12.0+
 - **Cluster**: Multi-node with 2+ workers (skips if insufficient)
-- **Environment**: Connected or disconnected
+- **Environment**: Connected (workload pod uses `registry.k8s.io/pause:3.9`)
 - **Standalone**: `ginkgo --label-filter="snr" --focus="OutOfServiceTaint" ./tests/snr-operator/...`
-- **Pass criteria**: Node rebooted, workload pod evicted (deleted or moved off remediated node)
+- **Pass criteria**: Node rebooted, creation timestamp unchanged, workload pod evicted (deleted or moved off remediated node)
 
 ### 18. Verify Master Node Remediation After Kubelet Stop ([OCP-55059](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-55059))
 
@@ -267,4 +268,4 @@ concurrently -- both reboot and recover independently.
 - **Cluster**: Multi-node with 3+ masters and 2+ workers
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="snr" --focus="simultaneously" ./tests/snr-operator/...`
-- **Pass criteria**: Both nodes rebooted (boot IDs changed), both recovered to Ready state
+- **Pass criteria**: Both nodes rebooted (boot IDs changed), creation timestamps unchanged (not deleted/recreated), both recovered to Ready state

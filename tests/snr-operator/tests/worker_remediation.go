@@ -243,8 +243,9 @@ var _ = Describe("SNR Functional - Worker Node Remediation",
 
 				creationTimestamp := node.CreationTimestamp
 
-				By("Pre-cleaning any stale NHC CR from previous runs")
+				By("Pre-cleaning any stale CRs from previous runs")
 
+				cleanupSNRCR(targetWorkerName)
 				cleanupNHCCR(snrparams.NHCTestName)
 
 				By("Creating NHC CR pointing to ResourceDeletion SNRT")
@@ -336,8 +337,9 @@ var _ = Describe("SNR Functional - Worker Node Remediation",
 
 				creationTimestamp := node.CreationTimestamp
 
-				By("Pre-cleaning any stale NHC CR from previous runs")
+				By("Pre-cleaning any stale CRs from previous runs")
 
+				cleanupSNRCR(targetWorkerName)
 				cleanupNHCCR(snrparams.NHCTestName)
 
 				By("Creating NHC CR pointing to OutOfServiceTaint SNRT")
