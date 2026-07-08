@@ -36,7 +36,7 @@ same label selector.
 - **Cluster**: Any topology (MNO or SNO)
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="mdr" --focus="pod is running" ./tests/mdr-operator/...`
-- **Pass criteria**: All MDR pods Running, count matches expected replicas for the topology
+- **Pass criteria**: All MDR pods Running, count matches expected replica count (1)
 
 ### 2. Verify MDR CSV Has Required Annotations ([OCP-70221](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-70221))
 
