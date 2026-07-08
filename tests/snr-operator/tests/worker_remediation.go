@@ -52,7 +52,7 @@ var _ = Describe("SNR Functional - Worker Node Remediation",
 
 			// 2 workers minimum: target (kubelet stopped, rebooted) + at least
 			// 1 surviving worker so the cluster remains schedulable and pods
-			// can be evicted to a healthy node (Tests 8/9).
+			// can be evicted to a healthy node (OCP-50772, OCP-61594).
 			workerCount, err := helpers.CountReadyWorkerNodes(ctx, APIClient)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(workerCount).To(BeNumerically(">=", 2),
@@ -131,8 +131,9 @@ var _ = Describe("SNR Functional - Worker Node Remediation",
 
 				creationTimestamp := node.CreationTimestamp
 
-				By("Pre-cleaning any stale NHC CR from previous runs")
+				By("Pre-cleaning any stale CRs from previous runs")
 
+				cleanupSNRCR(targetWorkerName)
 				cleanupNHCCR(snrparams.NHCTestName)
 
 				By("Creating NHC CR pointing to default Automatic SNRT")
@@ -190,7 +191,7 @@ var _ = Describe("SNR Functional - Worker Node Remediation",
 
 				Eventually(func() error {
 					return findMessageInControllerLogs(
-						snrparams.OutOfServiceAutoSelectedMsg, snrparams.DSLogSearchWindow)
+						snrparams.OutOfServiceAutoSelectedMsg, snrparams.LogSearchWindow)
 				}, medik8sparams.DefaultTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
 					"OutOfServiceTaint auto-selected message not found in SNR controller logs")
 

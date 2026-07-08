@@ -224,7 +224,9 @@ func findMessageInControllerLogs(message string, logWindow time.Duration) error 
 	var lastLogErr error
 
 	for _, ctrlPod := range ctrlPods {
-		logStr, logErr := ctrlPod.GetLog(logWindow, "")
+		// Specify "manager" container -- controller pod has 2 containers
+		// (manager + kube-rbac-proxy) and empty name is ambiguous.
+		logStr, logErr := ctrlPod.GetLog(logWindow, snrparams.ManagerContainerName)
 		if logErr != nil {
 			lastLogErr = fmt.Errorf("pod %s: %w", ctrlPod.Object.Name, logErr)
 
@@ -403,9 +405,10 @@ func buildNHC(name, snrtName, roleLabel string) *unstructured.Unstructured {
 	nhc.SetGroupVersionKind(nhcGVK)
 	nhc.SetName(name)
 
-	// minHealthy is required by the NHC admission webhook. "51%" means
-	// remediation is allowed as long as at least 51% of matched nodes
-	// are healthy (standard NHC default).
+	// minHealthy is required by the NHC admission webhook. Using absolute
+	// value "1" instead of percentage to avoid ceil rounding issues on
+	// small clusters (e.g. ceil(0.51 * 2) = 2 would block remediation
+	// on 2-worker clusters).
 	_ = unstructured.SetNestedField(nhc.Object, map[string]interface{}{
 		"selector": map[string]interface{}{
 			"matchExpressions": []interface{}{
@@ -421,7 +424,7 @@ func buildNHC(name, snrtName, roleLabel string) *unstructured.Unstructured {
 			"name":       snrtName,
 			"namespace":  medik8sparams.OperatorNs,
 		},
-		"minHealthy": "51%",
+		"minHealthy": "1",
 		"unhealthyConditions": []interface{}{
 			map[string]interface{}{
 				"type":     "Ready",

@@ -11,6 +11,9 @@ const (
 	// ExpectedReplicas defines the expected number of replicas for SNR controller manager.
 	ExpectedReplicas = int32(2)
 
+	// ManagerContainerName is the name of the main controller container in the SNR pod.
+	ManagerContainerName = "manager"
+
 	// CRDGroup is the Kubernetes API group for all SNR custom resources.
 	CRDGroup = "self-node-remediation.medik8s.io"
 
@@ -116,9 +119,9 @@ const (
 	// controller auto-selects the OutOfServiceTaint strategy (OCP 4.15+).
 	OutOfServiceAutoSelectedMsg = "Remediating with OutOfServiceTaint Remediation strategy"
 
-	// DSLogSearchWindow is the time window used when searching SNR DS pod
-	// logs for expected messages after remediation.
-	DSLogSearchWindow = 30 * time.Minute
+	// LogSearchWindow is the time window used when searching SNR pod logs
+	// (DS agent or controller-manager) for expected messages after remediation.
+	LogSearchWindow = 30 * time.Minute
 
 	// PauseImage is the container image used for test workload pods.
 	PauseImage = "registry.k8s.io/pause:3.9"
