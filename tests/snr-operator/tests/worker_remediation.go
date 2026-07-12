@@ -179,15 +179,31 @@ var _ = Describe("SNR Functional - Worker Remediation",
 				Expect(stopKubeletForRemediation(ctx, targetWorkerName)).To(Succeed(),
 					"Failed to stop kubelet on node %s", targetWorkerName)
 
+				By("Verifying out-of-service taint is applied during remediation")
+
+				// The out-of-service taint is transient: SNR adds it when
+				// remediation starts and removes it after the node recovers.
+				// We check for it before waitForRemediationComplete to catch
+				// it while the node is still down.
+				Eventually(func() bool {
+					node := &corev1.Node{}
+					if err := APIClient.Get(ctx,
+						client.ObjectKey{Name: targetWorkerName}, node); err != nil {
+						return false
+					}
+
+					for _, taint := range node.Spec.Taints {
+						if taint.Key == snrparams.OutOfServiceTaintKey {
+							return true
+						}
+					}
+
+					return false
+				}, snrparams.SNRDeletionTimeout, snrparams.DefaultPollInterval).Should(BeTrue(),
+					"Out-of-service taint not found on node %s during remediation",
+					targetWorkerName)
+
 				verifyRemediationAndRecovery()
-
-				By("Verifying OutOfServiceTaint auto-selected log message")
-
-				Eventually(func() error {
-					return findMessageInControllerLogs(
-						snrparams.OutOfServiceAutoSelectedMsg, snrparams.LogSearchWindow)
-				}, medik8sparams.DefaultTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
-					"OutOfServiceTaint auto-selected message not found in SNR controller logs")
 
 				By("Deleting NHC CR")
 

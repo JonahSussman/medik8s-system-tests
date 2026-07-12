@@ -115,13 +115,9 @@ const (
 	// SNRTOutOfServiceTaintName is the name for the OutOfServiceTaint strategy SNRT.
 	SNRTOutOfServiceTaintName = "snr-test-out-of-service-taint-template"
 
-	// OutOfServiceAutoSelectedMsg is the log message emitted when the SNR
-	// controller auto-selects the OutOfServiceTaint strategy (OCP 4.15+).
-	OutOfServiceAutoSelectedMsg = "Remediating with OutOfServiceTaint Remediation strategy"
-
-	// LogSearchWindow is the time window used when searching SNR pod logs
-	// (DS agent or controller-manager) for expected messages after remediation.
-	LogSearchWindow = 30 * time.Minute
+	// OutOfServiceTaintKey is the taint key applied by SNR when using the
+	// OutOfServiceTaint remediation strategy (standard K8s taint).
+	OutOfServiceTaintKey = "node.kubernetes.io/out-of-service"
 
 	// PauseImage is the container image used for test workload pods.
 	PauseImage = "registry.k8s.io/pause:3.9"

@@ -204,48 +204,6 @@ func findMessageInDSPodLogs(message string, logWindow time.Duration) error {
 		message, logWindow)
 }
 
-// findMessageInControllerLogs searches SNR controller-manager pod logs
-// from the last logWindow for the given message. Returns nil when found
-// in at least one controller pod.
-func findMessageInControllerLogs(message string, logWindow time.Duration) error {
-	ctrlListOptions := metav1.ListOptions{
-		LabelSelector: snrparams.OperatorControllerPodLabelSelector,
-	}
-
-	ctrlPods, listErr := pod.List(APIClient, medik8sparams.OperatorNs, ctrlListOptions)
-	if listErr != nil {
-		return fmt.Errorf("failed to list SNR controller pods: %w", listErr)
-	}
-
-	if len(ctrlPods) == 0 {
-		return fmt.Errorf("no SNR controller pods found")
-	}
-
-	var lastLogErr error
-
-	for _, ctrlPod := range ctrlPods {
-		// Specify "manager" container -- controller pod has 2 containers
-		// (manager + kube-rbac-proxy) and empty name is ambiguous.
-		logStr, logErr := ctrlPod.GetLog(logWindow, snrparams.ManagerContainerName)
-		if logErr != nil {
-			lastLogErr = fmt.Errorf("pod %s: %w", ctrlPod.Object.Name, logErr)
-
-			continue
-		}
-
-		if strings.Contains(logStr, message) {
-			return nil
-		}
-	}
-
-	if lastLogErr != nil {
-		return fmt.Errorf("message %q not found; last log error: %w", message, lastLogErr)
-	}
-
-	return fmt.Errorf("message %q not found in any SNR controller pod logs (last %s)",
-		message, logWindow)
-}
-
 // --- Remediation test helpers ---
 
 // stopKubeletForRemediation wraps helpers.StopKubelet with additional
