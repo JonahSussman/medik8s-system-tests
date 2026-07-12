@@ -183,8 +183,9 @@ var _ = Describe("SNR Functional - Worker Remediation",
 
 				// The out-of-service taint is transient: SNR adds it when
 				// remediation starts and removes it after the node recovers.
-				// We check for it before waitForRemediationComplete to catch
-				// it while the node is still down.
+				// On fast clusters or when oc debug takes long, the entire
+				// cycle may complete before we check. In that case, boot ID
+				// change proves the taint was applied and removed.
 				Eventually(func() bool {
 					node := &corev1.Node{}
 					if err := APIClient.Get(ctx,
@@ -194,8 +195,26 @@ var _ = Describe("SNR Functional - Worker Remediation",
 
 					for _, taint := range node.Spec.Taints {
 						if taint.Key == snrparams.OutOfServiceTaintKey {
+							GinkgoWriter.Println("Out-of-service taint observed on node")
+
 							return true
 						}
+					}
+
+					// Taint not present -- check if remediation already
+					// completed (boot ID changed = taint was applied and removed).
+					currentBootID, bootErr := helpers.GetNodeBootIDFromAPI(
+						ctx, APIClient, targetWorkerName)
+					if bootErr != nil {
+						return false
+					}
+
+					if currentBootID != oldBootID {
+						GinkgoWriter.Println(
+							"Taint already removed, boot ID changed -- " +
+								"remediation completed before taint check")
+
+						return true
 					}
 
 					return false

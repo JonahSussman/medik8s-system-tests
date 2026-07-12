@@ -364,9 +364,9 @@ func buildNHC(name, snrtName, roleLabel string) *unstructured.Unstructured {
 	nhc.SetGroupVersionKind(nhcGVK)
 	nhc.SetName(name)
 
-	// minHealthy is required by the NHC admission webhook. Using absolute
-	// value "1" instead of percentage to avoid ceil rounding issues on
-	// small clusters (e.g. ceil(0.51 * 2) = 2 would block remediation
+	// minHealthy is required by the NHC admission webhook. Using integer 1
+	// instead of percentage to avoid ceil rounding issues on small clusters
+	// (e.g. ceil(0.51 * 2) = 2 would block remediation on 2-worker).
 	// on 2-worker clusters).
 	nhc.Object["spec"] = map[string]interface{}{
 		"selector": map[string]interface{}{
@@ -383,7 +383,7 @@ func buildNHC(name, snrtName, roleLabel string) *unstructured.Unstructured {
 			"name":       snrtName,
 			"namespace":  medik8sparams.OperatorNs,
 		},
-		"minHealthy": "1",
+		"minHealthy": int64(1),
 		"unhealthyConditions": []interface{}{
 			map[string]interface{}{
 				"type":     "Ready",
