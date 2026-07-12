@@ -16,10 +16,11 @@ import (
 	"github.com/medik8s/system-tests/tests/snr-operator/internal/snrparams"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var _ = Describe("SNR Functional - Worker Node Remediation",
+var _ = Describe("SNR Functional - Worker Remediation",
 	Serial, Ordered, ContinueOnFailure,
 	Label(labels.OperatorSNR, snrparams.Label,
 		labels.DisruptionDestructive, labels.FrequencyNightly),
@@ -27,6 +28,8 @@ var _ = Describe("SNR Functional - Worker Node Remediation",
 		var (
 			ctx              context.Context
 			targetWorkerName string
+			oldBootID        string
+			creationTS       metav1.Time
 			currentNHCName   string
 			currentSNRTName  string
 		)
@@ -39,14 +42,6 @@ var _ = Describe("SNR Functional - Worker Node Remediation",
 			if !isNHCCRDInstalled() {
 				Skip("NodeHealthCheck CRD not found; NHC operator not installed -- skipping worker remediation tests")
 			}
-
-			By("Verifying SNR operator deployment is ready")
-
-			snrDeployment, err := deployment.Pull(
-				APIClient, snrparams.OperatorDeploymentName, medik8sparams.OperatorNs)
-			Expect(err).ToNot(HaveOccurred(), "Failed to get SNR deployment")
-			Expect(snrDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(),
-				"SNR deployment is not Ready")
 
 			By("Verifying at least 2 Ready worker nodes")
 
@@ -67,10 +62,39 @@ var _ = Describe("SNR Functional - Worker Node Remediation",
 			GinkgoWriter.Printf("Target worker node: %s\n", targetWorkerName)
 		})
 
+		BeforeEach(func() {
+			By("Verifying SNR operator deployment is ready")
+
+			snrDeployment, err := deployment.Pull(
+				APIClient, snrparams.OperatorDeploymentName, medik8sparams.OperatorNs)
+			Expect(err).ToNot(HaveOccurred(), "Failed to get SNR deployment")
+			Expect(snrDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(),
+				"SNR deployment is not Ready")
+
+			By("Recording boot ID and creation timestamp")
+
+			oldBootID, err = helpers.GetNodeBootIDFromAPI(ctx, APIClient, targetWorkerName)
+			Expect(err).ToNot(HaveOccurred(),
+				"Must read boot ID from node %s", targetWorkerName)
+
+			node := &corev1.Node{}
+			Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetWorkerName}, node)).To(Succeed())
+			Expect(helpers.IsNodeReady(node)).To(BeTrue(),
+				"Target node %s is not Ready before test", targetWorkerName)
+
+			creationTS = node.CreationTimestamp
+
+			By("Pre-cleaning any stale CRs from previous runs")
+
+			cleanupSNRCR(targetWorkerName)
+			cleanupNHCCR(snrparams.NHCTestName)
+
+			GinkgoWriter.Printf("Pre-remediation boot ID: %s\n", oldBootID)
+		})
+
 		JustAfterEach(func() {
 			// Cleanup order: CRs first (only needs API server), then node
-			// recovery. If node recovery Expect aborts, CRs are already
-			// cleaned up.
+			// recovery.
 
 			if currentNHCName != "" {
 				By("Safety net: deleting NHC CR " + currentNHCName)
@@ -110,32 +134,38 @@ var _ = Describe("SNR Functional - Worker Node Remediation",
 				"SNR DaemonSet pods did not recover after remediation")
 		})
 
-		It("should remediate a worker node after kubelet stop via NHC detection",
+		// verifyRemediationAndRecovery is the shared verification sequence
+		// used by all worker tests after kubelet stop.
+		verifyRemediationAndRecovery := func() {
+			By("Waiting for SNR remediation to complete (node rebooted, SNR CR gone)")
+
+			Expect(waitForRemediationComplete(
+				ctx, APIClient, targetWorkerName, oldBootID, snrparams.SNRDeletionTimeout,
+			)).To(Succeed(),
+				"SNR remediation did not complete for node %s within %s",
+				targetWorkerName, snrparams.SNRDeletionTimeout)
+
+			By("Waiting for node " + targetWorkerName + " to become Ready")
+
+			Expect(helpers.WaitForNodeReady(
+				ctx, APIClient, targetWorkerName,
+				snrparams.DefaultPollInterval, snrparams.NodeReadyTimeout,
+			)).To(Succeed(),
+				"Node %s did not become Ready after remediation", targetWorkerName)
+
+			By("Verifying node was rebooted, not re-created")
+
+			updatedNode := &corev1.Node{}
+			Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetWorkerName}, updatedNode)).To(Succeed())
+			Expect(updatedNode.CreationTimestamp.Equal(&creationTS)).To(BeTrue(),
+				"Node creation timestamp changed -- node was re-created instead of rebooted")
+		}
+
+		It("should remediate a worker node after kubelet stop",
 			reportxml.ID("OCP-52416"),
 			Label(labels.TierAcceptance, labels.DisruptionDestructive,
 				labels.PlatformAny, labels.ComponentRemediation),
 			func() {
-				By("Recording boot ID before remediation")
-
-				oldBootID, err := helpers.GetNodeBootIDFromAPI(ctx, APIClient, targetWorkerName)
-				Expect(err).ToNot(HaveOccurred(),
-					"Must read boot ID from node %s", targetWorkerName)
-				GinkgoWriter.Printf("Pre-remediation boot ID: %s\n", oldBootID)
-
-				By("Recording node creation timestamp and verifying node is Ready")
-
-				node := &corev1.Node{}
-				Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetWorkerName}, node)).To(Succeed())
-				Expect(helpers.IsNodeReady(node)).To(BeTrue(),
-					"Target node %s is not Ready before test", targetWorkerName)
-
-				creationTimestamp := node.CreationTimestamp
-
-				By("Pre-cleaning any stale CRs from previous runs")
-
-				cleanupSNRCR(targetWorkerName)
-				cleanupNHCCR(snrparams.NHCTestName)
-
 				By("Creating NHC CR pointing to default Automatic SNRT")
 
 				nhcCR := buildNHCForWorkers(snrparams.NHCTestName, snrparams.SNRTemplateName)
@@ -149,43 +179,7 @@ var _ = Describe("SNR Functional - Worker Node Remediation",
 				Expect(stopKubeletForRemediation(ctx, targetWorkerName)).To(Succeed(),
 					"Failed to stop kubelet on node %s", targetWorkerName)
 
-				By("Waiting for SNR remediation to complete (node rebooted, SNR CR gone)")
-
-				// The full cycle: NHC detects NotReady (60s) -> creates SNR CR ->
-				// SNR reboots node -> node recovers -> SNR CR deleted.
-				// On fast clusters or when StopKubelet takes long (ARM64 oc debug
-				// timeout), the entire cycle may complete before we start checking.
-				// waitForRemediationComplete handles both cases.
-				Expect(waitForRemediationComplete(
-					ctx, APIClient, targetWorkerName, oldBootID, snrparams.SNRDeletionTimeout,
-				)).To(Succeed(),
-					"SNR remediation did not complete for node %s within %s",
-					targetWorkerName, snrparams.SNRDeletionTimeout)
-
-				By("Waiting for node " + targetWorkerName + " to become Ready")
-
-				Expect(helpers.WaitForNodeReady(
-					ctx, APIClient, targetWorkerName,
-					snrparams.DefaultPollInterval, snrparams.NodeReadyTimeout,
-				)).To(Succeed(),
-					"Node %s did not become Ready after remediation", targetWorkerName)
-
-				By("Verifying boot ID changed (node rebooted)")
-
-				newBootID, err := helpers.GetNodeBootIDFromAPI(ctx, APIClient, targetWorkerName)
-				Expect(err).ToNot(HaveOccurred(),
-					"Failed to read post-remediation boot ID from node %s", targetWorkerName)
-				Expect(newBootID).ToNot(Equal(oldBootID),
-					"Boot ID unchanged -- node %s did not reboot (old: %s, new: %s)",
-					targetWorkerName, oldBootID, newBootID)
-				GinkgoWriter.Printf("Boot ID changed: %s -> %s\n", oldBootID, newBootID)
-
-				By("Verifying node creation timestamp unchanged (node was rebooted, not deleted)")
-
-				updatedNode := &corev1.Node{}
-				Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetWorkerName}, updatedNode)).To(Succeed())
-				Expect(updatedNode.CreationTimestamp.Equal(&creationTimestamp)).To(BeTrue(),
-					"Node creation timestamp changed -- node was re-created instead of rebooted")
+				verifyRemediationAndRecovery()
 
 				By("Verifying OutOfServiceTaint auto-selected log message")
 
@@ -201,56 +195,27 @@ var _ = Describe("SNR Functional - Worker Node Remediation",
 				currentNHCName = ""
 			})
 
-		It("should evict workload pod using ResourceDeletion remediation strategy",
-			reportxml.ID("OCP-50772"),
-			Label(labels.TierAcceptance, labels.DisruptionDestructive,
-				labels.PlatformAny, labels.ComponentRemediation),
-			func() {
-				By("Checking at least 2 Ready workers for pod eviction")
-
-				workerCount, err := helpers.CountReadyWorkerNodes(ctx, APIClient)
-				Expect(err).ToNot(HaveOccurred())
-
-				if workerCount < 2 {
-					Skip(fmt.Sprintf(
-						"ResourceDeletion test requires 2+ workers for pod eviction, got %d",
-						workerCount))
-				}
-
+		Context("strategy-specific remediation with workload pod", func() {
+			runStrategyTest := func(strategyName, snrtConstName, snrtName string) {
 				By("Pre-cleaning any stale SNRT from previous runs")
 
-				cleanupSNRT(snrparams.SNRTResourceDeletionName)
+				cleanupSNRT(snrtName)
 
-				By("Creating ResourceDeletion SNRT")
+				By(fmt.Sprintf("Creating %s SNRT", strategyName))
 
-				snrt := buildSNRT(snrparams.SNRTResourceDeletionName, "ResourceDeletion")
+				snrt := buildSNRT(snrtName, strategyName)
 				Expect(APIClient.Create(ctx, snrt)).To(Succeed(),
-					"Failed to create ResourceDeletion SNRT")
+					"Failed to create %s SNRT", strategyName)
 
-				currentSNRTName = snrparams.SNRTResourceDeletionName
+				currentSNRTName = snrtName
 
 				By(fmt.Sprintf("Creating test workload pod on node %s", targetWorkerName))
 
 				workloadPod := createWorkloadPodOnNode(ctx, targetWorkerName)
 
-				By("Recording boot ID and creation timestamp before remediation")
+				By("Creating NHC CR pointing to " + strategyName + " SNRT")
 
-				oldBootID, err := helpers.GetNodeBootIDFromAPI(ctx, APIClient, targetWorkerName)
-				Expect(err).ToNot(HaveOccurred())
-
-				node := &corev1.Node{}
-				Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetWorkerName}, node)).To(Succeed())
-
-				creationTimestamp := node.CreationTimestamp
-
-				By("Pre-cleaning any stale CRs from previous runs")
-
-				cleanupSNRCR(targetWorkerName)
-				cleanupNHCCR(snrparams.NHCTestName)
-
-				By("Creating NHC CR pointing to ResourceDeletion SNRT")
-
-				nhcCR := buildNHCForWorkers(snrparams.NHCTestName, snrparams.SNRTResourceDeletionName)
+				nhcCR := buildNHCForWorkers(snrparams.NHCTestName, snrtName)
 				Expect(APIClient.Create(ctx, nhcCR)).To(Succeed(),
 					"Failed to create NHC CR")
 
@@ -260,26 +225,7 @@ var _ = Describe("SNR Functional - Worker Node Remediation",
 
 				Expect(stopKubeletForRemediation(ctx, targetWorkerName)).To(Succeed())
 
-				By("Waiting for SNR remediation to complete (node rebooted, SNR CR gone)")
-
-				Expect(waitForRemediationComplete(
-					ctx, APIClient, targetWorkerName, oldBootID, snrparams.SNRDeletionTimeout,
-				)).To(Succeed(),
-					"SNR remediation did not complete for node %s", targetWorkerName)
-
-				By("Waiting for node to become Ready")
-
-				Expect(helpers.WaitForNodeReady(
-					ctx, APIClient, targetWorkerName,
-					snrparams.DefaultPollInterval, snrparams.NodeReadyTimeout,
-				)).To(Succeed())
-
-				By("Verifying node was rebooted, not re-created")
-
-				updatedNode := &corev1.Node{}
-				Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetWorkerName}, updatedNode)).To(Succeed())
-				Expect(updatedNode.CreationTimestamp.Equal(&creationTimestamp)).To(BeTrue(),
-					"Node creation timestamp changed -- node was re-created instead of rebooted")
+				verifyRemediationAndRecovery()
 
 				By("Verifying workload pod was evicted from remediated node")
 
@@ -293,98 +239,24 @@ var _ = Describe("SNR Functional - Worker Node Remediation",
 
 				cleanupSNRT(currentSNRTName)
 				currentSNRTName = ""
-			})
+			}
 
-		It("should evict workload pod using OutOfServiceTaint remediation strategy",
-			reportxml.ID("OCP-61594"),
-			Label(labels.TierAcceptance, labels.DisruptionDestructive,
-				labels.PlatformAny, labels.ComponentRemediation),
-			func() {
-				By("Checking at least 2 Ready workers for pod eviction")
+			It("should evict workload pod using ResourceDeletion strategy",
+				reportxml.ID("OCP-50772"),
+				Label(labels.TierAcceptance, labels.DisruptionDestructive,
+					labels.PlatformAny, labels.ComponentRemediation),
+				func() {
+					runStrategyTest("ResourceDeletion", "SNRTResourceDeletionName",
+						snrparams.SNRTResourceDeletionName)
+				})
 
-				workerCount, err := helpers.CountReadyWorkerNodes(ctx, APIClient)
-				Expect(err).ToNot(HaveOccurred())
-
-				if workerCount < 2 {
-					Skip(fmt.Sprintf(
-						"OutOfServiceTaint test requires 2+ workers for pod eviction, got %d",
-						workerCount))
-				}
-
-				By("Pre-cleaning any stale SNRT from previous runs")
-
-				cleanupSNRT(snrparams.SNRTOutOfServiceTaintName)
-
-				By("Creating OutOfServiceTaint SNRT")
-
-				snrt := buildSNRT(snrparams.SNRTOutOfServiceTaintName, "OutOfServiceTaint")
-				Expect(APIClient.Create(ctx, snrt)).To(Succeed(),
-					"Failed to create OutOfServiceTaint SNRT")
-
-				currentSNRTName = snrparams.SNRTOutOfServiceTaintName
-
-				By(fmt.Sprintf("Creating test workload pod on node %s", targetWorkerName))
-
-				workloadPod := createWorkloadPodOnNode(ctx, targetWorkerName)
-
-				By("Recording boot ID and creation timestamp before remediation")
-
-				oldBootID, err := helpers.GetNodeBootIDFromAPI(ctx, APIClient, targetWorkerName)
-				Expect(err).ToNot(HaveOccurred())
-
-				node := &corev1.Node{}
-				Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetWorkerName}, node)).To(Succeed())
-
-				creationTimestamp := node.CreationTimestamp
-
-				By("Pre-cleaning any stale CRs from previous runs")
-
-				cleanupSNRCR(targetWorkerName)
-				cleanupNHCCR(snrparams.NHCTestName)
-
-				By("Creating NHC CR pointing to OutOfServiceTaint SNRT")
-
-				nhcCR := buildNHCForWorkers(snrparams.NHCTestName, snrparams.SNRTOutOfServiceTaintName)
-				Expect(APIClient.Create(ctx, nhcCR)).To(Succeed())
-
-				currentNHCName = snrparams.NHCTestName
-
-				By(fmt.Sprintf("Stopping kubelet on worker node %s", targetWorkerName))
-
-				Expect(stopKubeletForRemediation(ctx, targetWorkerName)).To(Succeed())
-
-				By("Waiting for SNR remediation to complete (node rebooted, SNR CR gone)")
-
-				Expect(waitForRemediationComplete(
-					ctx, APIClient, targetWorkerName, oldBootID, snrparams.SNRDeletionTimeout,
-				)).To(Succeed(),
-					"SNR remediation did not complete for node %s", targetWorkerName)
-
-				By("Waiting for node to become Ready")
-
-				Expect(helpers.WaitForNodeReady(
-					ctx, APIClient, targetWorkerName,
-					snrparams.DefaultPollInterval, snrparams.NodeReadyTimeout,
-				)).To(Succeed())
-
-				By("Verifying node was rebooted, not re-created")
-
-				updatedNode := &corev1.Node{}
-				Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetWorkerName}, updatedNode)).To(Succeed())
-				Expect(updatedNode.CreationTimestamp.Equal(&creationTimestamp)).To(BeTrue(),
-					"Node creation timestamp changed -- node was re-created instead of rebooted")
-
-				By("Verifying workload pod was evicted from remediated node")
-
-				waitForPodEvictedFromNode(ctx,
-					workloadPod.Name, workloadPod.Namespace, targetWorkerName)
-
-				By("Cleaning up NHC CR and SNRT")
-
-				cleanupNHCCR(currentNHCName)
-				currentNHCName = ""
-
-				cleanupSNRT(currentSNRTName)
-				currentSNRTName = ""
-			})
+			It("should evict workload pod using OutOfServiceTaint strategy",
+				reportxml.ID("OCP-61594"),
+				Label(labels.TierAcceptance, labels.DisruptionDestructive,
+					labels.PlatformAny, labels.ComponentRemediation),
+				func() {
+					runStrategyTest("OutOfServiceTaint", "SNRTOutOfServiceTaintName",
+						snrparams.SNRTOutOfServiceTaintName)
+				})
+		})
 	})

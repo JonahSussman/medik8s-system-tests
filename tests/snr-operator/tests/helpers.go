@@ -265,10 +265,11 @@ func stopKubeletForRemediation(ctx context.Context, nodeName string) error {
 
 	errMsg := err.Error()
 
-	// Suppress known error patterns that indicate kubelet was likely stopped.
-	if strings.Contains(errMsg, "timed out") ||
+	// Suppress specific oc debug error patterns that indicate the stop
+	// command was likely sent before the debug pod connection dropped.
+	if strings.Contains(errMsg, "oc debug on node") && strings.Contains(errMsg, "timed out") ||
 		strings.Contains(errMsg, "unable to create the debug pod") ||
-		(strings.Contains(errMsg, "exit status") && strings.Contains(errMsg, "Starting pod")) {
+		(strings.Contains(errMsg, "exit status 1") && strings.Contains(errMsg, "Starting pod")) {
 		GinkgoWriter.Printf(
 			"stopKubeletForRemediation(%s): suppressed expected error "+
 				"(kubelet likely stopped): %v\n", nodeName, err)
@@ -352,7 +353,7 @@ func selectMasterNode(
 	for i := range nodeList.Items {
 		node := &nodeList.Items[i]
 
-		if excluded[node.Name] {
+		if excluded[node.Name] || node.Spec.Unschedulable {
 			continue
 		}
 
@@ -409,7 +410,7 @@ func buildNHC(name, snrtName, roleLabel string) *unstructured.Unstructured {
 	// value "1" instead of percentage to avoid ceil rounding issues on
 	// small clusters (e.g. ceil(0.51 * 2) = 2 would block remediation
 	// on 2-worker clusters).
-	_ = unstructured.SetNestedField(nhc.Object, map[string]interface{}{
+	nhc.Object["spec"] = map[string]interface{}{
 		"selector": map[string]interface{}{
 			"matchExpressions": []interface{}{
 				map[string]interface{}{
@@ -437,7 +438,7 @@ func buildNHC(name, snrtName, roleLabel string) *unstructured.Unstructured {
 				"duration": "60s",
 			},
 		},
-	}, "spec")
+	}
 
 	return nhc
 }

@@ -219,7 +219,7 @@ was auto-selected (OCP 4.15+) via controller-manager logs.
 - **Operators**: SNR v0.13.0+, NHC v0.12.0+
 - **Cluster**: Multi-node with 2+ workers
 - **Environment**: Connected or disconnected
-- **Standalone**: `ginkgo --label-filter="snr" --focus="kubelet stop via NHC" ./tests/snr-operator/...`
+- **Standalone**: `ginkgo --label-filter="snr" --focus="worker node after kubelet stop" ./tests/snr-operator/...`
 - **Pass criteria**: Node rebooted (boot ID changed), creation timestamp unchanged (not deleted/recreated), OutOfServiceTaint auto-selected log message found
 
 ### 16. Verify ResourceDeletion Strategy Evicts Workload Pod ([OCP-50772](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-50772))
@@ -255,7 +255,7 @@ verifies the node recovers and was not deleted/recreated.
 - **Operators**: SNR v0.13.0+, NHC v0.12.0+
 - **Cluster**: Multi-node with 3+ masters (etcd quorum safety)
 - **Environment**: Connected or disconnected
-- **Standalone**: `ginkgo --label-filter="snr" --focus="master node" ./tests/snr-operator/...`
+- **Standalone**: `ginkgo --label-filter="snr" --focus="master node after kubelet stop" ./tests/snr-operator/...`
 - **Pass criteria**: Master rebooted (boot ID changed), creation timestamp unchanged (not deleted/recreated), node returns to Ready
 
 ### 19. Verify Simultaneous Master and Worker Remediation ([OCP-56069](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-56069))
@@ -265,7 +265,7 @@ separate NHC CRs for each role, and verifies both nodes are remediated
 concurrently -- both reboot and recover independently.
 
 - **Operators**: SNR v0.13.0+, NHC v0.12.0+
-- **Cluster**: Multi-node with 3+ masters and 2+ workers
+- **Cluster**: Multi-node with 3+ masters and 1+ workers
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="snr" --focus="simultaneously" ./tests/snr-operator/...`
 - **Pass criteria**: Both nodes rebooted (boot IDs changed), creation timestamps unchanged (not deleted/recreated), both recovered to Ready state
