@@ -74,3 +74,40 @@ container or pod level). Only checks the `manager` container.
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="mdr" --focus="runs as non-root" ./tests/mdr-operator/...`
 - **Pass criteria**: Pod runAsNonRoot=true; expected manager container exists; manager container runAsUser != 0; allowPrivilegeEscalation=false; readOnlyRootFilesystem=true; capabilities.drop=[ALL]; seccomp profile RuntimeDefault
+
+## Destructive Tests -- NHC-Triggered Remediation
+
+Tests that stop kubelet on a worker node, let NHC detect the unhealthy node
+and trigger MDR remediation. MDR deletes the Machine object and the cloud
+provider provisions a new VM. The node is re-created (new creation timestamp).
+
+### Prerequisites (Remediation)
+
+- MDR and NHC operators installed
+- Cloud platform with MachineAPI (AWS, Azure, GCP, vSphere). Skips on baremetal/None
+- At least 2 Ready worker nodes (target + spare for cluster schedulability)
+- `KUBECONFIG` set with cluster-admin access
+
+### 5. NHC-Triggered Machine Deletion Remediation ([OCP-60883](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-60883))
+
+Stops kubelet on a worker node. NHC detects the unhealthy node and creates
+an MDR CR via the MDR template. MDR deletes the Machine, the cloud provider
+provisions a new VM, and the node rejoins the cluster.
+
+- **Operators**: MDR v0.7.0+, NHC v0.12.0+
+- **Cluster**: Multi-node (2+ workers), cloud platform
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="mdr && disruption:destructive" --focus="NHC-triggered Machine deletion" ./tests/mdr-operator/...`
+- **Pass criteria**: MDR CR created and deleted, node re-created (creation timestamp changed), node Ready
+
+### 6. MDR Condition Transitions During Remediation ([OCP-66138](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-66138))
+
+Same flow as test 5, but verifies that the MDR CR status conditions
+transition correctly: Processing=True/RemediationStarted and
+Succeeded=Unknown/RemediationStarted during active remediation.
+
+- **Operators**: MDR v0.7.0+, NHC v0.12.0+
+- **Cluster**: Multi-node (2+ workers), cloud platform
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="mdr && disruption:destructive" --focus="Processing and Succeeded conditions" ./tests/mdr-operator/...`
+- **Pass criteria**: Processing=True with RemediationStarted reason, Succeeded=Unknown with RemediationStarted reason, node re-created and Ready
