@@ -225,7 +225,7 @@ func stopKubeletForRemediation(ctx context.Context, nodeName string) error {
 
 	// Suppress specific oc debug error patterns that indicate the stop
 	// command was likely sent before the debug pod connection dropped.
-	if (strings.Contains(errMsg, "oc debug on node") && strings.Contains(errMsg, "timed out")) ||
+	if strings.Contains(errMsg, "oc debug on node") && strings.Contains(errMsg, "timed out") ||
 		strings.Contains(errMsg, "unable to create the debug pod") ||
 		(strings.Contains(errMsg, "exit status 1") && strings.Contains(errMsg, "Starting pod")) {
 		GinkgoWriter.Printf(
