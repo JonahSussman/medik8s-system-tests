@@ -30,6 +30,7 @@ var (
 		{Cr: &corev1.PodList{}},
 		{Cr: medik8sparams.NewUnstructuredList(CRDGroup, CRDVersion, "MachineDeletionRemediationList")},
 		{Cr: medik8sparams.NewUnstructuredList(CRDGroup, CRDVersion, "MachineDeletionRemediationTemplateList")},
+		{Cr: medik8sparams.NewUnstructuredList(NHCAPIGroup, NHCAPIVersion, "NodeHealthCheckList")},
 		{Cr: &coordinationv1.LeaseList{}, Namespace: &operatorNs},
 	}
 

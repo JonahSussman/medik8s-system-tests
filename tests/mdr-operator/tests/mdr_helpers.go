@@ -7,6 +7,7 @@ import (
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
+	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/pod"
 
 	"github.com/medik8s/system-tests/tests/internal/helpers"
 	. "github.com/medik8s/system-tests/tests/internal/medik8sinittools"
@@ -16,6 +17,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -138,7 +140,7 @@ func stopKubeletForRemediation(ctx context.Context, nodeName string) error {
 
 	errMsg := err.Error()
 
-	if strings.Contains(errMsg, "oc debug on node") && strings.Contains(errMsg, "timed out") ||
+	if (strings.Contains(errMsg, "oc debug on node") && strings.Contains(errMsg, "timed out")) ||
 		strings.Contains(errMsg, "unable to create the debug pod") ||
 		(strings.Contains(errMsg, "exit status 1") && strings.Contains(errMsg, "Starting pod")) {
 		GinkgoWriter.Printf(
@@ -217,13 +219,16 @@ func cleanupMDRCR(name string) {
 // the Machine and the cloud provisions a new VM. The replacement node
 // typically has a DIFFERENT name (new EC2 instance = new hostname).
 //
-// Success is defined as: MDR CR for the original node is gone AND a new
-// worker node appears that was NOT in the initialWorkerNames set.
+// Detection uses two strategies:
+//  1. Name-based: a worker whose name is NOT in initialWorkerNames (AWS/Azure/GCP)
+//  2. Time-based: a worker whose CreationTimestamp is after testStartTime
+//     (vSphere, where the replacement may reuse the same hostname)
+//
 // Returns the name of the replacement node.
 func waitForMDRRemediationComplete(
 	ctx context.Context, originalNodeName string,
 	expectedWorkerCount int, initialWorkerNames map[string]bool,
-	timeout time.Duration,
+	testStartTime time.Time, timeout time.Duration,
 ) (string, error) {
 	var newNodeName string
 
@@ -259,8 +264,7 @@ func waitForMDRRemediationComplete(
 				return false, nil
 			}
 
-			// Worker count restored. Find the replacement node -- a worker
-			// whose name was NOT in the initial set (new VM = new hostname).
+			// Worker count restored. Find the replacement node.
 			nodeList := &corev1.NodeList{}
 			if listErr := APIClient.List(ctx, nodeList,
 				client.MatchingLabels{"node-role.kubernetes.io/worker": ""}); listErr != nil {
@@ -269,11 +273,24 @@ func waitForMDRRemediationComplete(
 
 			for i := range nodeList.Items {
 				node := &nodeList.Items[i]
+
+				// Strategy 1: new name not in initial set (AWS/Azure/GCP).
 				if !initialWorkerNames[node.Name] {
 					newNodeName = node.Name
 					GinkgoWriter.Printf(
-						"MDR remediation complete: replacement node %s (not in initial set, original: %s)\n",
+						"MDR remediation complete: replacement node %s (new name, original: %s)\n",
 						newNodeName, originalNodeName)
+
+					return true, nil
+				}
+
+				// Strategy 2: same name but created after test start (vSphere).
+				if node.Name == originalNodeName &&
+					node.CreationTimestamp.Time.After(testStartTime) {
+					newNodeName = node.Name
+					GinkgoWriter.Printf(
+						"MDR remediation complete: replacement node %s (same name, re-created at %s, test started %s)\n",
+						newNodeName, node.CreationTimestamp.Time, testStartTime)
 
 					return true, nil
 				}
@@ -315,4 +332,31 @@ func getMDRCRCondition(nodeName, condType string) (map[string]interface{}, error
 	}
 
 	return nil, fmt.Errorf("condition %s not found on MDR CR %s", condType, nodeName)
+}
+
+// logMDRControllerState logs the MDR controller pod states for failure triage.
+func logMDRControllerState() {
+	pods, err := pod.List(APIClient, medik8sparams.OperatorNs,
+		metav1.ListOptions{LabelSelector: mdrparams.OperatorControllerPodLabelSelector})
+	if err != nil {
+		GinkgoWriter.Printf("logMDRControllerState: failed to list MDR pods: %v\n", err)
+
+		return
+	}
+
+	GinkgoWriter.Printf("=== MDR Controller State (%d pods) ===\n", len(pods))
+
+	for _, p := range pods {
+		phase := p.Object.Status.Phase
+		ready := "not-ready"
+
+		for _, cs := range p.Object.Status.ContainerStatuses {
+			if cs.Ready {
+				ready = "ready"
+			}
+		}
+
+		GinkgoWriter.Printf("  %s: phase=%s containers=%s node=%s\n",
+			p.Object.Name, phase, ready, p.Object.Spec.NodeName)
+	}
 }

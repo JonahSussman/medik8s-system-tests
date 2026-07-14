@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"fmt"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -121,9 +122,14 @@ var _ = Describe("MDR Functional -- NHC-Triggered Remediation",
 
 			cleanupMDRCR(targetWorkerName)
 			cleanupNHCCR(mdrparams.NHCTestName)
+			cleanupMDRT(mdrparams.MDRTestTemplateName)
 		})
 
 		JustAfterEach(func() {
+			if CurrentSpecReport().Failed() {
+				logMDRControllerState()
+			}
+
 			// Cleanup order: CRs first (only needs API server), then node recovery.
 
 			if currentNHCName != "" {
@@ -159,6 +165,8 @@ var _ = Describe("MDR Functional -- NHC-Triggered Remediation",
 		// create MDRT + NHC, stop kubelet, wait for remediation complete.
 		// Returns the replacement node name (may differ from original).
 		triggerAndWaitForRemediation := func() string {
+			testStartTime := time.Now()
+
 			By("Creating MDRT")
 
 			mdrt := buildMDRT(mdrparams.MDRTestTemplateName)
@@ -188,7 +196,7 @@ var _ = Describe("MDR Functional -- NHC-Triggered Remediation",
 			// looking for a node not in the initial set.
 			newNodeName, waitErr := waitForMDRRemediationComplete(
 				ctx, targetWorkerName, initialWorkerCount, initialWorkerNames,
-				mdrparams.RemediationCompleteTimeout,
+				testStartTime, mdrparams.RemediationCompleteTimeout,
 			)
 
 			Expect(waitErr).ToNot(HaveOccurred(),
@@ -238,6 +246,8 @@ var _ = Describe("MDR Functional -- NHC-Triggered Remediation",
 			Label(labels.TierAcceptance,
 				labels.PlatformAny, labels.ComponentRemediation),
 			func() {
+				testStartTime := time.Now()
+
 				By("Creating MDRT")
 
 				mdrt := buildMDRT(mdrparams.MDRTestTemplateName)
@@ -302,11 +312,13 @@ var _ = Describe("MDR Functional -- NHC-Triggered Remediation",
 
 				newNodeName, waitErr := waitForMDRRemediationComplete(
 					ctx, targetWorkerName, initialWorkerCount, initialWorkerNames,
-					mdrparams.RemediationCompleteTimeout,
+					testStartTime, mdrparams.RemediationCompleteTimeout,
 				)
 
 				Expect(waitErr).ToNot(HaveOccurred(),
 					"MDR remediation did not complete for node %s", targetWorkerName)
+				Expect(newNodeName).ToNot(BeEmpty(),
+					"Replacement node not found after MDR remediation")
 
 				By("Waiting for replacement node to become Ready")
 
