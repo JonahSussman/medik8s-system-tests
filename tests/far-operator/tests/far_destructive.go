@@ -8,14 +8,17 @@ import (
 	. "github.com/onsi/gomega"
 	configv1 "github.com/openshift/api/config/v1"
 
+	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/deployment"
+	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/reportxml"
 
 	"github.com/medik8s/system-tests/tests/far-operator/internal/farparams"
 	"github.com/medik8s/system-tests/tests/far-operator/internal/farutils"
@@ -38,7 +41,7 @@ var fartGVK = schema.GroupVersionKind{
 }
 
 var _ = Describe("FAR Destructive Tests",
-	Serial, Ordered, ContinueOnFailure,
+	Serial,
 	Label(labels.OperatorFAR, farparams.Label,
 		labels.DisruptionDestructive,
 		labels.PlatformAWS, labels.FrequencyWeekly),
@@ -48,18 +51,26 @@ var _ = Describe("FAR Destructive Tests",
 			platform        configv1.PlatformType
 			region          string
 			fenceAgent      string
-			nodeIDParam     string
-			awsAccessKey    string
-			awsSecretKey    string
 			leaderNode      string
 			targetNode      *corev1.Node
 			sharedParams    map[string]interface{}
 			nodeParams      map[string]interface{}
 			currentFARTName string
 			currentFARName  string
+
+			destructiveSetupDone    bool
+			destructiveSetupSkipped bool
 		)
 
-		BeforeAll(func() {
+		BeforeEach(func() {
+			if destructiveSetupSkipped {
+				Skip("FAR destructive tests require AWS")
+			}
+
+			if destructiveSetupDone {
+				return
+			}
+
 			ctx = context.Background()
 
 			By("Detecting cluster platform")
@@ -70,13 +81,15 @@ var _ = Describe("FAR Destructive Tests",
 			Expect(err).ToNot(HaveOccurred())
 
 			if platform != configv1.AWSPlatformType {
+				destructiveSetupSkipped = true
+
 				Skip(fmt.Sprintf(
 					"FAR destructive tests require AWS, got %s", platform))
 			}
 
 			By("Resolving fence agent for platform")
 
-			fenceAgent, nodeIDParam, err = farutils.FenceAgentForPlatform(platform)
+			fenceAgent, _, err = farutils.FenceAgentForPlatform(platform)
 			Expect(err).ToNot(HaveOccurred())
 			GinkgoWriter.Printf(
 				"Platform: %s, Agent: %s, Region: %s\n",
@@ -102,11 +115,30 @@ var _ = Describe("FAR Destructive Tests",
 
 			By("Reading AWS credentials from CCO Secret")
 
-			awsAccessKey, awsSecretKey, err = farutils.GetAWSCredentials(
+			awsAccessKey, awsSecretKey, err := farutils.GetAWSCredentials(
 				ctx, APIClient, medik8sparams.OperatorNs)
 			Expect(err).ToNot(HaveOccurred(),
 				"AWS credentials must be provisioned by the "+
 					"medik8s-aws-credentials CI step")
+
+			By("Creating shared credentials Secret for FAR SharedSecretName")
+
+			credentialsSecret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      farparams.SharedCredentialsSecretName,
+					Namespace: medik8sparams.OperatorNs,
+				},
+				StringData: map[string]string{
+					"--access-key": awsAccessKey,
+					"--secret-key": awsSecretKey,
+				},
+			}
+
+			err = APIClient.Create(ctx, credentialsSecret)
+			if err != nil && !k8serrors.IsAlreadyExists(err) {
+				Expect(err).ToNot(HaveOccurred(),
+					"Failed to create shared credentials Secret")
+			}
 
 			By("Building fence_aws shared parameters")
 
@@ -114,8 +146,6 @@ var _ = Describe("FAR Destructive Tests",
 				"--region":          region,
 				"--action":          "reboot",
 				"--skip-race-check": "",
-				"--access-key":      awsAccessKey,
-				"--secret-key":      awsSecretKey,
 			}
 
 			By("Building node parameters (--plug = EC2 instance ID)")
@@ -137,28 +167,109 @@ var _ = Describe("FAR Destructive Tests",
 
 			By("Identifying active FAR controller node")
 
-			leaderNode, err = farutils.GetActiveFARControllerNode(
-				ctx, APIClient)
-			Expect(err).ToNot(HaveOccurred())
+			Eventually(func() error {
+				var leaderErr error
+
+				leaderNode, leaderErr = farutils.GetActiveFARControllerNode(ctx, APIClient)
+
+				return leaderErr
+			}, farparams.ControllerHandoverTimeout, farparams.DefaultPollInterval).Should(Succeed(),
+				"FAR leader election did not settle")
 			GinkgoWriter.Printf("FAR leader is on node: %s\n", leaderNode)
 
-			// TODO(RHWA-963): remove when destructive test specs consume these variables.
-			_ = nodeIDParam
-			_ = sharedParams
-			_ = nodeParams
+			destructiveSetupDone = true
 		})
 
 		JustAfterEach(func() {
 			spec := CurrentSpecReport()
 			if spec.Failed() {
 				GinkgoWriter.Println(
-					"Test failed - running safety net cleanup")
+					"Test failed - collecting diagnostics")
+				logFARControllerState(ctx, APIClient)
 			}
 
 			if currentFARName != "" {
-				By("Safety net: deleting FAR CR " + currentFARName)
+				By("Waiting for FAR CR to reach Succeeded before cleanup")
+
+				pollCtx, pollCancel := context.WithTimeout(ctx, farparams.FARConditionTimeout)
+				defer pollCancel()
+
+				if waitErr := wait.PollUntilContextCancel(pollCtx, farparams.DefaultPollInterval, true,
+					func(ctx context.Context) (bool, error) {
+						farObj := &unstructured.Unstructured{}
+						farObj.SetGroupVersionKind(farGVK)
+
+						if err := APIClient.Get(ctx, client.ObjectKey{
+							Name:      currentFARName,
+							Namespace: medik8sparams.OperatorNs,
+						}, farObj); err != nil {
+							return false, nil
+						}
+
+						conditions, found, condErr := unstructured.NestedSlice(
+							farObj.Object, "status", "conditions")
+						if condErr != nil {
+							GinkgoWriter.Printf(
+								"WARNING: failed to read FAR CR conditions: %v\n", condErr)
+
+							return false, nil
+						}
+
+						if !found {
+							return false, nil
+						}
+
+						for _, c := range conditions {
+							condMap, ok := c.(map[string]interface{})
+							if !ok {
+								continue
+							}
+
+							if condMap["type"] == farparams.FARConditionSucceeded &&
+								condMap["status"] == string(metav1.ConditionTrue) {
+								return true, nil
+							}
+						}
+
+						return false, nil
+					},
+				); waitErr != nil {
+					GinkgoWriter.Printf(
+						"WARNING: FAR CR %s did not reach Succeeded within %s: %v\n",
+						currentFARName, farparams.FARConditionTimeout, waitErr)
+				}
+
+				By("Deleting FAR CR " + currentFARName)
+				farNodeName := currentFARName
 				deleteRemediationCR(ctx, APIClient, farGVK, currentFARName)
 				currentFARName = ""
+
+				By("Verifying FAR NoSchedule taint removed after CR deletion")
+
+				taintCtx, taintCancel := context.WithTimeout(ctx, farparams.FARConditionTimeout)
+				defer taintCancel()
+
+				if taintErr := wait.PollUntilContextCancel(taintCtx, farparams.DefaultPollInterval, true,
+					func(ctx context.Context) (bool, error) {
+						node := &corev1.Node{}
+						if err := APIClient.Get(ctx, client.ObjectKey{Name: farNodeName}, node); err != nil {
+							return false, nil
+						}
+
+						for _, taint := range node.Spec.Taints {
+							if taint.Key == farparams.FARNoScheduleTaintKey {
+								return false, nil
+							}
+						}
+
+						return true, nil
+					},
+				); taintErr != nil {
+					GinkgoWriter.Printf(
+						"WARNING: FAR taint %s still present on node %s after %s: %v\n",
+						farparams.FARNoScheduleTaintKey, farNodeName,
+						farparams.FARConditionTimeout, taintErr)
+				}
 			}
 
 			if currentFARTName != "" {
@@ -171,29 +282,386 @@ var _ = Describe("FAR Destructive Tests",
 				nodeName := targetNode.Name
 				targetNode = nil
 
-				By("Safety net: ensuring kubelet is running on " + nodeName)
-				Expect(farutils.StartKubelet(ctx, nodeName)).To(Succeed(),
-					"safety net: failed to restart kubelet on %s", nodeName)
+				By("Safety net: waiting for node " + nodeName + " to become Ready")
 
-				By("Safety net: waiting for node to become Ready")
-				Expect(farutils.WaitForNodeReady(
+				if err := farutils.WaitForNodeReady(
 					ctx, APIClient, nodeName,
-					farparams.NodeReadyTimeout)).To(Succeed(),
-					"safety net: node %s did not become Ready", nodeName)
+					farparams.NodeReadyTimeout); err != nil {
+					GinkgoWriter.Printf(
+						"WARNING: safety net: node %s did not become Ready within %s: %v\n",
+						nodeName, farparams.NodeReadyTimeout, err)
+					AddReportEntry("safety-net-recovery-failed",
+						fmt.Sprintf("node %s did not recover: %v", nodeName, err))
+				}
 			}
 		})
 
 		Context("Standalone FAR remediation", func() {
-			// RHWA-963: 7 standalone destructive tests will be added here.
-			// Each test follows this flow:
-			//   1. Select target worker (exclude leader node)
-			//   2. Record boot ID
-			//   3. Create FART + deploy workload pod
-			//   4. Stop kubelet (simulate unhealthy node)
-			//   5. WaitForNodeNotReady (verify kubelet actually stopped)
-			//   6. Create FAR CR (trigger remediation)
-			//   7. Verify: taint applied, node rebooted, pod evicted
-			//   8. Cleanup via DeferCleanup + JustAfterEach safety net
+			BeforeEach(func() {
+				By("Verifying FAR controller is Ready before test")
+
+				farDeployment, err := deployment.Pull(
+					APIClient, farparams.OperatorDeploymentName, medik8sparams.OperatorNs)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(farDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(),
+					"FAR controller is not Ready - webhook will be unreachable")
+
+				By("Finding active leader node")
+
+				Eventually(func() error {
+					var leaderErr error
+
+					leaderNode, leaderErr = farutils.GetActiveFARControllerNode(ctx, APIClient)
+
+					return leaderErr
+				}, farparams.ControllerHandoverTimeout, farparams.DefaultPollInterval).Should(Succeed(),
+					"FAR leader election did not settle - lease may point to a replaced pod")
+				GinkgoWriter.Printf("FAR controller Ready, leader on node: %s\n", leaderNode)
+			})
+
+			Context("non-leader worker target", func() {
+				var (
+					oldBootID   string
+					workloadPod *corev1.Pod
+				)
+
+				BeforeEach(func() {
+					By("Selecting a non-leader worker node")
+
+					var err error
+
+					targetNode, err = helpers.SelectWorkerNode(ctx, APIClient, leaderNode)
+					Expect(err).ToNot(HaveOccurred())
+
+					By("Cleaning CRI-O overlay storage on " + targetNode.Name)
+					removeWorkloadImage(ctx, targetNode.Name)
+
+					By("Recording boot ID before remediation")
+
+					oldBootID, err = farutils.GetNodeBootIDFromAPI(ctx, APIClient, targetNode.Name)
+					Expect(err).ToNot(HaveOccurred())
+
+					By("Creating a test workload pod pinned to " + targetNode.Name)
+
+					workloadPod = &corev1.Pod{
+						ObjectMeta: metav1.ObjectMeta{
+							GenerateName: "far-workload-test-",
+							Namespace:    medik8sparams.OperatorNs,
+						},
+						Spec: corev1.PodSpec{
+							NodeName:      targetNode.Name,
+							RestartPolicy: corev1.RestartPolicyAlways,
+							Containers: []corev1.Container{{
+								Name:    "workload",
+								Image:   farparams.WorkloadTestImage,
+								Command: []string{"sleep", "infinity"},
+							}},
+						},
+					}
+
+					Expect(APIClient.Create(ctx, workloadPod)).To(Succeed())
+					DeferCleanup(func() {
+						_ = APIClient.Delete(ctx, workloadPod)
+					})
+
+					By("Waiting for workload pod to be Running")
+
+					Eventually(func() corev1.PodPhase {
+						pod := &corev1.Pod{}
+						if err := APIClient.Get(ctx, client.ObjectKey{
+							Name: workloadPod.Name, Namespace: workloadPod.Namespace,
+						}, pod); err != nil {
+							return corev1.PodPending
+						}
+
+						return pod.Status.Phase
+					}, farparams.WorkloadPodReadyTimeout, farparams.DefaultPollInterval).Should(Equal(corev1.PodRunning))
+				})
+
+				JustAfterEach(func() {
+					if CurrentSpecReport().Failed() {
+						logPodDiagnostics(ctx, APIClient, workloadPod)
+
+						return
+					}
+
+					By("Verifying workload pod was deleted or evicted")
+
+					Eventually(func() bool {
+						pod := &corev1.Pod{}
+						err := APIClient.Get(ctx, client.ObjectKey{
+							Name: workloadPod.Name, Namespace: workloadPod.Namespace,
+						}, pod)
+
+						return k8serrors.IsNotFound(err) || pod.DeletionTimestamp != nil
+					}, farparams.WorkloadEvictionTimeout, farparams.DefaultPollInterval).Should(BeTrue(),
+						"Workload pod was not deleted/evicted after remediation")
+				})
+
+				It("should remediate a worker node via standalone FAR CR",
+					Label(labels.TierAcceptance, labels.ComponentRemediation),
+					reportxml.ID("OCP-61229"),
+					func() {
+						creationTimestamp := targetNode.CreationTimestamp
+
+						By("Creating FAR CR targeting " + targetNode.Name)
+
+						farCR := buildFARUnstructured(targetNode.Name, fenceAgent, sharedParams, nodeParams)
+						createFARCR(ctx, APIClient, farCR)
+
+						currentFARName = targetNode.Name
+
+						waitForRemediation(ctx, APIClient, targetNode.Name, oldBootID)
+
+						By("Verifying node was rebooted, not re-created")
+
+						node := &corev1.Node{}
+						Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetNode.Name}, node)).To(Succeed())
+						Expect(node.CreationTimestamp.Equal(&creationTimestamp)).To(BeTrue(),
+							"Node creation timestamp changed - node was re-created instead of rebooted")
+					})
+
+				It("should apply FAR NoSchedule taint during remediation",
+					Label(labels.TierAcceptance, labels.ComponentRemediation),
+					reportxml.ID("OCP-65960"),
+					func() {
+						By("Creating FAR CR targeting " + targetNode.Name)
+
+						farCR := buildFARUnstructured(targetNode.Name, fenceAgent, sharedParams, nodeParams)
+						createFARCR(ctx, APIClient, farCR)
+
+						currentFARName = targetNode.Name
+
+						By("Verifying FAR NoSchedule taint is applied to the node")
+
+						Eventually(func(assertion Gomega) {
+							node := &corev1.Node{}
+							assertion.Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetNode.Name}, node)).To(Succeed())
+
+							found := false
+
+							for _, taint := range node.Spec.Taints {
+								if taint.Key == farparams.FARNoScheduleTaintKey &&
+									taint.Effect == corev1.TaintEffectNoSchedule {
+									found = true
+
+									break
+								}
+							}
+
+							assertion.Expect(found).To(BeTrue(),
+								"FAR NoSchedule taint %s not found on node %s",
+								farparams.FARNoScheduleTaintKey, targetNode.Name)
+						}, farparams.FARConditionTimeout, farparams.DefaultPollInterval).Should(Succeed())
+
+						waitForRemediation(ctx, APIClient, targetNode.Name, oldBootID)
+					})
+
+				It("should report correct FAR CR status conditions after remediation",
+					Label(labels.TierAcceptance, labels.ComponentRemediation),
+					reportxml.ID("OCP-67015"),
+					func() {
+						By("Creating FAR CR targeting " + targetNode.Name)
+
+						farCR := buildFARUnstructured(targetNode.Name, fenceAgent, sharedParams, nodeParams)
+						createFARCR(ctx, APIClient, farCR)
+
+						currentFARName = targetNode.Name
+
+						waitForRemediation(ctx, APIClient, targetNode.Name, oldBootID)
+
+						By("Verifying FAR CR status conditions")
+
+						expectedConditions := map[string]string{
+							farparams.FARConditionProcessing:          string(metav1.ConditionFalse),
+							farparams.FARConditionFenceAgentSucceeded: string(metav1.ConditionTrue),
+							farparams.FARConditionSucceeded:           string(metav1.ConditionTrue),
+						}
+
+						Eventually(func(assertion Gomega) {
+							farObj := &unstructured.Unstructured{}
+							farObj.SetGroupVersionKind(farGVK)
+							assertion.Expect(APIClient.Get(ctx, client.ObjectKey{
+								Name: targetNode.Name, Namespace: medik8sparams.OperatorNs,
+							}, farObj)).To(Succeed())
+
+							conditions, found, condErr := unstructured.NestedSlice(
+								farObj.Object, "status", "conditions")
+							assertion.Expect(condErr).ToNot(HaveOccurred())
+							assertion.Expect(found).To(BeTrue(), "FAR CR has no status.conditions")
+
+							for condType, expectedStatus := range expectedConditions {
+								condFound := false
+
+								for _, c := range conditions {
+									condMap, ok := c.(map[string]interface{})
+									if !ok {
+										continue
+									}
+
+									if condMap["type"] == condType {
+										condFound = true
+
+										assertion.Expect(condMap["status"]).To(Equal(expectedStatus),
+											"Condition %s has unexpected status", condType)
+
+										break
+									}
+								}
+
+								assertion.Expect(condFound).To(BeTrue(),
+									"Condition %s not found in FAR CR status", condType)
+							}
+						}, farparams.FARConditionTimeout, farparams.DefaultPollInterval).Should(Succeed())
+					})
+
+				Context("without --action parameter", func() {
+					It("should default to reboot action when --action is omitted",
+						Label(labels.TierAcceptance, labels.ComponentRemediation),
+						reportxml.ID("OCP-66203"),
+						func() {
+							By("Building shared parameters WITHOUT --action")
+
+							noActionParams := make(map[string]interface{}, len(sharedParams))
+							for k, v := range sharedParams {
+								if k != "--action" {
+									noActionParams[k] = v
+								}
+							}
+
+							By("Creating FAR CR without explicit action")
+
+							farCR := buildFARUnstructured(targetNode.Name, fenceAgent, noActionParams, nodeParams)
+							createFARCR(ctx, APIClient, farCR)
+
+							currentFARName = targetNode.Name
+
+							waitForRemediation(ctx, APIClient, targetNode.Name, oldBootID)
+						})
+				})
+			})
+
+			Context("leader node target", func() {
+				It("should remediate the node hosting the active FAR controller",
+					Label(labels.TierAcceptance, labels.ComponentRemediation),
+					reportxml.ID("OCP-70638"),
+					func() {
+						By("Targeting the active FAR controller node")
+
+						var err error
+
+						activeLeader, err := farutils.GetActiveFARControllerNode(ctx, APIClient)
+						Expect(err).ToNot(HaveOccurred())
+						Expect(activeLeader).ToNot(BeEmpty())
+
+						node := &corev1.Node{}
+						Expect(APIClient.Get(ctx, client.ObjectKey{Name: activeLeader}, node)).To(Succeed())
+						targetNode = node
+
+						By("Cleaning CRI-O overlay storage on " + targetNode.Name)
+						removeWorkloadImage(ctx, targetNode.Name)
+
+						By("Recording boot ID before remediation")
+
+						oldBootID, err := farutils.GetNodeBootIDFromAPI(ctx, APIClient, targetNode.Name)
+						Expect(err).ToNot(HaveOccurred())
+
+						By("Creating a test workload pod pinned to " + targetNode.Name)
+
+						workloadPod := &corev1.Pod{
+							ObjectMeta: metav1.ObjectMeta{
+								GenerateName: "far-workload-test-",
+								Namespace:    medik8sparams.OperatorNs,
+							},
+							Spec: corev1.PodSpec{
+								NodeName:      targetNode.Name,
+								RestartPolicy: corev1.RestartPolicyAlways,
+								Containers: []corev1.Container{{
+									Name:    "workload",
+									Image:   farparams.WorkloadTestImage,
+									Command: []string{"sleep", "infinity"},
+								}},
+							},
+						}
+
+						Expect(APIClient.Create(ctx, workloadPod)).To(Succeed())
+						DeferCleanup(func() {
+							_ = APIClient.Delete(ctx, workloadPod)
+						})
+
+						By("Waiting for workload pod to be Running")
+
+						Eventually(func() corev1.PodPhase {
+							pod := &corev1.Pod{}
+							if err := APIClient.Get(ctx, client.ObjectKey{
+								Name: workloadPod.Name, Namespace: workloadPod.Namespace,
+							}, pod); err != nil {
+								return corev1.PodPending
+							}
+
+							return pod.Status.Phase
+						}, farparams.WorkloadPodReadyTimeout, farparams.DefaultPollInterval).Should(Equal(corev1.PodRunning))
+
+						By("Recording pre-reboot lease holder for failover verification")
+
+						preRebootLease := &coordinationv1.Lease{}
+						Expect(APIClient.Get(ctx, client.ObjectKey{
+							Name:      farparams.ControllerLeaseName,
+							Namespace: medik8sparams.OperatorNs,
+						}, preRebootLease)).To(Succeed())
+						Expect(preRebootLease.Spec.HolderIdentity).ToNot(BeNil(),
+							"Lease has no holder before reboot")
+						oldLeaderHolder := *preRebootLease.Spec.HolderIdentity
+						GinkgoWriter.Printf("Pre-reboot lease holder: %s\n", oldLeaderHolder)
+
+						By("Creating FAR CR targeting the active controller node " + targetNode.Name)
+
+						farCR := buildFARUnstructured(targetNode.Name, fenceAgent, sharedParams, nodeParams)
+						createFARCR(ctx, APIClient, farCR)
+
+						currentFARName = targetNode.Name
+
+						waitForRemediation(ctx, APIClient, targetNode.Name, oldBootID)
+
+						By("Verifying FAR controller replicas recovered")
+
+						farDeployment, err := deployment.Pull(
+							APIClient, farparams.OperatorDeploymentName, medik8sparams.OperatorNs)
+						Expect(err).ToNot(HaveOccurred())
+						Expect(farDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(),
+							"FAR controller replicas did not recover after leader node reboot")
+
+						By("Verifying controller lease transferred to a different pod")
+
+						Eventually(func(assertion Gomega) {
+							lease := &coordinationv1.Lease{}
+							assertion.Expect(APIClient.Get(ctx, client.ObjectKey{
+								Name:      farparams.ControllerLeaseName,
+								Namespace: medik8sparams.OperatorNs,
+							}, lease)).To(Succeed())
+							assertion.Expect(lease.Spec.HolderIdentity).ToNot(BeNil(),
+								"Lease has no holder after leader node reboot")
+
+							if lease.Spec.HolderIdentity != nil {
+								assertion.Expect(*lease.Spec.HolderIdentity).ToNot(Equal(oldLeaderHolder),
+									"Lease is still held by pre-reboot pod %s", oldLeaderHolder)
+							}
+						}, farparams.ControllerHandoverTimeout, farparams.DefaultPollInterval).Should(Succeed(),
+							"Controller lease did not transfer to a different pod after leader node reboot")
+
+						By("Verifying workload pod was evicted from leader node")
+
+						Eventually(func() bool {
+							pod := &corev1.Pod{}
+							err := APIClient.Get(ctx, client.ObjectKey{
+								Name: workloadPod.Name, Namespace: workloadPod.Namespace,
+							}, pod)
+
+							return k8serrors.IsNotFound(err) || pod.DeletionTimestamp != nil
+						}, farparams.WorkloadEvictionTimeout, farparams.DefaultPollInterval).Should(BeTrue(),
+							"Workload pod was not evicted from leader node after remediation")
+					})
+			})
 		})
 
 		Context("NHC+FAR interop", func() {
@@ -204,6 +672,34 @@ var _ = Describe("FAR Destructive Tests",
 			// node and create a FAR CR automatically.
 		})
 	})
+
+func buildFARUnstructured(
+	nodeName, agent string,
+	sharedParams, nodeParams map[string]interface{},
+) *unstructured.Unstructured {
+	spec := map[string]interface{}{
+		"agent":               agent,
+		"sharedparameters":    sharedParams,
+		"nodeparameters":      nodeParams,
+		"retrycount":          farparams.FARCRRetryCount,
+		"retryinterval":       farparams.FARCRRetryInterval,
+		"timeout":             farparams.FARCRTimeout,
+		"remediationStrategy": farparams.FARCRRemediationStrategy,
+		"sharedSecretName":    farparams.SharedCredentialsSecretName,
+	}
+
+	return &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "fence-agents-remediation.medik8s.io/v1alpha1",
+			"kind":       "FenceAgentsRemediation",
+			"metadata": map[string]interface{}{
+				"name":      nodeName,
+				"namespace": medik8sparams.OperatorNs,
+			},
+			"spec": spec,
+		},
+	}
+}
 
 //nolint:unused // scaffold helper for upcoming destructive test specs
 func buildFARTUnstructured(
@@ -224,15 +720,185 @@ func buildFARTUnstructured(
 						"agent":               agent,
 						"sharedparameters":    sharedParams,
 						"nodeparameters":      nodeParams,
-						"retrycount":          10,
-						"retryinterval":       "20s",
-						"timeout":             "60s",
-						"remediationStrategy": "OutOfServiceTaint",
+						"retrycount":          farparams.FARCRRetryCount,
+						"retryinterval":       farparams.FARCRRetryInterval,
+						"timeout":             farparams.FARCRTimeout,
+						"remediationStrategy": farparams.FARCRRemediationStrategy,
+						"sharedSecretName":    farparams.SharedCredentialsSecretName,
 					},
 				},
 			},
 		},
 	}
+}
+
+func waitForRemediation(
+	ctx context.Context, k8sClient client.Client,
+	nodeName, oldBootID string,
+) {
+	By("Waiting for node to reboot")
+
+	Expect(farutils.WaitForNodeReboot(
+		ctx, k8sClient, nodeName, oldBootID,
+		farparams.NodeRebootTimeout)).To(Succeed(),
+		"Node %s did not reboot", nodeName)
+
+	By("Waiting for node to become Ready")
+
+	Expect(farutils.WaitForNodeReady(
+		ctx, k8sClient, nodeName,
+		farparams.NodeReadyTimeout)).To(Succeed(),
+		"Node %s did not become Ready after reboot", nodeName)
+}
+
+func createFARCR(
+	ctx context.Context, k8sClient client.Client,
+	farCR *unstructured.Unstructured,
+) {
+	deleteRemediationCR(ctx, k8sClient, farCR.GroupVersionKind(),
+		farCR.GetName())
+
+	Eventually(func(assertion Gomega) {
+		err := k8sClient.Create(ctx, farCR)
+		if err != nil {
+			if k8serrors.IsAlreadyExists(err) {
+				GinkgoWriter.Printf(
+					"INFO: FAR CR %s already exists (prior delete may not have finalized), treating as success\n",
+					farCR.GetName())
+
+				return
+			}
+
+			assertion.Expect(err).ToNot(HaveOccurred(),
+				"Failed to create FAR CR")
+		}
+	}, farparams.FARConditionTimeout, 10*farparams.DefaultPollInterval).Should(Succeed(),
+		"FAR CR creation timed out - webhook may be unreachable")
+}
+
+func logFARControllerState(ctx context.Context, k8sClient client.Client) {
+	pods := &corev1.PodList{}
+
+	if err := k8sClient.List(ctx, pods,
+		client.InNamespace(medik8sparams.OperatorNs),
+		client.MatchingLabels(farparams.OperatorControllerPodLabels)); err != nil {
+		GinkgoWriter.Printf("WARNING: could not list controller pods: %v\n", err)
+
+		return
+	}
+
+	for i := range pods.Items {
+		pod := &pods.Items[i]
+		ready := false
+
+		for _, cond := range pod.Status.Conditions {
+			if cond.Type == corev1.PodReady && cond.Status == corev1.ConditionTrue {
+				ready = true
+
+				break
+			}
+		}
+
+		GinkgoWriter.Printf("FAR controller pod %s: Phase=%s, Node=%s, Ready=%v\n",
+			pod.Name, pod.Status.Phase, pod.Spec.NodeName, ready)
+	}
+}
+
+func logPodDiagnostics(ctx context.Context, k8sClient client.Client, pod *corev1.Pod) {
+	if pod == nil || pod.Name == "" {
+		return
+	}
+
+	fresh := &corev1.Pod{}
+
+	if err := k8sClient.Get(ctx, client.ObjectKey{
+		Name: pod.Name, Namespace: pod.Namespace,
+	}, fresh); err != nil {
+		GinkgoWriter.Printf("WARNING: could not fetch pod %s for diagnostics: %v\n",
+			pod.Name, err)
+
+		return
+	}
+
+	GinkgoWriter.Printf("Pod %s diagnostics: Phase=%s, Node=%s\n",
+		fresh.Name, fresh.Status.Phase, fresh.Spec.NodeName)
+
+	for _, cond := range fresh.Status.Conditions {
+		if cond.Status != corev1.ConditionTrue {
+			GinkgoWriter.Printf("  Condition %s=%s: %s (%s)\n",
+				cond.Type, cond.Status, cond.Reason, cond.Message)
+		}
+	}
+
+	for _, ctrStatus := range fresh.Status.ContainerStatuses {
+		GinkgoWriter.Printf("  Container %s: Ready=%v, RestartCount=%d\n",
+			ctrStatus.Name, ctrStatus.Ready, ctrStatus.RestartCount)
+
+		if ctrStatus.State.Waiting != nil {
+			GinkgoWriter.Printf("    Waiting: %s - %s\n",
+				ctrStatus.State.Waiting.Reason, ctrStatus.State.Waiting.Message)
+		}
+
+		if ctrStatus.State.Terminated != nil {
+			GinkgoWriter.Printf("    Terminated: %s (exit %d) - %s\n",
+				ctrStatus.State.Terminated.Reason,
+				ctrStatus.State.Terminated.ExitCode,
+				ctrStatus.State.Terminated.Message)
+		}
+	}
+
+	eventList := &corev1.EventList{}
+
+	if err := k8sClient.List(ctx, eventList,
+		client.InNamespace(pod.Namespace)); err != nil {
+		GinkgoWriter.Printf("WARNING: could not list events: %v\n", err)
+
+		return
+	}
+
+	GinkgoWriter.Printf("  Events for pod %s:\n", fresh.Name)
+
+	eventFound := false
+
+	for i := range eventList.Items {
+		podEvent := &eventList.Items[i]
+
+		if podEvent.InvolvedObject.Name != fresh.Name ||
+			podEvent.InvolvedObject.Kind != "Pod" {
+			continue
+		}
+
+		eventFound = true
+
+		ts := podEvent.LastTimestamp.Format("15:04:05")
+		GinkgoWriter.Printf("    [%s] %s %s: %s (x%d)\n",
+			ts, podEvent.Type, podEvent.Reason, podEvent.Message, podEvent.Count)
+	}
+
+	if !eventFound {
+		GinkgoWriter.Println("    (no events found)")
+	}
+}
+
+func removeWorkloadImage(ctx context.Context, nodeName string) {
+	GinkgoWriter.Printf("Removing workload image from node %s to prevent corrupt overlay layers\n", nodeName)
+
+	output, err := helpers.RunOnNode(
+		ctx, nodeName, farparams.CrioCleanupTimeout,
+		"bash", "-c",
+		"crictl rmi "+farparams.WorkloadTestImage+" 2>/dev/null; "+
+			"echo done",
+	)
+	if err != nil {
+		GinkgoWriter.Printf(
+			"WARNING: image removal on node %s failed: %v (output: %s)\n",
+			nodeName, err, output)
+
+		return
+	}
+
+	GinkgoWriter.Printf("Workload image removed from node %s (output: %s)\n",
+		nodeName, output)
 }
 
 func deleteRemediationCR(
