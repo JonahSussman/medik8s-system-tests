@@ -30,7 +30,7 @@ import (
 )
 
 var _ = Describe("FAR Operator Upgrade",
-	Serial,
+	Serial, Ordered,
 	Label(labels.OperatorFAR, farparams.Label,
 		labels.TierUpgrade, labels.DisruptionDestructive,
 		labels.PlatformAWS, labels.FrequencyWeekly,
@@ -52,10 +52,8 @@ var _ = Describe("FAR Operator Upgrade",
 		BeforeAll(func() {
 			ctx = context.Background()
 
-			Expect(farparams.TargetCatalogImage).NotTo(BeEmpty(),
-				"MEDIK8S_TARGET_CATALOG_IMAGE must be set")
 			Expect(farparams.TargetOCPImage).NotTo(BeEmpty(),
-				"OPENSHIFT_UPGRADE_RELEASE_IMAGE_OVERRIDE must be set")
+				"OPENSHIFT_UPGRADE_RELEASE_IMAGE_OVERRIDE or RELEASE_IMAGE_LATEST must be set")
 
 			By("Detecting cluster platform")
 
@@ -72,6 +70,33 @@ var _ = Describe("FAR Operator Upgrade",
 			Expect(err).ToNot(HaveOccurred())
 			Expect(workerCount).To(BeNumerically(">=", 3),
 				"Upgrade tests require at least 3 Ready worker nodes")
+
+			By("Creating shared credentials Secret for remediation")
+
+			awsAccessKey, awsSecretKey, credErr := farutils.GetAWSCredentials(
+				ctx, APIClient, medik8sparams.OperatorNs)
+			Expect(credErr).ToNot(HaveOccurred(), "Failed to get AWS credentials")
+
+			credentialsSecret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      farparams.SharedCredentialsSecretName,
+					Namespace: medik8sparams.OperatorNs,
+				},
+				StringData: map[string]string{
+					"--access-key": awsAccessKey,
+					"--secret-key": awsSecretKey,
+				},
+			}
+
+			Expect(APIClient.Create(ctx, credentialsSecret)).
+				To(Succeed(), "Failed to create credentials Secret")
+
+			DeferCleanup(func() {
+				if delErr := APIClient.Delete(ctx, credentialsSecret); delErr != nil &&
+					!k8serrors.IsNotFound(delErr) {
+					GinkgoWriter.Printf("WARNING: failed to delete credentials Secret: %v\n", delErr)
+				}
+			})
 		})
 
 		AfterAll(func() {
@@ -105,8 +130,12 @@ var _ = Describe("FAR Operator Upgrade",
 							return false, nil
 						}
 
-						conditions, found, _ := unstructured.NestedSlice(
+						conditions, found, nestedErr := unstructured.NestedSlice(
 							farObj.Object, "status", "conditions")
+						if nestedErr != nil {
+							GinkgoWriter.Printf("WARNING: failed to read FAR conditions: %v\n", nestedErr)
+							return false, nil
+						}
 						if !found {
 							return false, nil
 						}
@@ -280,10 +309,8 @@ var _ = Describe("FAR Operator Upgrade",
 
 				By("Step 7: Switch operator Subscription to Konflux CatalogSource")
 
-				_, err = farutils.CreateUpgradeCatalogSource(APIClient)
-				Expect(err).NotTo(HaveOccurred(), "Failed to create upgrade CatalogSource")
-
-				_, err = farutils.SwitchSubscriptionCatalog(APIClient)
+				_, err = farutils.SwitchSubscriptionCatalog(
+					APIClient, farparams.UpgradeCatalogName)
 				Expect(err).NotTo(HaveOccurred(),
 					"Failed to switch Subscription to target catalog")
 
@@ -367,9 +394,9 @@ func waitForClusterVersionCondition(
 	}, timeout, farparams.DefaultPollInterval).Should(BeTrue(), failureMsg)
 }
 
-// upgradeProvisionRemediationResources resolves the fence agent, retrieves AWS
-// credentials, creates the credentials Secret, builds node parameters, and waits
-// for leader election to settle.
+// upgradeProvisionRemediationResources resolves the fence agent, builds node
+// parameters, and waits for leader election to settle. The credentials Secret
+// is created once in BeforeAll.
 func upgradeProvisionRemediationResources(
 	ctx context.Context,
 	platform configv1.PlatformType,
@@ -381,36 +408,6 @@ func upgradeProvisionRemediationResources(
 	}
 
 	GinkgoWriter.Printf("Fence agent: %s, Region: %s\n", fenceAgent, region)
-
-	awsAccessKey, awsSecretKey, err := farutils.GetAWSCredentials(
-		ctx, APIClient, medik8sparams.OperatorNs)
-	if err != nil {
-		return "", nil, nil, "", fmt.Errorf("failed to get AWS credentials: %w", err)
-	}
-
-	credentialsSecret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      farparams.SharedCredentialsSecretName,
-			Namespace: medik8sparams.OperatorNs,
-		},
-		StringData: map[string]string{
-			"--access-key": awsAccessKey,
-			"--secret-key": awsSecretKey,
-		},
-	}
-
-	if createErr := APIClient.Create(ctx, credentialsSecret); createErr != nil {
-		if !k8serrors.IsAlreadyExists(createErr) {
-			return "", nil, nil, "", fmt.Errorf("failed to create credentials Secret: %w", createErr)
-		}
-	}
-
-	DeferCleanup(func() {
-		if delErr := APIClient.Delete(ctx, credentialsSecret); delErr != nil &&
-			!k8serrors.IsNotFound(delErr) {
-			GinkgoWriter.Printf("WARNING: failed to delete credentials Secret: %v\n", delErr)
-		}
-	})
 
 	sharedParams := map[string]interface{}{
 		"--region":          region,

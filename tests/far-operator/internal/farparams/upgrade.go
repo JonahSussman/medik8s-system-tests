@@ -23,8 +23,8 @@ const (
 	// GAChannel is the OLM channel used for the GA operator version.
 	GAChannel = "stable"
 
-	// UpgradeCatalogName is the CatalogSource name for the target (pre-GA) operator.
-	UpgradeCatalogName = "medik8s-upgrade-catalog"
+	// UpgradeCatalogName is the CatalogSource created by the medik8s-catalogsource CI step.
+	UpgradeCatalogName = "medik8s-catalog"
 	// UpgradeSubName is the Subscription name used in the upgrade test.
 	UpgradeSubName = "far-upgrade-sub"
 
@@ -38,12 +38,14 @@ const (
 var (
 	// OperatorPackage is the OLM package name, from MEDIK8S_OPERATOR_PACKAGE.
 	OperatorPackage = envOrDefault("MEDIK8S_OPERATOR_PACKAGE", OperatorPackageDefault)
-	// TargetCatalogImage is the Konflux FBC catalog image for the target operator version.
-	TargetCatalogImage = os.Getenv("MEDIK8S_TARGET_CATALOG_IMAGE")
 	// TargetChannel is the OLM channel in the target catalog, from MEDIK8S_TARGET_CHANNEL.
 	TargetChannel = envOrDefault("MEDIK8S_TARGET_CHANNEL", TargetChannelDefault)
 	// TargetOCPImage is the OCP release payload for the upgrade target version.
-	TargetOCPImage = os.Getenv("OPENSHIFT_UPGRADE_RELEASE_IMAGE_OVERRIDE")
+	// OPENSHIFT_UPGRADE_RELEASE_IMAGE_OVERRIDE is the standard name for explicit overrides
+	// (e.g., Gangway triggers). RELEASE_IMAGE_LATEST is injected by ci-operator into every
+	// step pod and resolves to the same release:latest imagestream tag.
+	TargetOCPImage = envOrDefault("OPENSHIFT_UPGRADE_RELEASE_IMAGE_OVERRIDE",
+		os.Getenv("RELEASE_IMAGE_LATEST"))
 )
 
 func envOrDefault(key, fallback string) string {

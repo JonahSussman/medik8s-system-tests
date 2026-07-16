@@ -60,29 +60,10 @@ func FindSucceededCSV(
 	return nil, fmt.Errorf("no CSV matching %q in Succeeded phase", namePattern)
 }
 
-// CreateUpgradeCatalogSource creates a grpc CatalogSource from the target catalog image.
-func CreateUpgradeCatalogSource(
-	apiClient *clients.Settings,
-) (*olm.CatalogSourceBuilder, error) {
-	catalog := olm.NewCatalogSourceBuilder(
-		apiClient, farparams.UpgradeCatalogName, farparams.GACatalogNamespace)
-	catalog.Definition.Spec.SourceType = "grpc"
-	catalog.Definition.Spec.Image = farparams.TargetCatalogImage
-	catalog.Definition.Spec.DisplayName = "medik8s Upgrade Catalog"
-	catalog.Definition.Spec.Publisher = "medik8s QE"
-
-	catalog, err := catalog.Create()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create upgrade CatalogSource: %w", err)
-	}
-
-	return catalog, nil
-}
-
 // SwitchSubscriptionCatalog updates an existing Subscription to point to the
-// upgrade CatalogSource and target channel.
+// given CatalogSource name and target channel.
 func SwitchSubscriptionCatalog(
-	apiClient *clients.Settings,
+	apiClient *clients.Settings, catalogName string,
 ) (*olm.SubscriptionBuilder, error) {
 	sub, err := olm.PullSubscription(
 		apiClient, farparams.UpgradeSubName, medik8sparams.OperatorNs)
@@ -90,7 +71,7 @@ func SwitchSubscriptionCatalog(
 		return nil, fmt.Errorf("failed to pull Subscription: %w", err)
 	}
 
-	sub.Definition.Spec.CatalogSource = farparams.UpgradeCatalogName
+	sub.Definition.Spec.CatalogSource = catalogName
 	sub.Definition.Spec.Channel = farparams.TargetChannel
 
 	sub, err = sub.Update()
@@ -128,20 +109,18 @@ func GetFARControllerImage(apiClient *clients.Settings) (string, error) {
 		farparams.ManagerContainerName)
 }
 
-// CleanupUpgradeResources removes the upgrade CatalogSource and Subscription
-// created during the test. Errors are logged via the provided logf function.
+// CleanupUpgradeResources removes the Subscription created during the upgrade
+// test. The CatalogSource is owned by the CI step and not deleted here.
 func CleanupUpgradeResources(apiClient *clients.Settings, logf func(string, ...interface{})) {
-	if sub, err := olm.PullSubscription(
-		apiClient, farparams.UpgradeSubName, medik8sparams.OperatorNs); err == nil {
-		if delErr := sub.Delete(); delErr != nil {
-			logf("WARNING: failed to delete upgrade Subscription: %v\n", delErr)
-		}
+	sub, err := olm.PullSubscription(
+		apiClient, farparams.UpgradeSubName, medik8sparams.OperatorNs)
+	if err != nil {
+		logf("WARNING: failed to pull upgrade Subscription for cleanup: %v\n", err)
+
+		return
 	}
 
-	if catalog, err := olm.PullCatalogSource(
-		apiClient, farparams.UpgradeCatalogName, farparams.GACatalogNamespace); err == nil {
-		if delErr := catalog.Delete(); delErr != nil {
-			logf("WARNING: failed to delete upgrade CatalogSource: %v\n", delErr)
-		}
+	if delErr := sub.Delete(); delErr != nil {
+		logf("WARNING: failed to delete upgrade Subscription: %v\n", delErr)
 	}
 }
