@@ -184,3 +184,17 @@ Deletes the active FAR controller pod and validates that a new pod acquires the 
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="far" --focus="controller leadership" ./tests/far-operator/...`
 - **Pass criteria**: FAR deployment becomes ready, controller lease is held by a different pod
+
+### 16. Verify FAR Operator Survives OCP and Operator Upgrade ([OCP-89717](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-89717))
+
+Validates the full customer upgrade path: install GA FAR from redhat-operators on OCP N-1, upgrade OCP to N, run remediation to confirm GA operator works on upgraded cluster, switch Subscription to Konflux FBC catalog (pre-GA), and run remediation again to confirm upgraded operator works. Each remediation cycle creates a workload pod on the target node, fences the node via fence_aws, and verifies node reboot, recovery, and workload eviction via OutOfServiceTaint.
+
+- **Operators**: FAR GA (from redhat-operators) + FAR pre-GA (from Konflux FBC)
+- **Cluster**: AWS IPI, 3+ worker nodes, OCP N-1 at start (upgraded to N during test)
+- **Storage**: None
+- **Environment**: Connected
+- **Labels**: `tier:upgrade`, `disruption:destructive`, `platform:aws`, `frequency:weekly`, `component:olm`
+- **Env vars (required)**: `MEDIK8S_TARGET_CATALOG_IMAGE`, `OPENSHIFT_UPGRADE_RELEASE_IMAGE_OVERRIDE`
+- **Env vars (optional, have defaults)**: `MEDIK8S_OPERATOR_PACKAGE` (default: `fence-agents-remediation`), `MEDIK8S_TARGET_CHANNEL` (default: `stable`)
+- **Standalone**: `ginkgo --label-filter="far && tier:upgrade" ./tests/far-operator/...`
+- **Pass criteria**: FAR deployment Ready on OCP N-1, OCP upgrade completes (Progressing=False, Available=True, Degraded=False), FAR deployment Ready after OCP upgrade, FAR CSV in Succeeded phase after both upgrades, controller image changes after operator upgrade, remediation succeeds with both GA and pre-GA operator versions (node rebooted via boot ID change, node recovers to Ready), workload pods evicted after each fencing cycle
