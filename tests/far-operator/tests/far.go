@@ -65,23 +65,17 @@ var _ = Describe(
 					LabelSelector: farparams.OperatorControllerPodLabelSelector,
 				}
 
-				_, err := pod.WaitForAllPodsInNamespaceRunning(
-					APIClient,
-					medik8sparams.OperatorNs,
-					medik8sparams.DefaultTimeout,
-					listOptions,
-				)
-				Expect(err).ToNot(HaveOccurred(), "Pod is not ready")
+				By("Waiting for expected number of Running FAR pods")
 
-				By("Verifying pod count matches expected replicas")
+				Eventually(func(assertion Gomega) {
+					farPods, err := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
+					assertion.Expect(err).ToNot(HaveOccurred(), "Failed to list FAR pods")
 
-				farPods, err := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
-				Expect(err).ToNot(HaveOccurred(), "Failed to list FAR pods")
+					runningPods := helpers.FilterRunningPods(farPods)
 
-				runningPods := helpers.FilterRunningPods(farPods)
-
-				Expect(int32(len(runningPods))).To(Equal(expectedCount),
-					"Expected %d running FAR pod(s), found %d", expectedCount, len(runningPods))
+					assertion.Expect(int32(len(runningPods))).To(Equal(expectedCount),
+						"Expected %d running FAR pod(s), found %d", expectedCount, len(runningPods))
+				}, medik8sparams.DefaultTimeout, farparams.DefaultPollInterval).Should(Succeed())
 			})
 
 		It("Verify FAR CSV has required annotations",

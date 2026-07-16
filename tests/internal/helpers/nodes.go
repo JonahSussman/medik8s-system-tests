@@ -3,6 +3,7 @@ package helpers
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"sort"
 
 	corev1 "k8s.io/api/core/v1"
@@ -20,8 +21,9 @@ func IsNodeReady(node *corev1.Node) bool {
 	return false
 }
 
-// SelectWorkerNode returns a Ready, schedulable worker node that is not in the
-// excludeNodes list. Returns an error if no eligible node is found.
+// SelectWorkerNode returns a random Ready, schedulable worker node that is not
+// in the excludeNodes list. Randomization prevents deterministic reuse of the
+// same node across sequential destructive tests.
 func SelectWorkerNode(ctx context.Context, k8sClient client.Client, excludeNodes ...string) (*corev1.Node, error) {
 	nodeList := &corev1.NodeList{}
 
@@ -29,14 +31,12 @@ func SelectWorkerNode(ctx context.Context, k8sClient client.Client, excludeNodes
 		return nil, fmt.Errorf("failed to list worker nodes: %w", err)
 	}
 
-	sort.Slice(nodeList.Items, func(i, j int) bool {
-		return nodeList.Items[i].Name < nodeList.Items[j].Name
-	})
-
 	excluded := make(map[string]bool, len(excludeNodes))
 	for _, name := range excludeNodes {
 		excluded[name] = true
 	}
+
+	var eligible []corev1.Node
 
 	for i := range nodeList.Items {
 		node := &nodeList.Items[i]
@@ -46,11 +46,21 @@ func SelectWorkerNode(ctx context.Context, k8sClient client.Client, excludeNodes
 		}
 
 		if IsNodeReady(node) {
-			return node, nil
+			eligible = append(eligible, *node)
 		}
 	}
 
-	return nil, fmt.Errorf("no eligible Ready worker node found (excluded: %v)", excludeNodes)
+	if len(eligible) == 0 {
+		return nil, fmt.Errorf("no eligible Ready worker node found (excluded: %v)", excludeNodes)
+	}
+
+	sort.Slice(eligible, func(i, j int) bool {
+		return eligible[i].Name < eligible[j].Name
+	})
+
+	selected := &eligible[rand.Intn(len(eligible))]
+
+	return selected, nil
 }
 
 // CountReadyWorkerNodes returns the number of Ready, schedulable worker nodes.

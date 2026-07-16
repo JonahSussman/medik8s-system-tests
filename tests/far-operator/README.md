@@ -114,3 +114,73 @@ Validates that the FAR controller container image ships the minimum expected set
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="far" --focus="fence agents" ./tests/far-operator/...`
 - **Pass criteria**: All expected fence agent binaries are present in the container
+
+## Destructive Tests
+
+Tests that trigger node fencing via `fence_aws` and cause node reboots. Require AWS IPI cluster with 3+ worker nodes and AWS fencing credentials.
+
+### 10. Verify Standalone FAR Remediation ([OCP-61229](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-61229))
+
+Creates a FenceAgentsRemediation CR targeting a worker node. Validates that the fence agent reboots the node and the node object is preserved (not re-created).
+
+- **Operators**: FAR v0.8.0+
+- **Cluster**: AWS IPI, 3+ worker nodes
+- **Storage**: None
+- **Environment**: Connected
+- **Standalone**: `ginkgo --label-filter="far && disruption:destructive" --focus="standalone FAR CR" ./tests/far-operator/...`
+- **Pass criteria**: Node boot ID changes, node creation timestamp unchanged, node returns to Ready
+
+### 11. Verify Remediation on Active Controller Node ([OCP-70638](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-70638))
+
+Creates a FAR CR targeting the node hosting the active FAR controller pod. Validates that controller failover occurs and remediation completes despite the leader being fenced.
+
+- **Operators**: FAR v0.8.0+
+- **Cluster**: AWS IPI, 3+ worker nodes
+- **Storage**: None
+- **Environment**: Connected
+- **Standalone**: `ginkgo --label-filter="far && disruption:destructive" --focus="active FAR controller" ./tests/far-operator/...`
+- **Pass criteria**: Node reboots, node returns to Ready, FAR controller replicas recover
+
+### 12. Verify FAR NoSchedule Taint During Remediation ([OCP-65960](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-65960))
+
+Creates a FAR CR and verifies that the FAR NoSchedule taint is applied to the target node during the remediation process.
+
+- **Operators**: FAR v0.8.0+
+- **Cluster**: AWS IPI, 3+ worker nodes
+- **Storage**: None
+- **Environment**: Connected
+- **Standalone**: `ginkgo --label-filter="far && disruption:destructive" --focus="NoSchedule taint" ./tests/far-operator/...`
+- **Pass criteria**: FAR taint `remediation.medik8s.io/fence-agents-remediation:NoSchedule` applied during remediation
+
+### 13. Verify FAR CR Status Conditions After Remediation ([OCP-67015](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-67015))
+
+Creates a FAR CR and after remediation completes, verifies the CR status conditions match the expected terminal state: Processing=False, FenceAgentActionSucceeded=True, Succeeded=True.
+
+- **Operators**: FAR v0.8.0+
+- **Cluster**: AWS IPI, 3+ worker nodes
+- **Storage**: None
+- **Environment**: Connected
+- **Standalone**: `ginkgo --label-filter="far && disruption:destructive" --focus="status conditions" ./tests/far-operator/...`
+- **Pass criteria**: All three FAR CR conditions present with expected values
+
+### 14. Verify FAR Default Reboot Action ([OCP-66203](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-66203))
+
+Creates a FAR CR without the `--action` parameter in shared parameters. Validates that FAR defaults to the reboot action and the node is successfully rebooted.
+
+- **Operators**: FAR v0.8.0+
+- **Cluster**: AWS IPI, 3+ worker nodes
+- **Storage**: None
+- **Environment**: Connected
+- **Standalone**: `ginkgo --label-filter="far && disruption:destructive" --focus="action is omitted" ./tests/far-operator/...`
+- **Pass criteria**: Node reboots despite no explicit action parameter
+
+### 15. Verify Controller Leadership Handover ([OCP-70636](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-70636))
+
+Deletes the active FAR controller pod and validates that a new pod acquires the controller lease. This test does not fence any nodes; it verifies leader election recovery only.
+
+- **Operators**: FAR v0.8.0+
+- **Cluster**: Multi-node, 2+ controller replicas
+- **Storage**: None
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="far" --focus="controller leadership" ./tests/far-operator/...`
+- **Pass criteria**: FAR deployment becomes ready, controller lease is held by a different pod

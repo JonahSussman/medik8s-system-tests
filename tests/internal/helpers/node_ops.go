@@ -31,7 +31,7 @@ func RunOnNode(
 	}
 
 	args := append(
-		[]string{"debug", "node/" + nodeName, "--", "chroot", "/host"},
+		[]string{"debug", "node/" + nodeName, "-n", "default", "--", "chroot", "/host"},
 		cmd...,
 	)
 

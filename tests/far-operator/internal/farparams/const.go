@@ -77,4 +77,40 @@ const (
 
 	// ControllerLeaseName is the FAR leader election lease name (LeaderElectionID in cmd/main.go).
 	ControllerLeaseName = "cb305759.medik8s.io"
+
+	// FARConditionProcessing is the condition type for remediation progress.
+	FARConditionProcessing = "Processing"
+	// FARConditionFenceAgentSucceeded is the condition type for fence agent action result.
+	FARConditionFenceAgentSucceeded = "FenceAgentActionSucceeded"
+	// FARConditionSucceeded is the condition type for overall remediation outcome.
+	FARConditionSucceeded = "Succeeded"
+
+	// FARNoScheduleTaintKey is the taint key applied by FAR during remediation.
+	FARNoScheduleTaintKey = "remediation.medik8s.io/fence-agents-remediation"
+
+	// ControllerHandoverTimeout is how long to wait for controller leadership transfer.
+	ControllerHandoverTimeout = 3 * time.Minute
+	// WorkloadEvictionTimeout is how long to wait for workload pods to be evicted.
+	WorkloadEvictionTimeout = 5 * time.Minute
+	// WorkloadPodReadyTimeout is how long to wait for a test workload pod to reach Running.
+	WorkloadPodReadyTimeout = 2 * time.Minute
+
+	// FARCRRetryCount is the retry count for FAR/FART CR spec (matches upstream default).
+	FARCRRetryCount = 10
+	// FARCRRetryInterval is the retry interval for FAR/FART CR spec.
+	FARCRRetryInterval = "20s"
+	// FARCRTimeout is the fence agent command timeout for FAR/FART CR spec.
+	FARCRTimeout = "60s"
+	// FARCRRemediationStrategy is the default remediation strategy for FAR CRs.
+	FARCRRemediationStrategy = "OutOfServiceTaint"
+
+	// CrioCleanupTimeout is the timeout for the post-remediation CRI-O overlay cleanup.
+	CrioCleanupTimeout = 2 * time.Minute
+
+	// SharedCredentialsSecretName is the Secret created by the test suite to hold
+	// fence agent credentials in the format expected by SharedSecretName.
+	SharedCredentialsSecretName = "far-test-shared-credentials"
+
+	// WorkloadTestImage is the container image used for test workload pods.
+	WorkloadTestImage = "registry.access.redhat.com/ubi9/ubi-minimal"
 )

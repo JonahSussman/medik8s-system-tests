@@ -44,7 +44,7 @@ fi
 
 
 # Build ginkgo command
-cmd="${GINKGO} -timeout=24h --keep-going --require-suite -r"
+cmd="${GINKGO} -timeout=24h --keep-going --require-suite --randomize-all -r"
 
 if [[ "${ECO_TEST_VERBOSE}" == "true" ]]; then
     cmd+=" -vv"
