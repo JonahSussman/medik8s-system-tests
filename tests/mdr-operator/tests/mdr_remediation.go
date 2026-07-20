@@ -22,7 +22,7 @@ import (
 )
 
 var _ = Describe("MDR Functional -- NHC-Triggered Remediation",
-	Serial, Ordered, ContinueOnFailure,
+	Serial, Ordered,
 	Label(labels.OperatorMDR, mdrparams.Label,
 		labels.DisruptionDestructive, labels.FrequencyWeekly),
 	func() {
