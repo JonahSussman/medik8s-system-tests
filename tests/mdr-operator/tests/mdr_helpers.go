@@ -224,13 +224,21 @@ func cleanupMDRCR(name string) {
 //  2. Time-based: a worker whose CreationTimestamp is after testStartTime
 //     (vSphere, where the replacement may reuse the same hostname)
 //
+// The function requires observing the MDR CR at least once (mdrCRSeen guard)
+// before accepting NotFound as completion. This prevents false positives if
+// the CR was never created (e.g., NHC failed to create it) and worker count
+// recovers for unrelated reasons.
+//
 // Returns the name of the replacement node.
 func waitForMDRRemediationComplete(
 	ctx context.Context, originalNodeName string,
 	expectedWorkerCount int, initialWorkerNames map[string]bool,
 	testStartTime time.Time, timeout time.Duration,
 ) (string, error) {
-	var newNodeName string
+	var (
+		newNodeName string
+		mdrCRSeen   bool
+	)
 
 	err := wait.PollUntilContextTimeout(
 		ctx, mdrparams.DefaultPollInterval, timeout, true,
@@ -245,7 +253,12 @@ func waitForMDRRemediationComplete(
 			}, mdrObj)
 
 			if getErr == nil {
-				// MDR CR still exists -- remediation in progress.
+				// MDR CR exists -- remediation in progress.
+				if !mdrCRSeen {
+					GinkgoWriter.Printf("MDR CR %s detected -- remediation in progress\n", originalNodeName)
+					mdrCRSeen = true
+				}
+
 				return false, nil
 			}
 
@@ -254,7 +267,14 @@ func waitForMDRRemediationComplete(
 				return false, nil
 			}
 
-			// MDR CR gone. Check if worker count has recovered.
+			// MDR CR is NotFound. Only accept this as completion if we
+			// observed the CR at least once (proves NHC created it and
+			// the operator processed it).
+			if !mdrCRSeen {
+				return false, nil
+			}
+
+			// MDR CR gone after being observed. Check if worker count has recovered.
 			currentCount, countErr := helpers.CountReadyWorkerNodes(ctx, APIClient)
 			if countErr != nil {
 				return false, nil
