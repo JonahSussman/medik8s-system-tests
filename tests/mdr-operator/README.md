@@ -88,26 +88,17 @@ provider provisions a new VM. The node is re-created (new creation timestamp).
 - At least 2 Ready worker nodes (target + spare for cluster schedulability)
 - `KUBECONFIG` set with cluster-admin access
 
-### 5. NHC-Triggered Machine Deletion Remediation ([OCP-60883](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-60883))
+### 5. MDR Remediation with Condition Transitions ([OCP-66138](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-66138))
 
 Stops kubelet on a worker node. NHC detects the unhealthy node and creates
-an MDR CR via the MDR template. MDR deletes the Machine, the cloud provider
-provisions a new VM, and the node rejoins the cluster.
-
-- **Operators**: MDR v0.7.0+, NHC v0.12.0+
-- **Cluster**: Multi-node (2+ workers), cloud platform
-- **Environment**: Connected or disconnected
-- **Standalone**: `ginkgo --label-filter="mdr && disruption:destructive" --focus="NHC-triggered Machine deletion" ./tests/mdr-operator/...`
-- **Pass criteria**: MDR CR created and deleted, node re-created (creation timestamp changed), node Ready
-
-### 6. MDR Condition Transitions During Remediation ([OCP-66138](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-66138))
-
-Same flow as test 5, but verifies that the MDR CR status conditions
-transition correctly: Processing=True/RemediationStarted and
-Succeeded=Unknown/RemediationStarted during active remediation.
+an MDR CR via the MDR template. Verifies the MDR CR status conditions
+transition correctly (Processing=True/RemediationStarted,
+Succeeded=Unknown/RemediationStarted) during active remediation. MDR deletes
+the Machine, the cloud provider provisions a new VM, and the replacement
+node joins the cluster.
 
 - **Operators**: MDR v0.7.0+, NHC v0.12.0+
 - **Cluster**: Multi-node (2+ workers), cloud platform
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="mdr && disruption:destructive" --focus="Processing and Succeeded conditions" ./tests/mdr-operator/...`
-- **Pass criteria**: Processing=True with RemediationStarted reason, Succeeded=Unknown with RemediationStarted reason, node re-created and Ready
+- **Pass criteria**: Processing=True with RemediationStarted reason, Succeeded=Unknown with RemediationStarted reason, replacement node Ready
