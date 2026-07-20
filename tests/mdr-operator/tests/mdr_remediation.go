@@ -84,6 +84,11 @@ var _ = Describe("MDR Functional -- NHC-Triggered Remediation",
 
 			By("Recording initial worker node names")
 
+			// Capture ALL worker names (including non-Ready/unschedulable) so that
+			// waitForMDRRemediationComplete can reliably detect a truly new node.
+			// This intentionally differs from initialWorkerCount (Ready-only) --
+			// the name set must be comprehensive to avoid false-positive detection
+			// of a recovered old node as a "new" replacement.
 			workerNodes := &corev1.NodeList{}
 			Expect(APIClient.List(ctx, workerNodes,
 				client.MatchingLabels{"node-role.kubernetes.io/worker": ""})).To(Succeed())
