@@ -526,6 +526,7 @@ func buildNHCWithTestRemediation(name string) *unstructured.Unstructured {
 			"apiVersion": nhcparams.TestRemediationGroup + "/" + nhcparams.TestRemediationVersion,
 			"kind":       "TestRemediationTemplate",
 			"name":       nhcparams.TestRemediationTemplateName,
+			"namespace":  medik8sparams.OperatorNs,
 		},
 		"minHealthy": int64(1),
 		"unhealthyConditions": []interface{}{

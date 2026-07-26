@@ -112,6 +112,10 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 			if targetWorkerName != "" {
 				cleanupSNRCR(targetWorkerName)
 
+				// Best-effort kubelet restart via SSH in case the test failed
+				// before the explicit restart step (e.g., test 4 with TestRemediation).
+				_ = startKubeletForRemediation(ctx, targetWorkerName)
+
 				By("Safety net: waiting for node " + targetWorkerName + " to become Ready")
 
 				if err := helpers.WaitForNodeReady(ctx, APIClient,

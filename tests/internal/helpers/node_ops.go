@@ -161,6 +161,7 @@ func runSSH(
 	args := []string{
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "BatchMode=yes",
 		"-o", "LogLevel=ERROR",
 		"-o", "ConnectTimeout=10",
 	}
@@ -208,7 +209,9 @@ func StopKubeletSSH(
 		if strings.Contains(errMsg, "connection reset") ||
 			strings.Contains(errMsg, "closed network connection") ||
 			strings.Contains(errMsg, "broken pipe") ||
-			strings.Contains(errMsg, "transport is closing") {
+			strings.Contains(errMsg, "transport is closing") ||
+			strings.Contains(errMsg, "lost connection") ||
+			strings.Contains(errMsg, "closed by remote host") {
 			fmt.Fprintf(os.Stderr,
 				"StopKubeletSSH(%s): suppressed expected connection-loss "+
 					"error (kubelet likely stopped): %v\n", nodeName, err)
