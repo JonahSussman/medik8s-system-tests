@@ -1,6 +1,10 @@
 package farparams
 
-import "time"
+import (
+	"time"
+
+	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
+)
 
 const (
 	// Label is the operator name used in the suite-level Labels array.
@@ -112,5 +116,5 @@ const (
 	SharedCredentialsSecretName = "far-test-shared-credentials"
 
 	// WorkloadTestImage is the container image used for test workload pods.
-	WorkloadTestImage = "registry.access.redhat.com/ubi9/ubi-minimal"
+	WorkloadTestImage = medik8sparams.DefaultWorkloadImage
 )

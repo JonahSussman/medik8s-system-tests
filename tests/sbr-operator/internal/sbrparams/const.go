@@ -3,6 +3,8 @@ package sbrparams
 import (
 	"os"
 	"time"
+
+	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 )
 
 const (
@@ -273,5 +275,5 @@ var WatchdogDebugImage = func() string {
 		return img
 	}
 
-	return "registry.access.redhat.com/ubi9/ubi-minimal:latest"
+	return medik8sparams.DefaultWorkloadImage
 }()

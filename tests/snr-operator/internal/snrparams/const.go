@@ -1,6 +1,10 @@
 package snrparams
 
-import "time"
+import (
+	"time"
+
+	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
+)
 
 const (
 	// Label is the operator name used in the suite-level Labels array.
@@ -65,7 +69,7 @@ const (
 	// SNRMessageConfigNotFound is the status condition message when SNRC is missing.
 	SNRMessageConfigNotFound = "SelfNodeRemediation is disabled because configuration does not exist"
 
-	// --- Destructive (remediation) test constants ---
+	// --- Destructive (remediation) test constants ---.
 
 	// OcDebugTimeout is the timeout for oc debug node/ commands.
 	// 5 minutes to allow for slow debug pod scheduling on ARM64/nested virt.
@@ -119,8 +123,8 @@ const (
 	// OutOfServiceTaint remediation strategy (standard K8s taint).
 	OutOfServiceTaintKey = "node.kubernetes.io/out-of-service"
 
-	// PauseImage is the container image used for test workload pods.
-	PauseImage = "registry.k8s.io/pause:3.9"
+	// WorkloadTestImage is the container image used for test workload pods.
+	WorkloadTestImage = medik8sparams.DefaultWorkloadImage
 
 	// MinReadyMasterNodes is the minimum number of Ready master nodes
 	// required for master remediation tests (etcd quorum safety).
