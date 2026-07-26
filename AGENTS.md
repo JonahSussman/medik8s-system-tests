@@ -121,6 +121,17 @@ All `It`/`DescribeTable` specs should be labelled using constants from `tests/in
 - To update eco-goinfra: use the GitHub Actions "eco-goinfra-bump" workflow, or run `make sync-eco-goinfra ECO_GOINFRA_BRANCH=release-4.20`.
 - CI gates: lint, `ECO_DRY_RUN=true` dry-run, unit tests. ≥2 reviewer approvals required to merge.
 
+### Migrating Tests from Python (ocp-edge-auto)
+
+When porting E2E tests from Python to Go, always read the **full Python implementation** before writing Go code -- not just the Polarion test plan:
+
+1. Read the Python **test method body** (what it verifies)
+2. Read **every helper function** the test calls -- the mechanism matters (e.g. Python uses SSH for kubelet stop/start; `oc debug` cannot work when kubelet is stopped)
+3. Read the Python **teardown/cleanup** (often contains recovery logic absent from the Polarion plan)
+4. Match the Python approach in Go -- if Python uses two SNR NHCs, use two SNR NHCs; don't substitute a different design
+
+The Polarion test plan describes WHAT to verify. The Python code shows HOW. Follow both.
+
 ### Commit Message Format
 
 ```

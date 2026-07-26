@@ -76,3 +76,75 @@ container or pod level). Only checks the `manager` container.
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="nhc" --focus="runs as non-root" ./tests/nhc-operator/...`
 - **Pass criteria**: Pod runAsNonRoot=true; expected manager container exists; manager container runAsUser != 0; allowPrivilegeEscalation=false; readOnlyRootFilesystem=true; capabilities.drop=[ALL]; seccomp profile RuntimeDefault
+
+## Destructive Tests -- Remediation Trigger and CR Lifecycle
+
+Tests that stop kubelet on worker nodes and verify NHC behavior during
+active remediation: selector editing, CR deletion blocking, multi-CR
+coordination, and legacy CR name handling.
+
+### Prerequisites (Remediation Trigger)
+
+- NHC and SNR operators installed
+- At least 2 Ready worker nodes
+- `KUBECONFIG` set with cluster-admin access
+
+### 5. NHC Selector Editing ([OCP-56938](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-56938))
+
+Edits the NHC selector to a non-existent key and verifies observed nodes
+drops to 0 without crashing the NHC controller.
+
+- **Operators**: NHC v0.12.0+, SNR
+- **Cluster**: Multi-node (2+ workers)
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="nhc && disruption:destructive" --focus="selector is edited" ./tests/nhc-operator/...`
+- **Pass criteria**: Observed nodes drops to 0, NHC remains Enabled
+
+### 6. NHC Editing and Deletion Blocked During Remediation ([OCP-56600](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-56600))
+
+Stops kubelet to trigger remediation, then verifies NHC webhook blocks
+selector editing and CR deletion while remediation is in progress.
+
+- **Operators**: NHC v0.12.0+, SNR
+- **Cluster**: Multi-node (2+ workers)
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="nhc && disruption:destructive" --focus="selector editing and deletion" ./tests/nhc-operator/...`
+- **Pass criteria**: Selector edit rejected by webhook (error returned), NHC CR still exists and Remediating after delete attempt, SNR remediation completes, NHC returns to Enabled
+
+### 7. Old Default NHC CR Name ([OCP-69711](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-69711))
+
+Creates NHC CRs with the legacy name "nhc-worker-default" and a
+control-plane NHC, triggers remediation, and verifies the NHC controller
+does not crash.
+
+- **Operators**: NHC v0.12.0+, SNR
+- **Cluster**: Multi-node (2+ workers)
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="nhc && disruption:destructive" --focus="old default NHC CR" ./tests/nhc-operator/...`
+- **Pass criteria**: Remediation completes, NHC controller remains Ready
+
+### 8. Only One NHC CR Remediates at a Time ([OCP-66814](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-66814))
+
+Creates two NHC CRs with different remediators (SNR at 30s, TestRemediation
+at 10s), stops kubelet via SSH, and verifies only the shorter-duration
+TestRemediation NHC creates a remediation CR. The SNR NHC must NOT create
+an SNR CR while the node is already being remediated.
+
+- **Operators**: NHC v0.12.0+, SNR
+- **Cluster**: Multi-node (2+ workers), SSH access to worker nodes
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="nhc && disruption:destructive" --focus="one CR at a time" ./tests/nhc-operator/...`
+- **Pass criteria**: TestRemediation CR created for target node, SNR CR NOT created (Consistently), TestRemediation NHC returns to Enabled after kubelet restart
+
+### 9. Non-Remediating NHC CR Deletion During Active Remediation ([OCP-71171](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-71171))
+
+Creates two SNR-based NHC CRs with different unhealthy durations (10s and
+11s). The faster NHC triggers SNR remediation first. Verifies the slower
+NHC did NOT enter Remediating, then deletes it -- the deletion must succeed.
+SNR reboots the node for automatic recovery.
+
+- **Operators**: NHC v0.12.0+, SNR
+- **Cluster**: Multi-node (2+ workers), SSH access to worker nodes
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="nhc && disruption:destructive" --focus="non-remediating NHC" ./tests/nhc-operator/...`
+- **Pass criteria**: Second NHC phase is not Remediating, Delete() succeeds (asserted), first NHC returns to Enabled after SNR remediation, node recovers

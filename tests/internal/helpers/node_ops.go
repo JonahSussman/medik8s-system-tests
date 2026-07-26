@@ -106,6 +106,141 @@ func StartKubelet(
 	return err
 }
 
+// GetNodeInternalIP returns the InternalIP address for the given node.
+func GetNodeInternalIP(
+	ctx context.Context, k8sClient client.Client, nodeName string,
+) (string, error) {
+	node := &corev1.Node{}
+	if err := k8sClient.Get(ctx, client.ObjectKey{Name: nodeName}, node); err != nil {
+		return "", fmt.Errorf("failed to get node %s: %w", nodeName, err)
+	}
+
+	for _, addr := range node.Status.Addresses {
+		if addr.Type == corev1.NodeInternalIP {
+			return addr.Address, nil
+		}
+	}
+
+	return "", fmt.Errorf("no InternalIP found for node %s", nodeName)
+}
+
+// findSSHKey returns the first existing SSH private key path from a list
+// of well-known locations. Checked in order:
+//  1. $CLUSTER_PROFILE_DIR/ssh-privatekey -- Prow CI (ci-operator)
+//  2. /home/kni/.ssh/id_rsa -- lab hypervisors (srv-16, edge servers)
+//  3. $HOME/.ssh/id_rsa -- generic default
+func findSSHKey() string {
+	candidates := []string{
+		os.Getenv("CLUSTER_PROFILE_DIR") + "/ssh-privatekey",
+		"/home/kni/.ssh/id_rsa",
+		os.Getenv("HOME") + "/.ssh/id_rsa",
+	}
+
+	for _, p := range candidates {
+		if p == "/ssh-privatekey" || p == "/.ssh/id_rsa" {
+			continue // skip if env var was empty
+		}
+
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+
+	return ""
+}
+
+// runSSH executes a command on a node via SSH to the core user.
+// Unlike oc debug, SSH works even when kubelet is stopped because
+// sshd runs independently of kubelet.
+func runSSH(
+	ctx context.Context, nodeIP string, timeout time.Duration, cmd string,
+) (string, error) {
+	childCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	args := []string{
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "LogLevel=ERROR",
+		"-o", "ConnectTimeout=10",
+	}
+
+	if keyPath := findSSHKey(); keyPath != "" {
+		args = append(args, "-i", keyPath)
+	}
+
+	args = append(args, fmt.Sprintf("core@%s", nodeIP), cmd)
+
+	command := exec.CommandContext(childCtx, "ssh", args...)
+
+	var stdout, stderr bytes.Buffer
+
+	command.Stdout = &stdout
+	command.Stderr = &stderr
+
+	if err := command.Run(); err != nil {
+		return "", fmt.Errorf(
+			"SSH to core@%s failed: %w (stderr: %s)",
+			nodeIP, err, stderr.String(),
+		)
+	}
+
+	return strings.TrimSpace(stdout.String()), nil
+}
+
+// StopKubeletSSH stops kubelet on the target node via SSH.
+// Uses SSH instead of oc debug because the debug pod connection
+// drops when kubelet stops, causing unreliable timeout errors.
+func StopKubeletSSH(
+	ctx context.Context, k8sClient client.Client,
+	nodeName string, timeout time.Duration,
+) error {
+	ip, err := GetNodeInternalIP(ctx, k8sClient, nodeName)
+	if err != nil {
+		return err
+	}
+
+	_, err = runSSH(ctx, ip, timeout, "sudo systemctl stop kubelet")
+	if err != nil {
+		// When kubelet stops, the SSH connection may drop.
+		// This is expected behavior -- kubelet is likely stopped.
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "connection reset") ||
+			strings.Contains(errMsg, "closed network connection") ||
+			strings.Contains(errMsg, "broken pipe") ||
+			strings.Contains(errMsg, "transport is closing") {
+			fmt.Fprintf(os.Stderr,
+				"StopKubeletSSH(%s): suppressed expected connection-loss "+
+					"error (kubelet likely stopped): %v\n", nodeName, err)
+
+			return nil
+		}
+
+		return err
+	}
+
+	return nil
+}
+
+// StartKubeletSSH starts kubelet on the target node via SSH.
+// This is the only reliable way to restart kubelet on a node where
+// it was previously stopped -- oc debug cannot schedule a pod when
+// kubelet is down, but SSH connects directly to sshd which runs
+// independently of kubelet.
+func StartKubeletSSH(
+	ctx context.Context, k8sClient client.Client,
+	nodeName string, timeout time.Duration,
+) error {
+	ip, err := GetNodeInternalIP(ctx, k8sClient, nodeName)
+	if err != nil {
+		return err
+	}
+
+	_, err = runSSH(ctx, ip, timeout, "sudo systemctl start kubelet")
+
+	return err
+}
+
 // GetNodeBootID retrieves the boot_id from /proc on the target node via
 // oc debug. Requires a running kubelet; use GetNodeBootIDFromAPI when the
 // node is down or recovering.
