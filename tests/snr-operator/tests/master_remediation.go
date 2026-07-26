@@ -106,7 +106,7 @@ var _ = Describe("SNR Functional - Master Remediation",
 		})
 
 		It("should remediate a master node after kubelet stop",
-			reportxml.ID("OCP-55059"),
+			reportxml.ID("55059"),
 			Label(labels.TierAcceptance, labels.DisruptionDestructive,
 				labels.PlatformAny, labels.ComponentRemediation),
 			func() {
@@ -178,7 +178,7 @@ var _ = Describe("SNR Functional - Master Remediation",
 			})
 
 		It("should remediate master and worker simultaneously after kubelet stop",
-			reportxml.ID("OCP-56069"),
+			reportxml.ID("56069"),
 			Label(labels.TierAcceptance, labels.DisruptionDestructive,
 				labels.PlatformAny, labels.ComponentRemediation),
 			func() {

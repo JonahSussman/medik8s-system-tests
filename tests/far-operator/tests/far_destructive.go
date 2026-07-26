@@ -400,7 +400,7 @@ var _ = Describe("FAR Destructive Tests",
 
 				It("should remediate a worker node via standalone FAR CR",
 					Label(labels.TierAcceptance, labels.ComponentRemediation),
-					reportxml.ID("OCP-61229"),
+					reportxml.ID("61229"),
 					func() {
 						creationTimestamp := targetNode.CreationTimestamp
 
@@ -423,7 +423,7 @@ var _ = Describe("FAR Destructive Tests",
 
 				It("should apply FAR NoSchedule taint during remediation",
 					Label(labels.TierAcceptance, labels.ComponentRemediation),
-					reportxml.ID("OCP-65960"),
+					reportxml.ID("65960"),
 					func() {
 						By("Creating FAR CR targeting " + targetNode.Name)
 
@@ -459,7 +459,7 @@ var _ = Describe("FAR Destructive Tests",
 
 				It("should report correct FAR CR status conditions after remediation",
 					Label(labels.TierAcceptance, labels.ComponentRemediation),
-					reportxml.ID("OCP-67015"),
+					reportxml.ID("67015"),
 					func() {
 						By("Creating FAR CR targeting " + targetNode.Name)
 
@@ -518,7 +518,7 @@ var _ = Describe("FAR Destructive Tests",
 				Context("without --action parameter", func() {
 					It("should default to reboot action when --action is omitted",
 						Label(labels.TierAcceptance, labels.ComponentRemediation),
-						reportxml.ID("OCP-66203"),
+						reportxml.ID("66203"),
 						func() {
 							By("Building shared parameters WITHOUT --action")
 
@@ -544,7 +544,7 @@ var _ = Describe("FAR Destructive Tests",
 			Context("leader node target", func() {
 				It("should remediate the node hosting the active FAR controller",
 					Label(labels.TierAcceptance, labels.ComponentRemediation),
-					reportxml.ID("OCP-70638"),
+					reportxml.ID("70638"),
 					func() {
 						By("Targeting the active FAR controller node")
 

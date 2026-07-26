@@ -167,7 +167,7 @@ var _ = Describe("MDR Functional -- NHC-Triggered Remediation",
 		})
 
 		It("should track Processing and Succeeded conditions during remediation",
-			reportxml.ID("OCP-66138"),
+			reportxml.ID("66138"),
 			Label(labels.TierAcceptance,
 				labels.PlatformAny, labels.ComponentRemediation),
 			func() {

@@ -162,7 +162,7 @@ var _ = Describe("SNR Functional - Worker Remediation",
 		}
 
 		It("should remediate a worker node after kubelet stop",
-			reportxml.ID("OCP-52416"),
+			reportxml.ID("52416"),
 			Label(labels.TierAcceptance, labels.DisruptionDestructive,
 				labels.PlatformAny, labels.ComponentRemediation),
 			func() {
@@ -277,7 +277,7 @@ var _ = Describe("SNR Functional - Worker Remediation",
 			}
 
 			It("should evict workload pod using ResourceDeletion strategy",
-				reportxml.ID("OCP-50772"),
+				reportxml.ID("50772"),
 				Label(labels.TierAcceptance, labels.DisruptionDestructive,
 					labels.PlatformAny, labels.ComponentRemediation),
 				func() {
@@ -286,7 +286,7 @@ var _ = Describe("SNR Functional - Worker Remediation",
 				})
 
 			It("should evict workload pod using OutOfServiceTaint strategy",
-				reportxml.ID("OCP-61594"),
+				reportxml.ID("61594"),
 				Label(labels.TierAcceptance, labels.DisruptionDestructive,
 					labels.PlatformAny, labels.ComponentRemediation),
 				func() {

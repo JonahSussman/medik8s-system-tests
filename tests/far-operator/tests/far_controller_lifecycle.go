@@ -41,7 +41,7 @@ var _ = Describe("FAR Controller Lifecycle Tests",
 
 		It("should transfer controller leadership when the active pod is deleted",
 			Label(labels.TierAcceptance, labels.ComponentController),
-			reportxml.ID("OCP-70636"),
+			reportxml.ID("70636"),
 			func() {
 				By("Getting the current active FAR controller pod")
 
