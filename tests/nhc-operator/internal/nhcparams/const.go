@@ -6,7 +6,11 @@ const (
 	// Label is the operator name used in the suite-level Labels array.
 	Label = "nhc"
 	// DefaultPollInterval is the polling interval used with Eventually/Consistently calls.
-	DefaultPollInterval = 10 * time.Second
+	DefaultPollInterval = 5 * time.Second
+
+	// DestructivePollInterval is a longer polling interval for destructive tests
+	// where rapid polling adds API load without benefit (e.g. waiting for node reboot).
+	DestructivePollInterval = 10 * time.Second
 
 	// ExpectedReplicas defines the expected number of replicas for NHC controller manager.
 	ExpectedReplicas = int32(2)

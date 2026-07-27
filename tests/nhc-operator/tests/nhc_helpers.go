@@ -108,10 +108,10 @@ func buildNHC(name, selectorKey, selectorOp string, matchLabels map[string]inter
 }
 
 // isSNRCRDInstalled checks whether the SelfNodeRemediation CRD is registered.
-func isSNRCRDInstalled() bool {
+func isSNRCRDInstalled(ctx context.Context) bool {
 	crd := &apiextensionsv1.CustomResourceDefinition{}
 	err := APIClient.Get(
-		context.TODO(),
+		ctx,
 		types.NamespacedName{Name: nhcparams.SNRCRDName},
 		crd,
 	)
@@ -201,11 +201,11 @@ func cleanupSNRCR(name string) {
 }
 
 // getNHCPhase returns the current .status.phase of the named NHC CR.
-func getNHCPhase(name string) (string, error) {
+func getNHCPhase(ctx context.Context, name string) (string, error) {
 	nhc := &unstructured.Unstructured{}
 	nhc.SetGroupVersionKind(nhcGVK)
 
-	if err := APIClient.Get(context.TODO(), client.ObjectKey{Name: name}, nhc); err != nil {
+	if err := APIClient.Get(ctx, client.ObjectKey{Name: name}, nhc); err != nil {
 		return "", err
 	}
 
@@ -218,11 +218,11 @@ func getNHCPhase(name string) (string, error) {
 }
 
 // getNHCObservedNodes returns the .status.observedNodes count from the named NHC CR.
-func getNHCObservedNodes(name string) (int64, error) {
+func getNHCObservedNodes(ctx context.Context, name string) (int64, error) {
 	nhc := &unstructured.Unstructured{}
 	nhc.SetGroupVersionKind(nhcGVK)
 
-	if err := APIClient.Get(context.TODO(), client.ObjectKey{Name: name}, nhc); err != nil {
+	if err := APIClient.Get(ctx, client.ObjectKey{Name: name}, nhc); err != nil {
 		return 0, err
 	}
 
@@ -235,11 +235,11 @@ func getNHCObservedNodes(name string) (int64, error) {
 }
 
 // waitForNHCPhase polls until the NHC CR reaches the expected phase.
-func waitForNHCPhase(name, expectedPhase string, timeout time.Duration) error {
+func waitForNHCPhase(ctx context.Context, name, expectedPhase string, timeout time.Duration) error {
 	return wait.PollUntilContextTimeout(
-		context.TODO(), nhcparams.DefaultPollInterval, timeout, true,
+		ctx, nhcparams.DefaultPollInterval, timeout, true,
 		func(ctx context.Context) (bool, error) {
-			phase, err := getNHCPhase(name)
+			phase, err := getNHCPhase(ctx, name)
 			if err != nil {
 				return false, nil
 			}
@@ -257,7 +257,7 @@ func waitForSNRRemediationComplete(
 	var snrSeen bool
 
 	return wait.PollUntilContextTimeout(
-		ctx, nhcparams.DefaultPollInterval, timeout, true,
+		ctx, nhcparams.DestructivePollInterval, timeout, true,
 		func(ctx context.Context) (bool, error) {
 			obj := &unstructured.Unstructured{}
 			obj.SetGroupVersionKind(snrGVK)
@@ -277,13 +277,20 @@ func waitForSNRRemediationComplete(
 				return false, nil
 
 			case k8serrors.IsNotFound(err):
+				// SNR CR gone. Check if boot ID changed (node rebooted).
 				currentBootID, bootErr := helpers.GetNodeBootIDFromAPI(ctx, APIClient, nodeName)
 				if bootErr != nil {
 					return false, nil
 				}
 
 				if currentBootID != previousBootID {
-					GinkgoWriter.Printf("SNR remediation complete: boot ID changed for %s\n", nodeName)
+					if snrSeen {
+						GinkgoWriter.Printf("SNR remediation complete: boot ID changed for %s\n", nodeName)
+					} else {
+						GinkgoWriter.Printf(
+							"SNR CR already gone, boot ID changed -- "+
+								"remediation completed before observation for %s\n", nodeName)
+					}
 
 					return true, nil
 				}
@@ -333,23 +340,20 @@ var testRemediationGVK = schema.GroupVersionKind{
 	Kind:    "TestRemediation",
 }
 
-// setupTestRemediationResources creates the dummy TestRemediation CRDs,
-// template CR, and RBAC needed for multi-NHC tests.
-func setupTestRemediationResources() {
-	By("Creating TestRemediationTemplate CRD")
-
-	trtCRD := &apiextensionsv1.CustomResourceDefinition{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: nhcparams.TestRemediationTemplateCRDName,
-		},
+// buildTestCRD creates a cluster-scoped CRD with spec/status preserve-unknown schema.
+func buildTestCRD(
+	name, kind, plural, singular, shortName string,
+) *apiextensionsv1.CustomResourceDefinition {
+	return &apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
 			Group: nhcparams.TestRemediationGroup,
 			Scope: apiextensionsv1.ClusterScoped,
 			Names: apiextensionsv1.CustomResourceDefinitionNames{
-				Kind:       "TestRemediationTemplate",
-				Plural:     "testremediationtemplates",
-				Singular:   "testremediationtemplate",
-				ShortNames: []string{"trt"},
+				Kind:       kind,
+				Plural:     plural,
+				Singular:   singular,
+				ShortNames: []string{shortName},
 			},
 			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{{
 				Name:    nhcparams.TestRemediationVersion,
@@ -370,6 +374,15 @@ func setupTestRemediationResources() {
 			}},
 		},
 	}
+}
+
+// setupTestRemediationResources creates the dummy TestRemediation CRDs,
+// template CR, and RBAC needed for multi-NHC tests.
+func setupTestRemediationResources() {
+	By("Creating TestRemediationTemplate CRD")
+
+	trtCRD := buildTestCRD(nhcparams.TestRemediationTemplateCRDName,
+		"TestRemediationTemplate", "testremediationtemplates", "testremediationtemplate", "trt")
 
 	if err := APIClient.Create(context.TODO(), trtCRD); err != nil && !k8serrors.IsAlreadyExists(err) {
 		Fail(fmt.Sprintf("Failed to create TestRemediationTemplate CRD: %v", err))
@@ -377,38 +390,8 @@ func setupTestRemediationResources() {
 
 	By("Creating TestRemediation CRD")
 
-	trCRD := &apiextensionsv1.CustomResourceDefinition{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: nhcparams.TestRemediationCRDName,
-		},
-		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
-			Group: nhcparams.TestRemediationGroup,
-			Scope: apiextensionsv1.ClusterScoped,
-			Names: apiextensionsv1.CustomResourceDefinitionNames{
-				Kind:       "TestRemediation",
-				Plural:     "testremediations",
-				Singular:   "testremediation",
-				ShortNames: []string{"tr"},
-			},
-			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{{
-				Name:    nhcparams.TestRemediationVersion,
-				Served:  true,
-				Storage: true,
-				Subresources: &apiextensionsv1.CustomResourceSubresources{
-					Status: &apiextensionsv1.CustomResourceSubresourceStatus{},
-				},
-				Schema: &apiextensionsv1.CustomResourceValidation{
-					OpenAPIV3Schema: &apiextensionsv1.JSONSchemaProps{
-						Type: "object",
-						Properties: map[string]apiextensionsv1.JSONSchemaProps{
-							"spec":   {Type: "object", XPreserveUnknownFields: ptr.To(true)},
-							"status": {Type: "object", XPreserveUnknownFields: ptr.To(true)},
-						},
-					},
-				},
-			}},
-		},
-	}
+	trCRD := buildTestCRD(nhcparams.TestRemediationCRDName,
+		"TestRemediation", "testremediations", "testremediation", "tr")
 
 	if err := APIClient.Create(context.TODO(), trCRD); err != nil && !k8serrors.IsAlreadyExists(err) {
 		Fail(fmt.Sprintf("Failed to create TestRemediation CRD: %v", err))
@@ -416,8 +399,8 @@ func setupTestRemediationResources() {
 
 	By("Waiting for CRDs to become Established")
 
-	waitForCRDEstablished(nhcparams.TestRemediationTemplateCRDName)
-	waitForCRDEstablished(nhcparams.TestRemediationCRDName)
+	waitForCRDEstablished(context.TODO(), nhcparams.TestRemediationTemplateCRDName)
+	waitForCRDEstablished(context.TODO(), nhcparams.TestRemediationCRDName)
 
 	By("Creating TestRemediationTemplate CR")
 
@@ -547,11 +530,11 @@ func buildNHCWithTestRemediation(name string) *unstructured.Unstructured {
 }
 
 // testRemediationCRExists checks if a TestRemediation CR exists for the given node.
-func testRemediationCRExists(nodeName string) bool {
+func testRemediationCRExists(ctx context.Context, nodeName string) bool {
 	tr := &unstructured.Unstructured{}
 	tr.SetGroupVersionKind(testRemediationGVK)
 
-	err := APIClient.Get(context.TODO(), client.ObjectKey{Name: nodeName}, tr)
+	err := APIClient.Get(ctx, client.ObjectKey{Name: nodeName}, tr)
 
 	return err == nil
 }
@@ -559,9 +542,9 @@ func testRemediationCRExists(nodeName string) bool {
 // waitForCRDEstablished polls until a CRD's Established condition is True.
 // This is needed after creating a CRD before creating CRs of that type,
 // because the API server needs time to register the new resource.
-func waitForCRDEstablished(crdName string) {
+func waitForCRDEstablished(ctx context.Context, crdName string) {
 	if waitErr := wait.PollUntilContextTimeout(
-		context.TODO(), 2*time.Second, 60*time.Second, true,
+		ctx, 2*time.Second, 60*time.Second, true,
 		func(ctx context.Context) (bool, error) {
 			crd := &apiextensionsv1.CustomResourceDefinition{}
 			if err := APIClient.Get(ctx, types.NamespacedName{Name: crdName}, crd); err != nil {
@@ -582,11 +565,11 @@ func waitForCRDEstablished(crdName string) {
 }
 
 // snrCRExists checks if a SelfNodeRemediation CR exists for the given node.
-func snrCRExists(nodeName string) bool {
+func snrCRExists(ctx context.Context, nodeName string) bool {
 	snr := &unstructured.Unstructured{}
 	snr.SetGroupVersionKind(snrGVK)
 
-	err := APIClient.Get(context.TODO(), types.NamespacedName{
+	err := APIClient.Get(ctx, types.NamespacedName{
 		Name:      nodeName,
 		Namespace: medik8sparams.OperatorNs,
 	}, snr)

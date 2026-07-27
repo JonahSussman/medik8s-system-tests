@@ -97,7 +97,7 @@ drops to 0 without crashing the NHC controller.
 - **Operators**: NHC v0.12.0+, SNR
 - **Cluster**: Multi-node (2+ workers)
 - **Environment**: Connected or disconnected
-- **Standalone**: `ginkgo --label-filter="nhc && disruption:destructive" --focus="selector is edited" ./tests/nhc-operator/...`
+- **Standalone**: `ginkgo --label-filter="nhc && disruption:nondestructive" --focus="selector is edited" ./tests/nhc-operator/...`
 - **Pass criteria**: Observed nodes drops to 0, NHC remains Enabled
 
 ### 6. NHC Editing and Deletion Blocked During Remediation ([OCP-56600](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-56600))

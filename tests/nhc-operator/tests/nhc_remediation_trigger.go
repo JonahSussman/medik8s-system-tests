@@ -37,7 +37,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 
 			By("Checking SNR CRD is installed (needed as remediator)")
 
-			if !isSNRCRDInstalled() {
+			if !isSNRCRDInstalled(ctx) {
 				Skip("SelfNodeRemediation CRD not found; SNR operator not installed -- skipping NHC remediation trigger tests")
 			}
 
@@ -131,72 +131,8 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 			}
 		})
 
-		It("should update observed nodes when selector is edited",
-			reportxml.ID("OCP-56938"),
-			Label(labels.TierAcceptance,
-				labels.PlatformAny, labels.ComponentRemediation),
-			func() {
-				By("Creating NHC CR for workers")
-
-				nhcCR := buildNHCForWorkers(nhcparams.NHCTestName)
-				Expect(APIClient.Create(ctx, nhcCR)).To(Succeed(),
-					"Failed to create NHC CR")
-
-				By("Waiting for NHC to reach Enabled phase")
-
-				Expect(waitForNHCPhase(nhcparams.NHCTestName,
-					nhcparams.NHCPhaseEnabled, medik8sparams.DefaultTimeout)).To(Succeed(),
-					"NHC did not reach Enabled phase")
-
-				By("Verifying observed nodes > 0")
-
-				Eventually(func() (int64, error) {
-					return getNHCObservedNodes(nhcparams.NHCTestName)
-				}, medik8sparams.DefaultTimeout, nhcparams.DefaultPollInterval).Should(
-					BeNumerically(">", int64(0)),
-					"NHC should observe worker nodes")
-
-				By("Editing NHC selector to non-existent key")
-
-				// Patch the selector to match no nodes.
-				nhcPatch := &unstructured.Unstructured{}
-				nhcPatch.SetGroupVersionKind(nhcGVK)
-				nhcPatch.SetName(nhcparams.NHCTestName)
-				nhcPatch.Object["spec"] = map[string]interface{}{
-					"selector": map[string]interface{}{
-						"matchExpressions": []interface{}{
-							map[string]interface{}{
-								"key":      "doesNotExist",
-								"operator": "Exists",
-							},
-						},
-					},
-				}
-
-				Expect(APIClient.Patch(ctx, nhcPatch,
-					client.Apply,
-					client.ForceOwnership,
-					client.FieldOwner("nhc-test"),
-				)).To(Succeed(), "Failed to patch NHC selector")
-
-				By("Verifying observed nodes dropped to 0")
-
-				Eventually(func() (int64, error) {
-					return getNHCObservedNodes(nhcparams.NHCTestName)
-				}, medik8sparams.DefaultTimeout, nhcparams.DefaultPollInterval).Should(
-					Equal(int64(0)),
-					"NHC should observe 0 nodes after selector change")
-
-				By("Verifying NHC is still Enabled (not crashed)")
-
-				phase, err := getNHCPhase(nhcparams.NHCTestName)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(phase).To(Equal(nhcparams.NHCPhaseEnabled),
-					"NHC should remain Enabled after selector edit")
-			})
-
 		It("should block selector editing and deletion during remediation",
-			reportxml.ID("OCP-56600"),
+			reportxml.ID("56600"),
 			Label(labels.TierAcceptance,
 				labels.PlatformAny, labels.ComponentRemediation),
 			func() {
@@ -208,7 +144,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 
 				By("Waiting for NHC to reach Enabled phase")
 
-				Expect(waitForNHCPhase(nhcparams.NHCTestName,
+				Expect(waitForNHCPhase(ctx, nhcparams.NHCTestName,
 					nhcparams.NHCPhaseEnabled, medik8sparams.DefaultTimeout)).To(Succeed())
 
 				By(fmt.Sprintf("Stopping kubelet on %s to trigger remediation", targetWorkerName))
@@ -217,7 +153,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 
 				By("Waiting for NHC to enter Remediating phase")
 
-				Expect(waitForNHCPhase(nhcparams.NHCTestName,
+				Expect(waitForNHCPhase(ctx, nhcparams.NHCTestName,
 					nhcparams.NHCPhaseRemediating, nhcparams.NodeNotReadyTimeout)).To(Succeed(),
 					"NHC did not enter Remediating phase")
 
@@ -240,9 +176,13 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 				By("Verifying NHC CR deletion is blocked during remediation")
 
 				deleteErr := APIClient.Delete(ctx, nhcCR)
-				// NHC webhook blocks deletion during remediation via finalizer.
-				// Verify the CR still exists regardless of delete error.
-				phase, getErr := getNHCPhase(nhcparams.NHCTestName)
+				// NHC webhook rejects deletion during active remediation.
+				Expect(deleteErr).To(HaveOccurred(),
+					"NHC webhook should reject deletion during active remediation")
+				GinkgoWriter.Printf("NHC deletion rejected (expected): %v\n", deleteErr)
+
+				// Verify the CR still exists and is still Remediating.
+				phase, getErr := getNHCPhase(ctx, nhcparams.NHCTestName)
 				Expect(getErr).ToNot(HaveOccurred(),
 					"NHC CR should still exist during remediation")
 				Expect(phase).To(Equal(nhcparams.NHCPhaseRemediating),
@@ -265,13 +205,13 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 
 				By("Waiting for NHC to return to Enabled phase")
 
-				Expect(waitForNHCPhase(nhcparams.NHCTestName,
+				Expect(waitForNHCPhase(ctx, nhcparams.NHCTestName,
 					nhcparams.NHCPhaseEnabled, nhcparams.SNRDeletionTimeout)).To(Succeed(),
 					"NHC did not return to Enabled after remediation")
 			})
 
 		It("should handle old default NHC CR name without crash",
-			reportxml.ID("OCP-69711"),
+			reportxml.ID("69711"),
 			Label(labels.TierAcceptance,
 				labels.PlatformAny, labels.ComponentRemediation),
 			func() {
@@ -283,7 +223,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 
 				By("Waiting for worker NHC to reach Enabled phase")
 
-				Expect(waitForNHCPhase(nhcparams.NHCOldDefaultName,
+				Expect(waitForNHCPhase(ctx, nhcparams.NHCOldDefaultName,
 					nhcparams.NHCPhaseEnabled, medik8sparams.DefaultTimeout)).To(Succeed())
 
 				By("Creating NHC CR for control-plane nodes")
@@ -295,7 +235,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 
 				By("Waiting for control-plane NHC to reach Enabled phase")
 
-				Expect(waitForNHCPhase(nhcparams.NHCControlPlaneTestName,
+				Expect(waitForNHCPhase(ctx, nhcparams.NHCControlPlaneTestName,
 					nhcparams.NHCPhaseEnabled, medik8sparams.DefaultTimeout)).To(Succeed())
 
 				By(fmt.Sprintf("Stopping kubelet on worker %s", targetWorkerName))
@@ -325,7 +265,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 			})
 
 		It("should remediate only one CR at a time when multiple NHCs exist",
-			reportxml.ID("OCP-66814"),
+			reportxml.ID("66814"),
 			Label(labels.TierAcceptance,
 				labels.PlatformAny, labels.ComponentRemediation),
 			func() {
@@ -360,9 +300,9 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 
 				By("Waiting for both NHCs to reach Enabled phase")
 
-				Expect(waitForNHCPhase(nhcparams.NHCTestName,
+				Expect(waitForNHCPhase(ctx, nhcparams.NHCTestName,
 					nhcparams.NHCPhaseEnabled, medik8sparams.DefaultTimeout)).To(Succeed())
-				Expect(waitForNHCPhase(nhcparams.NHCSecondTestName,
+				Expect(waitForNHCPhase(ctx, nhcparams.NHCSecondTestName,
 					nhcparams.NHCPhaseEnabled, medik8sparams.DefaultTimeout)).To(Succeed())
 
 				By(fmt.Sprintf("Stopping kubelet on %s", targetWorkerName))
@@ -372,7 +312,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 				By("Waiting for TestRemediation CR to be created (10s NHC triggers first)")
 
 				Eventually(func() bool {
-					return testRemediationCRExists(targetWorkerName)
+					return testRemediationCRExists(ctx, targetWorkerName)
 				}, nhcparams.NodeNotReadyTimeout, nhcparams.DefaultPollInterval).Should(BeTrue(),
 					"TestRemediation CR should be created for %s", targetWorkerName)
 
@@ -381,7 +321,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 				By("Verifying SNR CR was NOT created (node already being remediated)")
 
 				Consistently(func() bool {
-					return snrCRExists(targetWorkerName)
+					return snrCRExists(ctx, targetWorkerName)
 				}, nhcparams.ConsistentlyDuration, nhcparams.DefaultPollInterval).Should(BeFalse(),
 					"SNR CR should NOT be created while TestRemediation is active for %s", targetWorkerName)
 
@@ -397,7 +337,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 
 				By("Waiting for TestRemediation NHC to return to Enabled")
 
-				Expect(waitForNHCPhase(nhcparams.NHCSecondTestName,
+				Expect(waitForNHCPhase(ctx, nhcparams.NHCSecondTestName,
 					nhcparams.NHCPhaseEnabled, nhcparams.SNRDeletionTimeout)).To(Succeed(),
 					"TestRemediation NHC did not return to Enabled after kubelet restart")
 
@@ -410,7 +350,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 			})
 
 		It("should allow deletion of non-remediating NHC while another is remediating",
-			reportxml.ID("OCP-71171"),
+			reportxml.ID("71171"),
 			Label(labels.TierAcceptance,
 				labels.PlatformAny, labels.ComponentRemediation),
 			func() {
@@ -450,9 +390,9 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 
 				By("Waiting for both NHCs to reach Enabled")
 
-				Expect(waitForNHCPhase(nhcparams.NHCSecondTestName,
+				Expect(waitForNHCPhase(ctx, nhcparams.NHCSecondTestName,
 					nhcparams.NHCPhaseEnabled, medik8sparams.DefaultTimeout)).To(Succeed())
-				Expect(waitForNHCPhase(nhcparams.NHCTestName,
+				Expect(waitForNHCPhase(ctx, nhcparams.NHCTestName,
 					nhcparams.NHCPhaseEnabled, medik8sparams.DefaultTimeout)).To(Succeed())
 
 				By(fmt.Sprintf("Stopping kubelet on %s", targetWorkerName))
@@ -461,18 +401,19 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 
 				By("Waiting for first NHC to enter Remediating phase")
 
-				Expect(waitForNHCPhase(nhcparams.NHCSecondTestName,
+				Expect(waitForNHCPhase(ctx, nhcparams.NHCSecondTestName,
 					nhcparams.NHCPhaseRemediating, nhcparams.NodeNotReadyTimeout)).To(Succeed(),
 					"First NHC did not enter Remediating phase")
 
-				By("Verifying second NHC did NOT enter Remediating")
+				By("Verifying second NHC stays non-Remediating (Consistently)")
 
-				phase, err := getNHCPhase(nhcparams.NHCTestName)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(phase).ToNot(Equal(nhcparams.NHCPhaseRemediating),
-					"Second NHC should NOT be Remediating while first NHC is active")
+				Consistently(func() (string, error) {
+					return getNHCPhase(ctx, nhcparams.NHCTestName)
+				}, nhcparams.ConsistentlyDuration, nhcparams.DefaultPollInterval).ShouldNot(
+					Equal(nhcparams.NHCPhaseRemediating),
+					"Second NHC should NOT enter Remediating while first NHC is active")
 
-				GinkgoWriter.Printf("Second NHC phase: %s (expected non-Remediating)\n", phase)
+				GinkgoWriter.Println("Second NHC stayed non-Remediating -- one-at-a-time verified")
 
 				By("Deleting second NHC (non-remediating) -- should succeed")
 
@@ -484,7 +425,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 
 				By("Waiting for first NHC to return to Enabled (SNR reboots node)")
 
-				Expect(waitForNHCPhase(nhcparams.NHCSecondTestName,
+				Expect(waitForNHCPhase(ctx, nhcparams.NHCSecondTestName,
 					nhcparams.NHCPhaseEnabled, nhcparams.SNRDeletionTimeout)).To(Succeed(),
 					"First NHC did not return to Enabled after SNR remediation")
 
@@ -494,5 +435,88 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 					targetWorkerName,
 					nhcparams.DefaultPollInterval, nhcparams.NodeReadyTimeout,
 				)).To(Succeed())
+			})
+	})
+
+// Separate Describe for non-destructive NHC tests that don't disrupt nodes.
+var _ = Describe("NHC Functional -- Selector and CR Management",
+	Serial, Ordered,
+	Label(labels.OperatorNHC, nhcparams.Label,
+		labels.DisruptionNonDestructive, labels.FrequencyWeekly),
+	func() {
+		var ctx context.Context
+
+		BeforeAll(func() {
+			ctx = context.Background()
+
+			By("Checking SNR CRD is installed")
+
+			if !isSNRCRDInstalled(ctx) {
+				Skip("SelfNodeRemediation CRD not found; SNR operator not installed")
+			}
+
+			By("Verifying NHC operator deployment is ready")
+
+			nhcDeployment, err := deployment.Pull(
+				APIClient, nhcparams.OperatorDeploymentName, medik8sparams.OperatorNs)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(nhcDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(),
+				"NHC deployment is not Ready")
+		})
+
+		AfterEach(func() {
+			cleanupNHCCR(nhcparams.NHCTestName)
+		})
+
+		It("should update observed nodes when selector is edited",
+			reportxml.ID("56938"),
+			Label(labels.TierAcceptance,
+				labels.PlatformAny, labels.ComponentRemediation),
+			func() {
+				By("Creating NHC CR for workers")
+
+				nhcCR := buildNHCForWorkers(nhcparams.NHCTestName)
+				Expect(APIClient.Create(ctx, nhcCR)).To(Succeed(),
+					"Failed to create NHC CR")
+
+				By("Waiting for NHC to reach Enabled phase")
+
+				Expect(waitForNHCPhase(ctx, nhcparams.NHCTestName,
+					nhcparams.NHCPhaseEnabled, medik8sparams.DefaultTimeout)).To(Succeed(),
+					"NHC did not reach Enabled phase")
+
+				By("Verifying observed nodes > 0")
+
+				Eventually(func() (int64, error) {
+					return getNHCObservedNodes(ctx, nhcparams.NHCTestName)
+				}, medik8sparams.DefaultTimeout, nhcparams.DefaultPollInterval).Should(
+					BeNumerically(">", int64(0)),
+					"NHC should observe worker nodes")
+
+				By("Editing NHC selector to non-existent key via merge patch")
+
+				patchBytes := []byte(`{"spec":{"selector":{"matchExpressions":[{"key":"doesNotExist","operator":"Exists"}]}}}`)
+				target := &unstructured.Unstructured{}
+				target.SetGroupVersionKind(nhcGVK)
+				target.SetName(nhcparams.NHCTestName)
+
+				Expect(APIClient.Patch(ctx, target,
+					client.RawPatch(types.MergePatchType, patchBytes),
+				)).To(Succeed(), "Failed to patch NHC selector")
+
+				By("Verifying observed nodes dropped to 0")
+
+				Eventually(func() (int64, error) {
+					return getNHCObservedNodes(ctx, nhcparams.NHCTestName)
+				}, medik8sparams.DefaultTimeout, nhcparams.DefaultPollInterval).Should(
+					Equal(int64(0)),
+					"NHC should observe 0 nodes after selector change")
+
+				By("Verifying NHC is still Enabled (not crashed)")
+
+				phase, err := getNHCPhase(ctx, nhcparams.NHCTestName)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(phase).To(Equal(nhcparams.NHCPhaseEnabled),
+					"NHC should remain Enabled after selector edit")
 			})
 	})

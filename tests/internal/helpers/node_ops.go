@@ -129,7 +129,7 @@ func GetNodeInternalIP(
 //  1. $CLUSTER_PROFILE_DIR/ssh-privatekey -- Prow CI (ci-operator)
 //  2. /home/kni/.ssh/id_rsa -- lab hypervisors (srv-16, edge servers)
 //  3. $HOME/.ssh/id_rsa -- generic default
-func findSSHKey() string {
+func findSSHKey() (string, error) {
 	candidates := []string{
 		os.Getenv("CLUSTER_PROFILE_DIR") + "/ssh-privatekey",
 		"/home/kni/.ssh/id_rsa",
@@ -141,12 +141,26 @@ func findSSHKey() string {
 			continue // skip if env var was empty
 		}
 
-		if _, err := os.Stat(p); err == nil {
-			return p
+		fi, err := os.Stat(p)
+		if err != nil {
+			continue
 		}
+
+		// Reject keys with group/other permissions (ssh refuses them anyway).
+		if fi.Mode().Perm()&0o077 != 0 {
+			fmt.Fprintf(os.Stderr,
+				"findSSHKey: skipping %s (permissions %o too open, need 0600)\n",
+				p, fi.Mode().Perm())
+
+			continue
+		}
+
+		return p, nil
 	}
 
-	return ""
+	return "", fmt.Errorf(
+		"no SSH private key found; checked: $CLUSTER_PROFILE_DIR/ssh-privatekey, " +
+			"/home/kni/.ssh/id_rsa, $HOME/.ssh/id_rsa")
 }
 
 // runSSH executes a command on a node via SSH to the core user.
@@ -166,9 +180,12 @@ func runSSH(
 		"-o", "ConnectTimeout=10",
 	}
 
-	if keyPath := findSSHKey(); keyPath != "" {
-		args = append(args, "-i", keyPath)
+	keyPath, keyErr := findSSHKey()
+	if keyErr != nil {
+		return "", fmt.Errorf("runSSH: %w", keyErr)
 	}
+
+	args = append(args, "-i", keyPath)
 
 	args = append(args, fmt.Sprintf("core@%s", nodeIP), cmd)
 
