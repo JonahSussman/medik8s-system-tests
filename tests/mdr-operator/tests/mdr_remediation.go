@@ -250,6 +250,7 @@ var _ = Describe("MDR Functional -- NHC-Triggered Remediation",
 				Expect(helpers.WaitForNodeReady(
 					ctx, APIClient, newNodeName,
 					mdrparams.DefaultPollInterval, mdrparams.NodeReadyTimeout,
+					GinkgoWriter.Printf,
 				)).To(Succeed(),
 					"Replacement node %s did not become Ready", newNodeName)
 

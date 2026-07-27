@@ -194,7 +194,7 @@ Validates the full customer upgrade path: install GA FAR from redhat-operators o
 - **Storage**: None
 - **Environment**: Connected
 - **Labels**: `tier:upgrade`, `disruption:destructive`, `platform:aws`, `frequency:weekly`, `component:olm`
-- **Env vars (required)**: `OPENSHIFT_UPGRADE_RELEASE_IMAGE_OVERRIDE`
+- **Env vars (required)**: `OPENSHIFT_UPGRADE_RELEASE_IMAGE_OVERRIDE` (falls back to `RELEASE_IMAGE_LATEST` if unset)
 - **CI prerequisite**: `medik8s-catalogsource` step must run before the test (creates the `medik8s-catalog` CatalogSource)
 - **Env vars (optional, have defaults)**: `MEDIK8S_OPERATOR_PACKAGE` (default: `fence-agents-remediation`), `MEDIK8S_TARGET_CHANNEL` (default: `stable`)
 - **Standalone**: `ginkgo --label-filter="far && tier:upgrade" ./tests/far-operator/...`

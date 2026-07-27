@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -72,6 +71,7 @@ func RunOnNode(
 // StopKubelet stops the kubelet service on the target node.
 func StopKubelet(
 	ctx context.Context, nodeName string, timeout time.Duration,
+	logf func(string, ...interface{}),
 ) error {
 	_, err := RunOnNode(ctx, nodeName, timeout, "systemctl", "stop", "kubelet")
 	if err != nil {
@@ -81,9 +81,8 @@ func StopKubelet(
 			strings.Contains(errMsg, "closed network connection") ||
 			strings.Contains(errMsg, "broken pipe") ||
 			strings.Contains(errMsg, "transport is closing") {
-			fmt.Fprintf(os.Stderr,
-				"StopKubelet(%s): suppressed expected connection-loss error "+
-					"(kubelet likely stopped): %v\n", nodeName, err)
+			logf("StopKubelet(%s): suppressed expected connection-loss error "+
+				"(kubelet likely stopped): %v\n", nodeName, err)
 
 			return nil
 		}
@@ -153,11 +152,12 @@ func GetNodeBootIDFromAPI(
 func WaitForNodeNotReady(
 	ctx context.Context, k8sClient client.Client, nodeName string,
 	pollInterval, timeout time.Duration,
+	logf func(string, ...interface{}),
 ) error {
 	return waitForNodeCondition(
 		ctx, k8sClient, nodeName, pollInterval, timeout,
 		func(node *corev1.Node) bool { return !IsNodeReady(node) },
-		"NotReady",
+		"NotReady", logf,
 	)
 }
 
@@ -165,11 +165,12 @@ func WaitForNodeNotReady(
 func WaitForNodeReady(
 	ctx context.Context, k8sClient client.Client, nodeName string,
 	pollInterval, timeout time.Duration,
+	logf func(string, ...interface{}),
 ) error {
 	return waitForNodeCondition(
 		ctx, k8sClient, nodeName, pollInterval, timeout,
 		IsNodeReady,
-		"Ready",
+		"Ready", logf,
 	)
 }
 
@@ -177,6 +178,7 @@ func waitForNodeCondition(
 	ctx context.Context, k8sClient client.Client, nodeName string,
 	pollInterval, timeout time.Duration,
 	conditionFn func(*corev1.Node) bool, conditionDesc string,
+	logf func(string, ...interface{}),
 ) error {
 	err := wait.PollUntilContextTimeout(
 		ctx, pollInterval, timeout, true,
@@ -197,8 +199,7 @@ func waitForNodeCondition(
 						nodeName, err)
 				}
 
-				fmt.Fprintf(os.Stderr,
-					"waitForNodeCondition(%s, %s): transient API error, retrying: %v\n",
+				logf("waitForNodeCondition(%s, %s): transient API error, retrying: %v\n",
 					nodeName, conditionDesc, err)
 
 				return false, nil
@@ -227,6 +228,7 @@ func waitForNodeCondition(
 func WaitForNodeReboot(
 	ctx context.Context, k8sClient client.Client, nodeName string,
 	previousBootID string, pollInterval, timeout time.Duration,
+	logf func(string, ...interface{}),
 ) error {
 	if previousBootID == "" {
 		return fmt.Errorf("WaitForNodeReboot(%s): previousBootID must not be empty", nodeName)
@@ -249,8 +251,7 @@ func WaitForNodeReboot(
 						nodeName, err)
 				}
 
-				fmt.Fprintf(os.Stderr,
-					"WaitForNodeReboot(%s): transient API error, retrying: %v\n",
+				logf("WaitForNodeReboot(%s): transient API error, retrying: %v\n",
 					nodeName, err)
 
 				return false, nil

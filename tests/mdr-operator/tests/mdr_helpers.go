@@ -110,12 +110,12 @@ func buildNHCForMDR(name, mdrtName string) *unstructured.Unstructured {
 // on transient API errors to avoid silently skipping tests.
 func isNHCCRDInstalled() bool {
 	crd := &apiextensionsv1.CustomResourceDefinition{}
+
 	err := APIClient.Get(
 		context.TODO(),
 		types.NamespacedName{Name: mdrparams.NHCCRDName},
 		crd,
 	)
-
 	if err == nil {
 		return true
 	}
@@ -133,7 +133,7 @@ func isNHCCRDInstalled() bool {
 // stopKubeletForRemediation wraps helpers.StopKubelet with error
 // suppression for expected failure modes during kubelet stop.
 func stopKubeletForRemediation(ctx context.Context, nodeName string) error {
-	err := helpers.StopKubelet(ctx, nodeName, mdrparams.OcDebugTimeout)
+	err := helpers.StopKubelet(ctx, nodeName, mdrparams.OcDebugTimeout, GinkgoWriter.Printf)
 	if err == nil {
 		return nil
 	}
@@ -251,11 +251,11 @@ func waitForMDRRemediationComplete(
 				Name:      originalNodeName,
 				Namespace: medik8sparams.OperatorNs,
 			}, mdrObj)
-
 			if getErr == nil {
 				// MDR CR exists -- remediation in progress.
 				if !mdrCRSeen {
 					GinkgoWriter.Printf("MDR CR %s detected -- remediation in progress\n", originalNodeName)
+
 					mdrCRSeen = true
 				}
 

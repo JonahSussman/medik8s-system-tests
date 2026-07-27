@@ -117,6 +117,7 @@ var _ = Describe("SNR Functional - Worker Remediation",
 				if err := helpers.WaitForNodeReady(
 					ctx, APIClient, targetWorkerName,
 					snrparams.DefaultPollInterval, snrparams.NodeReadyTimeout,
+					GinkgoWriter.Printf,
 				); err != nil {
 					GinkgoWriter.Printf(
 						"WARNING: node %s did not become Ready within %s: %v\n",
@@ -150,6 +151,7 @@ var _ = Describe("SNR Functional - Worker Remediation",
 			Expect(helpers.WaitForNodeReady(
 				ctx, APIClient, targetWorkerName,
 				snrparams.DefaultPollInterval, snrparams.NodeReadyTimeout,
+				GinkgoWriter.Printf,
 			)).To(Succeed(),
 				"Node %s did not become Ready after remediation", targetWorkerName)
 

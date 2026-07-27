@@ -286,7 +286,7 @@ var _ = Describe("FAR Destructive Tests",
 
 				if err := farutils.WaitForNodeReady(
 					ctx, APIClient, nodeName,
-					farparams.NodeReadyTimeout); err != nil {
+					farparams.NodeReadyTimeout, GinkgoWriter.Printf); err != nil {
 					GinkgoWriter.Printf(
 						"WARNING: safety net: node %s did not become Ready within %s: %v\n",
 						nodeName, farparams.NodeReadyTimeout, err)
@@ -740,14 +740,14 @@ func waitForRemediation(
 
 	Expect(farutils.WaitForNodeReboot(
 		ctx, k8sClient, nodeName, oldBootID,
-		farparams.NodeRebootTimeout)).To(Succeed(),
+		farparams.NodeRebootTimeout, GinkgoWriter.Printf)).To(Succeed(),
 		"Node %s did not reboot", nodeName)
 
 	By("Waiting for node to become Ready")
 
 	Expect(farutils.WaitForNodeReady(
 		ctx, k8sClient, nodeName,
-		farparams.NodeReadyTimeout)).To(Succeed(),
+		farparams.NodeReadyTimeout, GinkgoWriter.Printf)).To(Succeed(),
 		"Node %s did not become Ready after reboot", nodeName)
 }
 

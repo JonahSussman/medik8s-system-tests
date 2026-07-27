@@ -88,6 +88,7 @@ var _ = Describe("SNR Functional - Master Remediation",
 				if err := helpers.WaitForNodeReady(
 					ctx, APIClient, targetMasterName,
 					snrparams.DefaultPollInterval, snrparams.NodeReadyTimeout,
+					GinkgoWriter.Printf,
 				); err != nil {
 					GinkgoWriter.Printf(
 						"WARNING: master %s did not become Ready within %s: %v\n",
@@ -153,6 +154,7 @@ var _ = Describe("SNR Functional - Master Remediation",
 				Expect(helpers.WaitForNodeReady(
 					ctx, APIClient, targetMasterName,
 					snrparams.DefaultPollInterval, snrparams.NodeReadyTimeout,
+					GinkgoWriter.Printf,
 				)).To(Succeed(),
 					"Master %s did not become Ready after remediation", targetMasterName)
 
@@ -270,11 +272,13 @@ var _ = Describe("SNR Functional - Master Remediation",
 				Expect(helpers.WaitForNodeReady(
 					ctx, APIClient, targetMasterName,
 					snrparams.DefaultPollInterval, snrparams.NodeReadyTimeout,
+					GinkgoWriter.Printf,
 				)).To(Succeed(), "Master %s did not become Ready", targetMasterName)
 
 				Expect(helpers.WaitForNodeReady(
 					ctx, APIClient, targetWorkerName,
 					snrparams.DefaultPollInterval, snrparams.NodeReadyTimeout,
+					GinkgoWriter.Printf,
 				)).To(Succeed(), "Worker %s did not become Ready", targetWorkerName)
 
 				By("Verifying both nodes were rebooted, not re-created")
