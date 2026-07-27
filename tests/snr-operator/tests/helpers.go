@@ -457,6 +457,7 @@ func waitForRemediationComplete(
 				// SNR CR exists -- remediation in progress.
 				if !snrSeen {
 					GinkgoWriter.Printf("SNR CR %s detected -- remediation in progress\n", nodeName)
+
 					snrSeen = true
 				}
 
@@ -506,9 +507,9 @@ func createWorkloadPodOnNode(ctx context.Context, nodeName string) *corev1.Pod {
 			NodeName:      nodeName,
 			RestartPolicy: corev1.RestartPolicyAlways,
 			Containers: []corev1.Container{{
-				Name:    "pause",
-				Image:   snrparams.PauseImage,
-				Command: []string{"/pause"},
+				Name:    "workload",
+				Image:   snrparams.WorkloadTestImage,
+				Command: []string{"sleep", "infinity"},
 			}},
 		},
 	}

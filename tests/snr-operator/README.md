@@ -230,7 +230,7 @@ remediated node after SNR completes the remediation cycle.
 
 - **Operators**: SNR v0.13.0+, NHC v0.12.0+
 - **Cluster**: Multi-node with 2+ workers (skips if insufficient)
-- **Environment**: Connected (workload pod uses `registry.k8s.io/pause:3.9`)
+- **Environment**: Connected or disconnected (workload pod uses OCP internal registry)
 - **Standalone**: `ginkgo --label-filter="snr" --focus="ResourceDeletion" ./tests/snr-operator/...`
 - **Pass criteria**: Node rebooted, creation timestamp unchanged, workload pod evicted (deleted or moved off remediated node)
 
@@ -242,7 +242,7 @@ remediated node after SNR completes the remediation cycle.
 
 - **Operators**: SNR v0.13.0+, NHC v0.12.0+
 - **Cluster**: Multi-node with 2+ workers (skips if insufficient)
-- **Environment**: Connected (workload pod uses `registry.k8s.io/pause:3.9`)
+- **Environment**: Connected or disconnected (workload pod uses OCP internal registry)
 - **Standalone**: `ginkgo --label-filter="snr" --focus="OutOfServiceTaint" ./tests/snr-operator/...`
 - **Pass criteria**: Node rebooted, creation timestamp unchanged, workload pod evicted (deleted or moved off remediated node)
 
