@@ -1,6 +1,7 @@
 package medik8sparams
 
 import (
+	"os"
 	"time"
 )
 
@@ -11,7 +12,20 @@ const (
 	OperatorNs = "openshift-workload-availability"
 	// DefaultTimeout represents the default timeout.
 	DefaultTimeout = 300 * time.Second
-
-	// DefaultWorkloadImage is the container image used for test workload pods.
-	DefaultWorkloadImage = "image-registry.openshift-image-registry.svc:5000/openshift/tools:latest"
 )
+
+// DefaultWorkloadImage is the container image used for test workload pods.
+// Set via WORKLOAD_IMAGE env var. In Prow CI this is written to
+// SHARED_DIR/workload_image by the medik8s-lib step and exported by the
+// e2e-test commands block. For local runs set it manually:
+//
+//	export WORKLOAD_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal:latest
+var DefaultWorkloadImage = func() string {
+	img := os.Getenv("WORKLOAD_IMAGE")
+	if img == "" {
+		panic("WORKLOAD_IMAGE environment variable must be set; " +
+			"see README.md for local-run instructions")
+	}
+
+	return img
+}()

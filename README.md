@@ -42,6 +42,10 @@ The test framework is designed to test a pre-installed OCP cluster which meets t
 ### General environment variables
 #### Mandatory:
 * `KUBECONFIG` - Path to kubeconfig file. Default: empty
+* `WORKLOAD_IMAGE` - Container image for test workload pods (used by destructive tests to verify pod eviction after remediation). In Prow CI this is set automatically by the `medik8s-lib` step. For local runs:
+  ```bash
+  export WORKLOAD_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal:latest
+  ```
 #### Optional:
 * Logging with glog
 
@@ -102,6 +106,7 @@ It is recommended to execute the runner script through the `make run-tests` make
 Example:
 ```
 $ export KUBECONFIG=/path/to/kubeconfig
+$ export WORKLOAD_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal:latest
 $ export ECO_TEST_FEATURES="far-operator"
 $ export ECO_TEST_LABELS='far'
 $ make run-tests                    

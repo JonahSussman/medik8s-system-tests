@@ -114,7 +114,7 @@ const (
 	// SharedCredentialsSecretName is the Secret created by the test suite to hold
 	// fence agent credentials in the format expected by SharedSecretName.
 	SharedCredentialsSecretName = "far-test-shared-credentials"
-
-	// WorkloadTestImage is the container image used for test workload pods.
-	WorkloadTestImage = medik8sparams.DefaultWorkloadImage
 )
+
+// WorkloadTestImage is the container image used for test workload pods.
+var WorkloadTestImage = medik8sparams.DefaultWorkloadImage
