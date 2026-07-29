@@ -123,10 +123,10 @@ const (
 	// OutOfServiceTaint remediation strategy (standard K8s taint).
 	OutOfServiceTaintKey = "node.kubernetes.io/out-of-service"
 
-	// WorkloadTestImage is the container image used for test workload pods.
-	WorkloadTestImage = medik8sparams.DefaultWorkloadImage
-
 	// MinReadyMasterNodes is the minimum number of Ready master nodes
 	// required for master remediation tests (etcd quorum safety).
 	MinReadyMasterNodes = 3
 )
+
+// WorkloadTestImage is the container image used for test workload pods.
+var WorkloadTestImage = medik8sparams.DefaultWorkloadImage
