@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -124,43 +125,75 @@ func GetNodeInternalIP(
 	return "", fmt.Errorf("no InternalIP found for node %s", nodeName)
 }
 
-// findSSHKey returns the first existing SSH private key path from a list
-// of well-known locations. Checked in order:
-//  1. $CLUSTER_PROFILE_DIR/ssh-privatekey -- Prow CI (ci-operator)
-//  2. /home/kni/.ssh/id_rsa -- lab hypervisors (srv-16, edge servers)
-//  3. $HOME/.ssh/id_rsa -- generic default
+// sshKeyOnce ensures findSSHKey resolves the key once per process.
+var sshKeyOnce sync.Once
+var sshKeyPath string
+var sshKeyErr error
+
+// findSSHKey finds the first available SSH private key, copies it to a
+// temp file with 0600 permissions, and caches the path for reuse.
+// The copy is needed because ci-operator mounts secrets as 0644
+// (Kubernetes read-only mount) and ssh rejects keys with open permissions.
+// The temp file lives for the process lifetime (no cleanup needed).
 func findSSHKey() (string, error) {
-	candidates := []string{
-		os.Getenv("CLUSTER_PROFILE_DIR") + "/ssh-privatekey",
-		"/home/kni/.ssh/id_rsa",
-		os.Getenv("HOME") + "/.ssh/id_rsa",
-	}
-
-	for _, p := range candidates {
-		if p == "/ssh-privatekey" || p == "/.ssh/id_rsa" {
-			continue // skip if env var was empty
+	sshKeyOnce.Do(func() {
+		candidates := []string{
+			os.Getenv("CLUSTER_PROFILE_DIR") + "/ssh-privatekey",
+			"/home/kni/.ssh/id_rsa",
+			os.Getenv("HOME") + "/.ssh/id_rsa",
 		}
 
-		fi, err := os.Stat(p)
-		if err != nil {
-			continue
+		for _, p := range candidates {
+			if p == "/ssh-privatekey" || p == "/.ssh/id_rsa" {
+				continue // skip if env var was empty
+			}
+
+			data, err := os.ReadFile(p)
+			if err != nil {
+				continue
+			}
+
+			tmpFile, createErr := os.CreateTemp("", "ssh-key-*")
+			if createErr != nil {
+				sshKeyErr = fmt.Errorf("findSSHKey: create temp file: %w", createErr)
+
+				return
+			}
+
+			if err := tmpFile.Chmod(0o600); err != nil {
+				os.Remove(tmpFile.Name())
+				sshKeyErr = fmt.Errorf("findSSHKey: chmod: %w", err)
+
+				return
+			}
+
+			if _, err := tmpFile.Write(data); err != nil {
+				os.Remove(tmpFile.Name())
+				sshKeyErr = fmt.Errorf("findSSHKey: write: %w", err)
+
+				return
+			}
+
+			if err := tmpFile.Close(); err != nil {
+				os.Remove(tmpFile.Name())
+				sshKeyErr = fmt.Errorf("findSSHKey: close: %w", err)
+
+				return
+			}
+
+			fmt.Fprintf(os.Stderr, "findSSHKey: using %s (copied from %s)\n",
+				tmpFile.Name(), p)
+			sshKeyPath = tmpFile.Name()
+
+			return
 		}
 
-		// Reject keys with group/other permissions (ssh refuses them anyway).
-		if fi.Mode().Perm()&0o077 != 0 {
-			fmt.Fprintf(os.Stderr,
-				"findSSHKey: skipping %s (permissions %o too open, need 0600)\n",
-				p, fi.Mode().Perm())
+		sshKeyErr = fmt.Errorf(
+			"no SSH private key found; checked: $CLUSTER_PROFILE_DIR/ssh-privatekey, " +
+				"/home/kni/.ssh/id_rsa, $HOME/.ssh/id_rsa")
+	})
 
-			continue
-		}
-
-		return p, nil
-	}
-
-	return "", fmt.Errorf(
-		"no SSH private key found; checked: $CLUSTER_PROFILE_DIR/ssh-privatekey, " +
-			"/home/kni/.ssh/id_rsa, $HOME/.ssh/id_rsa")
+	return sshKeyPath, sshKeyErr
 }
 
 // runSSH executes a command on a node via SSH to the core user.
