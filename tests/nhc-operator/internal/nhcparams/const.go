@@ -55,6 +55,9 @@ const (
 	// NHCControlPlaneTestName is the NHC CR name for control-plane monitoring.
 	NHCControlPlaneTestName = "nhc-cp"
 
+	// OcDebugTimeout is the maximum time to wait for oc debug commands.
+	OcDebugTimeout = 5 * time.Minute
+
 	// SSHTimeout is the maximum time to wait for SSH commands on nodes.
 	// SSH is used instead of oc debug for kubelet stop/start because
 	// oc debug cannot schedule pods when kubelet is stopped.

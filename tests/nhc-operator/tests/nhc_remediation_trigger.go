@@ -114,7 +114,10 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 
 				// Best-effort kubelet restart via SSH in case the test failed
 				// before the explicit restart step (e.g., test 4 with TestRemediation).
-				_ = startKubeletForRemediation(ctx, targetWorkerName)
+				// Only attempt if SSH is available (Prow AWS blocks SSH).
+				if isSSHAvailable() {
+					_ = startKubeletForRemediation(ctx, targetWorkerName)
+				}
 
 				By("Safety net: waiting for node " + targetWorkerName + " to become Ready")
 
@@ -273,6 +276,12 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 				// TestRemediation (10s duration) triggers first; SNR (30s) should
 				// NOT create a remediation CR because the node is already being
 				// remediated by TestRemediation.
+				//
+				// This test requires SSH to restart kubelet because TestRemediation
+				// has no controller (no reboot). Skip on Prow AWS where SSH is blocked.
+				if !isSSHAvailable() {
+					Skip("SSH not available -- test requires manual kubelet restart (TestRemediation has no controller)")
+				}
 
 				By("Setting up TestRemediation dummy CRDs and RBAC")
 

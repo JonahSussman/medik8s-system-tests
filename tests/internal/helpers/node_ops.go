@@ -135,6 +135,9 @@ var sshKeyErr error
 // The copy is needed because ci-operator mounts secrets as 0644
 // (Kubernetes read-only mount) and ssh rejects keys with open permissions.
 // The temp file lives for the process lifetime (no cleanup needed).
+// FindSSHKey is the exported version for callers that need to check availability.
+var FindSSHKey = findSSHKey
+
 func findSSHKey() (string, error) {
 	sshKeyOnce.Do(func() {
 		candidates := []string{
@@ -196,9 +199,32 @@ func findSSHKey() (string, error) {
 	return sshKeyPath, sshKeyErr
 }
 
+// sshBastionOnce resolves the bastion host once per process.
+var sshBastionOnce sync.Once
+var sshBastionHost string
+
+// findSSHBastion checks if an ssh-bastion service is deployed in the cluster.
+// On Prow AWS, direct SSH to nodes is blocked by security groups; the bastion
+// pod (deployed via the ssh-bastion step-registry ref) proxies SSH traffic.
+// Returns the bastion hostname, or empty string if not available.
+func findSSHBastion() string {
+	sshBastionOnce.Do(func() {
+		out, err := exec.Command("oc", "get", "service", "ssh-bastion",
+			"-n", "test-ssh-bastion",
+			"-o", "jsonpath={.status.loadBalancer.ingress[0].hostname}").Output()
+		if err == nil && len(out) > 0 {
+			sshBastionHost = strings.TrimSpace(string(out))
+			fmt.Fprintf(os.Stderr, "findSSHBastion: using bastion %s\n", sshBastionHost)
+		}
+	})
+
+	return sshBastionHost
+}
+
 // runSSH executes a command on a node via SSH to the core user.
 // Unlike oc debug, SSH works even when kubelet is stopped because
 // sshd runs independently of kubelet.
+// On Prow AWS, SSH is proxied through the ssh-bastion service (ProxyJump).
 func runSSH(
 	ctx context.Context, nodeIP string, timeout time.Duration, cmd string,
 ) (string, error) {
@@ -219,6 +245,12 @@ func runSSH(
 	}
 
 	args = append(args, "-i", keyPath)
+
+	// On Prow AWS, direct SSH is blocked by security groups.
+	// Proxy through the ssh-bastion if available.
+	if bastion := findSSHBastion(); bastion != "" {
+		args = append(args, "-o", fmt.Sprintf("ProxyCommand=ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -W %%h:%%p core@%s", keyPath, bastion))
+	}
 
 	args = append(args, fmt.Sprintf("core@%s", nodeIP), cmd)
 
