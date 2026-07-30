@@ -5,6 +5,10 @@ GOPATH="${GOPATH:-${HOME}/go}"
 PATH=$PATH:$GOPATH/bin
 TEST_DIR="./tests"
 
+# In CI (ARTIFACT_DIR set by ci-operator), default to verbose test output
+# so passing tests also show their step-by-step timeline in the logs.
+ECO_TEST_VERBOSE="${ECO_TEST_VERBOSE:-${ARTIFACT_DIR:+true}}"
+
 # In CI, ARTIFACT_DIR is set by ci-operator and is collected/uploaded automatically.
 # Fall back to ECO_REPORTS_DUMP_DIR if already set, then /tmp/reports for local runs.
 export ECO_REPORTS_DUMP_DIR="${ARTIFACT_DIR:-${ECO_REPORTS_DUMP_DIR:-/tmp/reports}}"

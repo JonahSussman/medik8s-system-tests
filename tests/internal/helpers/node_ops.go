@@ -312,6 +312,9 @@ func StopKubeletSSH(
 // it was previously stopped -- oc debug cannot schedule a pod when
 // kubelet is down, but SSH connects directly to sshd which runs
 // independently of kubelet.
+// After starting kubelet, a daemon-reload is issued to ensure systemd
+// picks up any unit file changes from the reboot cycle (matches the
+// Python reference implementation).
 func StartKubeletSSH(
 	ctx context.Context, k8sClient client.Client,
 	nodeName string, timeout time.Duration,
@@ -321,7 +324,11 @@ func StartKubeletSSH(
 		return err
 	}
 
-	_, err = runSSH(ctx, ip, timeout, "sudo systemctl start kubelet")
+	if _, err := runSSH(ctx, ip, timeout, "sudo systemctl start kubelet"); err != nil {
+		return err
+	}
+
+	_, err = runSSH(ctx, ip, timeout, "sudo systemctl daemon-reload")
 
 	return err
 }

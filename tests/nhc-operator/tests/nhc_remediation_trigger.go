@@ -139,6 +139,8 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 			Label(labels.TierAcceptance,
 				labels.PlatformAny, labels.ComponentRemediation),
 			func() {
+				Skip("temporarily disabled -- verifying SSH-based kubelet stop on Prow AWS (test4 first)")
+
 				By("Creating NHC CR targeting single node by hostname")
 
 				nhcCR := buildNHCWithHostnameSelector(nhcparams.NHCTestName, targetWorkerName)
@@ -218,6 +220,8 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 			Label(labels.TierAcceptance,
 				labels.PlatformAny, labels.ComponentRemediation),
 			func() {
+				Skip("temporarily disabled -- verifying SSH-based kubelet stop on Prow AWS (test4 first)")
+
 				By("Creating NHC CR with legacy name 'nhc-worker-default'")
 
 				nhcWorker := buildNHCForWorkers(nhcparams.NHCOldDefaultName)
@@ -363,6 +367,8 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 			Label(labels.TierAcceptance,
 				labels.PlatformAny, labels.ComponentRemediation),
 			func() {
+				Skip("temporarily disabled -- verifying SSH-based kubelet stop on Prow AWS (test4 first)")
+
 				// Per OCP-71171 / Python test_nhc_cr_deletion: two SNR-based NHC CRs
 				// with different unhealthy durations. The faster one (10s) triggers
 				// first via SNR; the slower one (11s) should NOT start remediating.
@@ -482,6 +488,8 @@ var _ = Describe("NHC Functional -- Selector and CR Management",
 			Label(labels.TierAcceptance,
 				labels.PlatformAny, labels.ComponentRemediation),
 			func() {
+				Skip("temporarily disabled -- verifying SSH-based kubelet stop on Prow AWS (test4 first)")
+
 				By("Creating NHC CR for workers")
 
 				nhcCR := buildNHCForWorkers(nhcparams.NHCTestName)

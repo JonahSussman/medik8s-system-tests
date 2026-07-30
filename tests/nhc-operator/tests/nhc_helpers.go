@@ -3,7 +3,6 @@ package tests
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -131,28 +130,15 @@ func isSNRCRDInstalled(ctx context.Context) bool {
 	return false
 }
 
-// stopKubeletForRemediation wraps helpers.StopKubelet with error
-// suppression for expected failure modes during kubelet stop.
-// Uses oc debug (same pattern as SNR/MDR/FAR).
+// stopKubeletForRemediation stops kubelet on the target node via SSH.
+// SSH is used instead of oc debug because:
+//   - oc debug can timeout for 5+ minutes on Prow AWS (unreliable)
+//   - SSH is deterministic and fast (~1s via ssh-bastion proxy)
+//   - Matches the Python reference implementation (invoke_ssh_on_the_node)
+//
+// On Prow AWS, SSH traffic is proxied through the ssh-bastion service.
 func stopKubeletForRemediation(ctx context.Context, nodeName string) error {
-	err := helpers.StopKubelet(ctx, nodeName, nhcparams.OcDebugTimeout)
-	if err == nil {
-		return nil
-	}
-
-	errMsg := err.Error()
-
-	if (strings.Contains(errMsg, "oc debug on node") && strings.Contains(errMsg, "timed out")) ||
-		strings.Contains(errMsg, "unable to create the debug pod") ||
-		(strings.Contains(errMsg, "exit status 1") && strings.Contains(errMsg, "Starting pod")) {
-		GinkgoWriter.Printf(
-			"stopKubeletForRemediation(%s): suppressed expected error "+
-				"(kubelet likely stopped): %v\n", nodeName, err)
-
-		return nil
-	}
-
-	return err
+	return helpers.StopKubeletSSH(ctx, APIClient, nodeName, nhcparams.SSHTimeout)
 }
 
 // startKubeletForRemediation starts kubelet on the target node via SSH.
