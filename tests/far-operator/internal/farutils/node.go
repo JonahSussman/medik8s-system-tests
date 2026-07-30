@@ -17,8 +17,11 @@ func RunOnNode(ctx context.Context, nodeName string, cmd ...string) (string, err
 }
 
 // StopKubelet stops the kubelet service on the target node.
-func StopKubelet(ctx context.Context, nodeName string) error {
-	return helpers.StopKubelet(ctx, nodeName, farparams.OcDebugTimeout)
+func StopKubelet(
+	ctx context.Context, nodeName string,
+	logf func(string, ...interface{}),
+) error {
+	return helpers.StopKubelet(ctx, nodeName, farparams.OcDebugTimeout, logf)
 }
 
 // StartKubelet attempts to start the kubelet service on the target node.
@@ -49,9 +52,10 @@ func GetNodeBootIDFromAPI(
 func WaitForNodeNotReady(
 	ctx context.Context, k8sClient client.Client, nodeName string,
 	timeout time.Duration,
+	logf func(string, ...interface{}),
 ) error {
 	return helpers.WaitForNodeNotReady(
-		ctx, k8sClient, nodeName, farparams.DefaultPollInterval, timeout,
+		ctx, k8sClient, nodeName, farparams.DefaultPollInterval, timeout, logf,
 	)
 }
 
@@ -59,9 +63,10 @@ func WaitForNodeNotReady(
 func WaitForNodeReady(
 	ctx context.Context, k8sClient client.Client, nodeName string,
 	timeout time.Duration,
+	logf func(string, ...interface{}),
 ) error {
 	return helpers.WaitForNodeReady(
-		ctx, k8sClient, nodeName, farparams.DefaultPollInterval, timeout,
+		ctx, k8sClient, nodeName, farparams.DefaultPollInterval, timeout, logf,
 	)
 }
 
@@ -70,9 +75,10 @@ func WaitForNodeReady(
 func WaitForNodeReboot(
 	ctx context.Context, k8sClient client.Client, nodeName string,
 	previousBootID string, timeout time.Duration,
+	logf func(string, ...interface{}),
 ) error {
 	return helpers.WaitForNodeReboot(
 		ctx, k8sClient, nodeName, previousBootID,
-		farparams.BootIDPollInterval, timeout,
+		farparams.BootIDPollInterval, timeout, logf,
 	)
 }

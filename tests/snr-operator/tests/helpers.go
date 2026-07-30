@@ -216,7 +216,7 @@ func findMessageInDSPodLogs(message string, logWindow time.Duration) error {
 // These are all expected because stopping kubelet inherently disrupts
 // the debug pod that sent the stop command.
 func stopKubeletForRemediation(ctx context.Context, nodeName string) error {
-	err := helpers.StopKubelet(ctx, nodeName, snrparams.OcDebugTimeout)
+	err := helpers.StopKubelet(ctx, nodeName, snrparams.OcDebugTimeout, GinkgoWriter.Printf)
 	if err == nil {
 		return nil
 	}

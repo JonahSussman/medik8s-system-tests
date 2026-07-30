@@ -21,11 +21,9 @@ const (
 //
 //	export WORKLOAD_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal:latest
 var DefaultWorkloadImage = func() string {
-	img := os.Getenv("WORKLOAD_IMAGE")
-	if img == "" {
-		panic("WORKLOAD_IMAGE environment variable must be set; " +
-			"see README.md for local-run instructions")
+	if img := os.Getenv("WORKLOAD_IMAGE"); img != "" {
+		return img
 	}
 
-	return img
+	return "registry.access.redhat.com/ubi9/ubi-minimal:latest"
 }()
