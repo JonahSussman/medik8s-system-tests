@@ -143,7 +143,8 @@ func stopKubeletForRemediation(ctx context.Context, nodeName string) error {
 
 // startKubeletForRemediation starts kubelet on the target node via SSH.
 // SSH is required because oc debug cannot schedule a pod on a node
-// whose kubelet is stopped. Only used by test 4 (OCP-66814).
+// whose kubelet is stopped. Used by test 4 (OCP-66814) and as a
+// safety-net recovery step in JustAfterEach for all destructive tests.
 func startKubeletForRemediation(ctx context.Context, nodeName string) error {
 	return helpers.StartKubeletSSH(ctx, APIClient, nodeName, nhcparams.SSHTimeout)
 }
@@ -343,7 +344,7 @@ func logNHCControllerState() {
 	}
 }
 
-// --- TestRemediation dummy CRD helpers (for multi-NHC tests OCP-66814, OCP-71171) ---
+// --- TestRemediation dummy CRD helpers (for multi-NHC test OCP-66814) ---
 
 // testRemediationGVK is the GVK for TestRemediation CRs.
 var testRemediationGVK = schema.GroupVersionKind{

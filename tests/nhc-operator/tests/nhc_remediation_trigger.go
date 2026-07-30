@@ -124,6 +124,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 				if err := helpers.WaitForNodeReady(ctx, APIClient,
 					targetWorkerName,
 					nhcparams.DefaultPollInterval, nhcparams.NodeReadyTimeout,
+					GinkgoWriter.Printf,
 				); err != nil {
 					GinkgoWriter.Printf(
 						"WARNING: node %s did not become Ready within %s: %v\n",
@@ -139,8 +140,6 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 			Label(labels.TierAcceptance,
 				labels.PlatformAny, labels.ComponentRemediation),
 			func() {
-				Skip("temporarily disabled -- verifying SSH-based kubelet stop on Prow AWS (test4 first)")
-
 				By("Creating NHC CR targeting single node by hostname")
 
 				nhcCR := buildNHCWithHostnameSelector(nhcparams.NHCTestName, targetWorkerName)
@@ -162,6 +161,20 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 					nhcparams.NHCPhaseRemediating, nhcparams.NodeNotReadyTimeout)).To(Succeed(),
 					"NHC did not enter Remediating phase")
 
+				By("Verifying minHealthy and unhealthyConditions are editable during remediation")
+
+				// Non-selector fields should remain editable even during active remediation.
+				editableTarget := &unstructured.Unstructured{}
+				editableTarget.SetGroupVersionKind(nhcGVK)
+				editableTarget.SetName(nhcparams.NHCTestName)
+
+				editablePatch := []byte(`{"spec":{"minHealthy":"0%","unhealthyConditions":[{"type":"Ready","status":"False","duration":"60s"},{"type":"Ready","status":"Unknown","duration":"60s"}]}}`)
+				Expect(APIClient.Patch(ctx, editableTarget,
+					client.RawPatch(types.MergePatchType, editablePatch),
+				)).To(Succeed(),
+					"minHealthy and unhealthyConditions should be editable during remediation")
+				GinkgoWriter.Println("minHealthy and unhealthyConditions edit succeeded during remediation (expected)")
+
 				By("Verifying selector edit is rejected during remediation")
 
 				// NHC webhook should reject selector changes during active remediation.
@@ -174,7 +187,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 					client.RawPatch(types.MergePatchType, patchBytes),
 				)
 
-				Expect(patchErr).To(HaveOccurred(),
+				Expect(patchErr).To(MatchError(ContainSubstring("selector update prohibited due to running remediation")),
 					"Selector edit should be rejected by NHC webhook during remediation")
 				GinkgoWriter.Printf("Selector edit rejected (expected): %v\n", patchErr)
 
@@ -182,7 +195,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 
 				deleteErr := APIClient.Delete(ctx, nhcCR)
 				// NHC webhook rejects deletion during active remediation.
-				Expect(deleteErr).To(HaveOccurred(),
+				Expect(deleteErr).To(MatchError(ContainSubstring("deletion prohibited due to running remediation")),
 					"NHC webhook should reject deletion during active remediation")
 				GinkgoWriter.Printf("NHC deletion rejected (expected): %v\n", deleteErr)
 
@@ -206,6 +219,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 				Expect(helpers.WaitForNodeReady(ctx, APIClient,
 					targetWorkerName,
 					nhcparams.DefaultPollInterval, nhcparams.NodeReadyTimeout,
+					GinkgoWriter.Printf,
 				)).To(Succeed())
 
 				By("Waiting for NHC to return to Enabled phase")
@@ -220,8 +234,6 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 			Label(labels.TierAcceptance,
 				labels.PlatformAny, labels.ComponentRemediation),
 			func() {
-				Skip("temporarily disabled -- verifying SSH-based kubelet stop on Prow AWS (test4 first)")
-
 				By("Creating NHC CR with legacy name 'nhc-worker-default'")
 
 				nhcWorker := buildNHCForWorkers(nhcparams.NHCOldDefaultName)
@@ -260,6 +272,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 				Expect(helpers.WaitForNodeReady(ctx, APIClient,
 					targetWorkerName,
 					nhcparams.DefaultPollInterval, nhcparams.NodeReadyTimeout,
+					GinkgoWriter.Printf,
 				)).To(Succeed())
 
 				By("Verifying NHC controller is still running (not crashed)")
@@ -359,6 +372,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 				Expect(helpers.WaitForNodeReady(ctx, APIClient,
 					targetWorkerName,
 					nhcparams.DefaultPollInterval, nhcparams.NodeReadyTimeout,
+					GinkgoWriter.Printf,
 				)).To(Succeed())
 			})
 
@@ -367,8 +381,6 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 			Label(labels.TierAcceptance,
 				labels.PlatformAny, labels.ComponentRemediation),
 			func() {
-				Skip("temporarily disabled -- verifying SSH-based kubelet stop on Prow AWS (test4 first)")
-
 				// Per OCP-71171 / Python test_nhc_cr_deletion: two SNR-based NHC CRs
 				// with different unhealthy durations. The faster one (10s) triggers
 				// first via SNR; the slower one (11s) should NOT start remediating.
@@ -449,6 +461,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 				Expect(helpers.WaitForNodeReady(ctx, APIClient,
 					targetWorkerName,
 					nhcparams.DefaultPollInterval, nhcparams.NodeReadyTimeout,
+					GinkgoWriter.Printf,
 				)).To(Succeed())
 			})
 	})
@@ -488,8 +501,6 @@ var _ = Describe("NHC Functional -- Selector and CR Management",
 			Label(labels.TierAcceptance,
 				labels.PlatformAny, labels.ComponentRemediation),
 			func() {
-				Skip("temporarily disabled -- verifying SSH-based kubelet stop on Prow AWS (test4 first)")
-
 				By("Creating NHC CR for workers")
 
 				nhcCR := buildNHCForWorkers(nhcparams.NHCTestName)
@@ -535,5 +546,45 @@ var _ = Describe("NHC Functional -- Selector and CR Management",
 				Expect(err).ToNot(HaveOccurred())
 				Expect(phase).To(Equal(nhcparams.NHCPhaseEnabled),
 					"NHC should remain Enabled after selector edit")
+
+				By("Verifying invalid selector operator value is rejected by webhook")
+
+				invalidOpPatch := []byte(`{"spec":{"selector":{"matchExpressions":[{"key":"node-role.kubernetes.io/worker","operator":"doesNotExist"}]}}}`)
+				invalidTarget := &unstructured.Unstructured{}
+				invalidTarget.SetGroupVersionKind(nhcGVK)
+				invalidTarget.SetName(nhcparams.NHCTestName)
+
+				invalidOpErr := APIClient.Patch(ctx, invalidTarget,
+					client.RawPatch(types.MergePatchType, invalidOpPatch),
+				)
+				Expect(invalidOpErr).To(MatchError(ContainSubstring("is not a valid")),
+					"Editing NHC with invalid selector operator should be rejected")
+				GinkgoWriter.Printf("Invalid operator edit rejected (expected): %v\n", invalidOpErr)
+
+				By("Verifying empty selector is rejected by webhook")
+
+				emptySelectorPatch := []byte(`{"spec":{"selector":{"matchExpressions":[]}}}`)
+				emptyTarget := &unstructured.Unstructured{}
+				emptyTarget.SetGroupVersionKind(nhcGVK)
+				emptyTarget.SetName(nhcparams.NHCTestName)
+
+				emptyErr := APIClient.Patch(ctx, emptyTarget,
+					client.RawPatch(types.MergePatchType, emptySelectorPatch),
+				)
+				Expect(emptyErr).To(MatchError(ContainSubstring("Selector is mandatory")),
+					"Editing NHC with empty selector should be rejected")
+				GinkgoWriter.Printf("Empty selector edit rejected (expected): %v\n", emptyErr)
+
+				By("Verifying NHC state unchanged after rejected edits")
+
+				phase, err = getNHCPhase(ctx, nhcparams.NHCTestName)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(phase).To(Equal(nhcparams.NHCPhaseEnabled),
+					"NHC should remain Enabled after rejected edits")
+
+				observedNodes, err := getNHCObservedNodes(ctx, nhcparams.NHCTestName)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(observedNodes).To(Equal(int64(0)),
+					"Observed nodes should still be 0 (doesNotExist key selector)")
 			})
 	})
