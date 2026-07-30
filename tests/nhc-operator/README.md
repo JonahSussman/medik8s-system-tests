@@ -92,24 +92,26 @@ coordination, and legacy CR name handling.
 ### 5. NHC Selector Editing ([OCP-56938](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-56938))
 
 Edits the NHC selector to a non-existent key and verifies observed nodes
-drops to 0 without crashing the NHC controller.
+drops to 0 without crashing the NHC controller. Also verifies webhook
+rejects invalid selector operator values and empty selectors.
 
 - **Operators**: NHC v0.12.0+, SNR
 - **Cluster**: Multi-node (2+ workers)
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="nhc && disruption:nondestructive" --focus="selector is edited" ./tests/nhc-operator/...`
-- **Pass criteria**: Observed nodes drops to 0, NHC remains Enabled
+- **Pass criteria**: Observed nodes drops to 0, NHC remains Enabled, invalid operator value rejected ("is not a valid"), empty selector rejected ("Selector is mandatory"), NHC state unchanged after rejected edits
 
 ### 6. NHC Editing and Deletion Blocked During Remediation ([OCP-56600](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-56600))
 
-Stops kubelet to trigger remediation, then verifies NHC webhook blocks
-selector editing and CR deletion while remediation is in progress.
+Stops kubelet via SSH to trigger remediation, then verifies non-selector
+fields (minHealthy, unhealthyConditions) remain editable, while NHC
+webhook blocks selector editing and CR deletion during active remediation.
 
 - **Operators**: NHC v0.12.0+, SNR
-- **Cluster**: Multi-node (2+ workers)
+- **Cluster**: Multi-node (2+ workers), SSH access to worker nodes
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="nhc && disruption:destructive" --focus="selector editing and deletion" ./tests/nhc-operator/...`
-- **Pass criteria**: Selector edit rejected by webhook (error returned), NHC CR still exists and Remediating after delete attempt, SNR remediation completes, NHC returns to Enabled
+- **Pass criteria**: minHealthy and unhealthyConditions edit succeeds during remediation, selector edit rejected ("selector update prohibited due to running remediation"), CR deletion rejected ("deletion prohibited due to running remediation"), NHC CR still exists and Remediating after delete attempt, SNR remediation completes, node recovers, NHC returns to Enabled
 
 ### 7. Old Default NHC CR Name ([OCP-69711](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-69711))
 
