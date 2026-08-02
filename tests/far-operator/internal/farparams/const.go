@@ -117,4 +117,4 @@ const (
 )
 
 // WorkloadTestImage is the container image used for test workload pods.
-var WorkloadTestImage = medik8sparams.DefaultWorkloadImage
+var WorkloadTestImage = medik8sparams.WorkloadImage

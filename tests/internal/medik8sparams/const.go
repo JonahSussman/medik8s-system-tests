@@ -14,16 +14,19 @@ const (
 	DefaultTimeout = 300 * time.Second
 )
 
-// DefaultWorkloadImage is the container image used for test workload pods.
+// WorkloadImage is the container image used for test workload pods.
 // Set via WORKLOAD_IMAGE env var. In Prow CI this is written to
 // SHARED_DIR/workload_image by the medik8s-lib step and exported by the
 // e2e-test commands block. For local runs set it manually:
 //
 //	export WORKLOAD_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal:latest
-var DefaultWorkloadImage = func() string {
-	if img := os.Getenv("WORKLOAD_IMAGE"); img != "" {
-		return img
+var WorkloadImage = func() string {
+	img := os.Getenv("WORKLOAD_IMAGE")
+	if img == "" {
+		panic("WORKLOAD_IMAGE env var is required but not set. " +
+			"In Prow CI this is exported from SHARED_DIR/workload_image by the e2e-test commands block. " +
+			"For local runs: export WORKLOAD_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal:latest")
 	}
 
-	return "registry.access.redhat.com/ubi9/ubi-minimal:latest"
+	return img
 }()
