@@ -81,11 +81,13 @@ container or pod level). Only checks the `manager` container.
 
 Tests that stop kubelet on worker nodes and verify NHC behavior during
 active remediation: selector editing, CR deletion blocking, multi-CR
-coordination, and legacy CR name handling.
+coordination, and legacy CR name handling. NHC works with any operator
+that provides a remediation template CRD; these tests use SNR as the
+remediator.
 
 ### Prerequisites (Remediation Trigger)
 
-- NHC and SNR operators installed
+- NHC and SNR operators installed (SNR is used as the remediator in these tests)
 - At least 2 Ready worker nodes
 - `KUBECONFIG` set with cluster-admin access
 

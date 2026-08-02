@@ -21,6 +21,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// NHC works with any operator providing a remediation template CRD.
+// These tests use SNR as the remediator because it is co-installed
+// in the Prow CI job and provides automatic node reboot recovery.
 var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 	Serial, Ordered, ContinueOnFailure,
 	Label(labels.OperatorNHC, nhcparams.Label,
@@ -35,7 +38,13 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 		BeforeAll(func() {
 			ctx = context.Background()
 
-			By("Checking SNR CRD is installed (needed as remediator)")
+			By("Checking SSH access is available for kubelet stop/start")
+
+			if !isSSHAvailable() {
+				Skip("SSH not available -- NHC remediation trigger tests require SSH access to worker nodes")
+			}
+
+			By("Checking SNR CRD is installed (used as remediator in these tests)")
 
 			if !isSNRCRDInstalled(ctx) {
 				Skip("SelfNodeRemediation CRD not found; SNR operator not installed -- skipping NHC remediation trigger tests")
@@ -137,8 +146,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 
 		It("should block selector editing and deletion during remediation",
 			reportxml.ID("56600"),
-			Label(labels.TierAcceptance,
-				labels.PlatformAny, labels.ComponentRemediation),
+			Label(labels.TierAcceptance, labels.PlatformAny, labels.ComponentRemediation),
 			func() {
 				By("Creating NHC CR targeting single node by hostname")
 
@@ -231,8 +239,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 
 		It("should handle old default NHC CR name without crash",
 			reportxml.ID("69711"),
-			Label(labels.TierAcceptance,
-				labels.PlatformAny, labels.ComponentRemediation),
+			Label(labels.TierAcceptance, labels.PlatformAny, labels.ComponentRemediation),
 			func() {
 				By("Creating NHC CR with legacy name 'nhc-worker-default'")
 
@@ -286,19 +293,14 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 
 		It("should remediate only one CR at a time when multiple NHCs exist",
 			reportxml.ID("66814"),
-			Label(labels.TierAcceptance,
-				labels.PlatformAny, labels.ComponentRemediation),
+			Label(labels.TierAcceptance, labels.PlatformAny, labels.ComponentRemediation),
 			func() {
 				// Per Polarion OCP-66814: two NHC CRs with DIFFERENT remediators.
 				// TestRemediation (10s duration) triggers first; SNR (30s) should
 				// NOT create a remediation CR because the node is already being
 				// remediated by TestRemediation.
-				//
-				// This test requires SSH to restart kubelet because TestRemediation
-				// has no controller (no reboot). Skip on Prow AWS where SSH is blocked.
-				if !isSSHAvailable() {
-					Skip("SSH not available -- test requires manual kubelet restart (TestRemediation has no controller)")
-				}
+				// SSH availability is checked in BeforeAll; this test uses SSH
+				// to restart kubelet because TestRemediation has no controller.
 
 				By("Setting up TestRemediation dummy CRDs and RBAC")
 
@@ -378,8 +380,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 
 		It("should allow deletion of non-remediating NHC while another is remediating",
 			reportxml.ID("71171"),
-			Label(labels.TierAcceptance,
-				labels.PlatformAny, labels.ComponentRemediation),
+			Label(labels.TierAcceptance, labels.PlatformAny, labels.ComponentRemediation),
 			func() {
 				// Per OCP-71171 / Python test_nhc_cr_deletion: two SNR-based NHC CRs
 				// with different unhealthy durations. The faster one (10s) triggers
@@ -498,8 +499,7 @@ var _ = Describe("NHC Functional -- Selector and CR Management",
 
 		It("should update observed nodes when selector is edited",
 			reportxml.ID("56938"),
-			Label(labels.TierAcceptance,
-				labels.PlatformAny, labels.ComponentRemediation),
+			Label(labels.TierAcceptance, labels.PlatformAny, labels.ComponentRemediation),
 			func() {
 				By("Creating NHC CR for workers")
 

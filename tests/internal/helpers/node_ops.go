@@ -210,7 +210,10 @@ var sshBastionHost string
 // Returns the bastion hostname, or empty string if not available.
 func findSSHBastion() string {
 	sshBastionOnce.Do(func() {
-		out, err := exec.Command("oc", "get", "service", "ssh-bastion",
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		out, err := exec.CommandContext(ctx, "oc", "get", "service", "ssh-bastion",
 			"-n", "test-ssh-bastion",
 			"-o", "jsonpath={.status.loadBalancer.ingress[0].hostname}").Output()
 		if err == nil && len(out) > 0 {
@@ -325,11 +328,11 @@ func StartKubeletSSH(
 		return err
 	}
 
-	if _, err := runSSH(ctx, ip, timeout, "sudo systemctl start kubelet"); err != nil {
+	if _, err := runSSH(ctx, ip, timeout, "sudo systemctl daemon-reload"); err != nil {
 		return err
 	}
 
-	_, err = runSSH(ctx, ip, timeout, "sudo systemctl daemon-reload")
+	_, err = runSSH(ctx, ip, timeout, "sudo systemctl start kubelet")
 
 	return err
 }

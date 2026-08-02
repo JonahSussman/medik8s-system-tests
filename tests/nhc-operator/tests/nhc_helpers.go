@@ -40,7 +40,8 @@ var snrGVK = schema.GroupVersionKind{
 }
 
 // buildNHCForWorkers builds an unstructured NodeHealthCheck CR that monitors
-// worker nodes and triggers SNR remediation via the default SNR template.
+// worker nodes. Uses SNR as the remediator for these tests; NHC works with
+// any operator that provides a remediation template CRD.
 func buildNHCForWorkers(name string) *unstructured.Unstructured {
 	return buildNHC(name, "node-role.kubernetes.io/worker", "Exists", nil)
 }
@@ -157,60 +158,22 @@ func isSSHAvailable() bool {
 	return err == nil
 }
 
-// deleteRemediationCR performs a retry-safe deletion of an unstructured CR.
-func deleteRemediationCR(
-	ctx context.Context, k8sClient client.Client,
-	gvk schema.GroupVersionKind, name string,
-) {
-	obj := &unstructured.Unstructured{}
-	obj.SetGroupVersionKind(gvk)
-
-	key := types.NamespacedName{Name: name}
-
-	// NHC CRs are cluster-scoped; only set namespace for namespaced kinds.
-	if gvk.Kind != "NodeHealthCheck" {
-		key.Namespace = medik8sparams.OperatorNs
-	}
-
-	if waitErr := wait.PollUntilContextTimeout(
-		ctx, nhcparams.DefaultPollInterval,
-		nhcparams.RemediationCRDeletionTimeout, true,
-		func(ctx context.Context) (bool, error) {
-			if err := k8sClient.Get(ctx, key, obj); err != nil {
-				if k8serrors.IsNotFound(err) {
-					return true, nil
-				}
-
-				return false, nil
-			}
-
-			if delErr := k8sClient.Delete(ctx, obj); delErr != nil {
-				if k8serrors.IsNotFound(delErr) {
-					return true, nil
-				}
-
-				return false, nil
-			}
-
-			return false, nil
-		},
-	); waitErr != nil {
-		GinkgoWriter.Printf(
-			"Warning: %s %s not fully deleted within %s: %v\n",
-			gvk.Kind, name, nhcparams.RemediationCRDeletionTimeout, waitErr)
-	}
-}
-
 // cleanupNHCCR safely deletes a NodeHealthCheck CR by name.
+// NHC CRs are cluster-scoped (namespace is empty).
 func cleanupNHCCR(name string) {
-	deleteRemediationCR(
-		context.TODO(), APIClient, nhcGVK, name)
+	helpers.DeleteRemediationCR(
+		context.TODO(), APIClient, nhcGVK, name, "",
+		nhcparams.DefaultPollInterval, nhcparams.RemediationCRDeletionTimeout,
+		GinkgoWriter.Printf)
 }
 
 // cleanupSNRCR safely deletes a SelfNodeRemediation CR by name.
+// SNR CRs are namespaced in the operator namespace.
 func cleanupSNRCR(name string) {
-	deleteRemediationCR(
-		context.TODO(), APIClient, snrGVK, name)
+	helpers.DeleteRemediationCR(
+		context.TODO(), APIClient, snrGVK, name, medik8sparams.OperatorNs,
+		nhcparams.DefaultPollInterval, nhcparams.RemediationCRDeletionTimeout,
+		GinkgoWriter.Printf)
 }
 
 // getNHCPhase returns the current .status.phase of the named NHC CR.
@@ -331,12 +294,18 @@ func logNHCControllerState() {
 
 	for _, p := range pods {
 		phase := p.Object.Status.Phase
-		ready := "not-ready"
+		ready := "ready"
 
 		for _, cs := range p.Object.Status.ContainerStatuses {
-			if cs.Ready {
-				ready = "ready"
+			if !cs.Ready {
+				ready = "not-ready"
+
+				break
 			}
+		}
+
+		if len(p.Object.Status.ContainerStatuses) == 0 {
+			ready = "no-containers"
 		}
 
 		GinkgoWriter.Printf("  %s: phase=%s containers=%s node=%s\n",
@@ -450,8 +419,8 @@ func setupTestRemediationResources() {
 		},
 		Rules: []rbacv1.PolicyRule{{
 			APIGroups: []string{nhcparams.TestRemediationGroup},
-			Resources: []string{"*"},
-			Verbs:     []string{"*"},
+			Resources: []string{"testremediations", "testremediations/status", "testremediationtemplates"},
+			Verbs:     []string{"get", "list", "watch", "create", "update", "patch", "delete"},
 		}},
 	}
 
@@ -484,21 +453,27 @@ func setupTestRemediationResources() {
 func cleanupTestRemediationResources() {
 	ctx := context.TODO()
 
+	deleteAndLog := func(obj client.Object, desc string) {
+		if err := APIClient.Delete(ctx, obj); err != nil && !k8serrors.IsNotFound(err) {
+			GinkgoWriter.Printf("Warning: failed to delete %s: %v\n", desc, err)
+		}
+	}
+
 	// Delete CRs first
 	trtCR := &unstructured.Unstructured{}
 	trtCR.SetGroupVersionKind(schema.GroupVersionKind{
 		Group: nhcparams.TestRemediationGroup, Version: nhcparams.TestRemediationVersion, Kind: "TestRemediationTemplate"})
 	trtCR.SetName(nhcparams.TestRemediationTemplateName)
 
-	_ = APIClient.Delete(ctx, trtCR)
+	deleteAndLog(trtCR, "TestRemediationTemplate CR")
 
 	// Delete RBAC
-	_ = APIClient.Delete(ctx, &rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationClusterRoleBindingName}})
-	_ = APIClient.Delete(ctx, &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationClusterRoleName}})
+	deleteAndLog(&rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationClusterRoleBindingName}}, "ClusterRoleBinding")
+	deleteAndLog(&rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationClusterRoleName}}, "ClusterRole")
 
 	// Delete CRDs (this also GCs all CRs)
-	_ = APIClient.Delete(ctx, &apiextensionsv1.CustomResourceDefinition{ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationCRDName}})
-	_ = APIClient.Delete(ctx, &apiextensionsv1.CustomResourceDefinition{ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationTemplateCRDName}})
+	deleteAndLog(&apiextensionsv1.CustomResourceDefinition{ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationCRDName}}, "TestRemediation CRD")
+	deleteAndLog(&apiextensionsv1.CustomResourceDefinition{ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationTemplateCRDName}}, "TestRemediationTemplate CRD")
 }
 
 // buildNHCWithTestRemediation builds an NHC CR that uses the TestRemediation
