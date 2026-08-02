@@ -123,9 +123,15 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 
 				// Best-effort kubelet restart via SSH in case the test failed
 				// before the explicit restart step (e.g., test 4 with TestRemediation).
-				// Only attempt if SSH is available (Prow AWS blocks SSH).
+				// This MUST NOT use Expect -- a failure here would abort
+				// JustAfterEach and skip the safety-net WaitForNodeReady below,
+				// leaving the cluster dirty for subsequent tests (R-52).
 				if isSSHAvailable() {
-					_ = startKubeletForRemediation(ctx, targetWorkerName)
+					if sshErr := startKubeletForRemediation(ctx, targetWorkerName); sshErr != nil {
+						GinkgoWriter.Printf(
+							"WARNING: SSH kubelet restart failed for %s (best-effort): %v\n",
+							targetWorkerName, sshErr)
+					}
 				}
 
 				By("Safety net: waiting for node " + targetWorkerName + " to become Ready")
