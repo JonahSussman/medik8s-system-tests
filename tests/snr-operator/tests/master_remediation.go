@@ -59,6 +59,10 @@ var _ = Describe("SNR Functional - Master Remediation",
 		})
 
 		BeforeEach(func() {
+			By("Removing any stale kubelet stop guard from a previous run")
+
+			_ = helpers.RemoveKubeletStopGuard(ctx, targetMasterName, snrparams.OcDebugTimeout)
+
 			By("Verifying SNR operator deployment is ready")
 
 			snrDeployment, err := deployment.Pull(
@@ -95,6 +99,10 @@ var _ = Describe("SNR Functional - Master Remediation",
 						targetMasterName, snrparams.NodeReadyTimeout, err)
 					AddReportEntry("safety-net-recovery-failed",
 						fmt.Sprintf("master %s did not recover: %v", targetMasterName, err))
+				} else {
+					By("Removing kubelet stop guard file")
+
+					_ = helpers.RemoveKubeletStopGuard(ctx, targetMasterName, snrparams.OcDebugTimeout)
 				}
 			}
 
