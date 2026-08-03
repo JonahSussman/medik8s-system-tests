@@ -617,6 +617,19 @@ func deleteRemediationCR(
 	}
 }
 
+// bestEffortRemoveKubeletStopGuard attempts to remove the kubelet stop
+// guard file from the given node. On failure it logs a warning and adds
+// a report entry instead of failing the test.
+func bestEffortRemoveKubeletStopGuard(ctx context.Context, nodeName string) {
+	if guardErr := helpers.RemoveKubeletStopGuard(ctx, nodeName, snrparams.OcDebugTimeout); guardErr != nil {
+		GinkgoWriter.Printf(
+			"WARNING: failed to remove kubelet stop guard on %s: %v\n",
+			nodeName, guardErr)
+		AddReportEntry("guard-cleanup-failed",
+			fmt.Sprintf("%s: %v", nodeName, guardErr))
+	}
+}
+
 // cleanupNHCCR safely deletes a NodeHealthCheck CR by name, retrying
 // on transient errors. Waits until the CR is fully gone (NHC uses
 // webhook finalizers that can take several minutes to process).

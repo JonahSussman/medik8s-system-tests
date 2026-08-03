@@ -68,14 +68,33 @@ func RunOnNode(
 	return strings.TrimSpace(stdout.String()), nil
 }
 
-// StopKubelet stops the kubelet service on the target node.
+// kubeletStopGuardPath is the host path used by StopKubelet to prevent
+// re-execution of "systemctl stop kubelet" after a node reboot.
+const kubeletStopGuardPath = "/var/tmp/.medik8s-kubelet-stop-guard"
+
+// StopKubelet stops the kubelet service on the target node via
+// "oc debug node/". A guard file is created on the host before
+// stopping kubelet so that if the debug pod is re-executed after a
+// hard reboot (CRI-O cleans stale containers, kubelet re-discovers
+// the pod), the stop is skipped. Callers must call
+// RemoveKubeletStopGuard after the node recovers so that future
+// StopKubelet calls take effect.
 func StopKubelet(
 	ctx context.Context, nodeName string, timeout time.Duration,
 	logf func(string, ...interface{}),
 ) error {
-	_, err := RunOnNode(ctx, nodeName, timeout,
-		"sh", "-c",
-		`g=/var/tmp/.medik8s-kubelet-stop-guard; [ -f "$g" ] && exit 0; touch "$g" && systemctl stop kubelet`)
+	cmd := fmt.Sprintf(
+		`g=%s; [ -f "$g" ] && echo GUARD_SKIP && exit 0; touch "$g" && systemctl stop kubelet || { rm -f "$g"; exit 1; }`,
+		kubeletStopGuardPath,
+	)
+
+	output, err := RunOnNode(ctx, nodeName, timeout, "sh", "-c", cmd)
+	if output == "GUARD_SKIP" {
+		logf("StopKubelet(%s): guard file found, skipping (previous stop still active)\n", nodeName)
+
+		return nil
+	}
+
 	if err != nil {
 		errMsg := err.Error()
 		if strings.Contains(errMsg, "connection reset") ||
@@ -101,7 +120,7 @@ func RemoveKubeletStopGuard(
 	ctx context.Context, nodeName string, timeout time.Duration,
 ) error {
 	_, err := RunOnNode(ctx, nodeName, timeout,
-		"rm", "-f", "/var/tmp/.medik8s-kubelet-stop-guard")
+		"rm", "-f", kubeletStopGuardPath)
 
 	return err
 }

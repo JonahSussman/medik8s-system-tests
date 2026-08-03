@@ -65,7 +65,8 @@ var _ = Describe("SNR Functional - Worker Remediation",
 		BeforeEach(func() {
 			By("Removing any stale kubelet stop guard from a previous run")
 
-			_ = helpers.RemoveKubeletStopGuard(ctx, targetWorkerName, snrparams.OcDebugTimeout)
+			Expect(helpers.RemoveKubeletStopGuard(ctx, targetWorkerName, snrparams.OcDebugTimeout)).To(Succeed(),
+				"Failed to remove kubelet stop guard on node %s", targetWorkerName)
 
 			By("Verifying SNR operator deployment is ready")
 
@@ -131,7 +132,7 @@ var _ = Describe("SNR Functional - Worker Remediation",
 				} else {
 					By("Removing kubelet stop guard file")
 
-					_ = helpers.RemoveKubeletStopGuard(ctx, targetWorkerName, snrparams.OcDebugTimeout)
+					bestEffortRemoveKubeletStopGuard(ctx, targetWorkerName)
 				}
 			}
 
