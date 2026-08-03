@@ -97,9 +97,11 @@ The test-runner [script](scripts/test-runner.sh) is the recommended way for exec
 Parameters for the script are controlled by the following environment variables:
 - `ECO_TEST_FEATURES`: list of features to be tested ("all" will include all tests). All subdirectories under tests that match a feature will be included (internal directories are excluded) - _required_
 - `ECO_TEST_LABELS`: ginkgo query passed to the label-filter option for including/excluding tests - _optional_ 
+- `ECO_TEST_FOCUS`: text passed to ginkgo's `--focus` option for running a single test (or any tests whose name matches) - _optional_
 - `ECO_VERBOSE_SCRIPT`: prints verbose script information when executing the script - _optional_
 - `ECO_TEST_VERBOSE`: executes ginkgo with verbose test output - _optional_
 - `ECO_TEST_TRACE`: includes full stack trace from ginkgo tests when a failure occurs - _optional_
+- `ECO_TEST_TIMEOUT`: value passed to ginkgo's `-timeout` option, controlling the maximum time the full test run may take. Default: `24h` - _optional_
 
 It is recommended to execute the runner script through the `make run-tests` make target.
 
@@ -113,6 +115,29 @@ $ make run-tests
 Executing test-runner script
 scripts/test-runner.sh
 ginkgo -timeout=24h --keep-going --require-suite -r --label-filter="far" ./tests/far-operator
+```
+
+To run a single test, set `ECO_TEST_FOCUS` to (a substring of) the test's name, e.g. the `"should remediate a worker node after kubelet stop"` test from the SNR (Self Node Remediation) suite:
+
+```
+$ export KUBECONFIG=/path/to/kubeconfig
+$ export WORKLOAD_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal:latest
+$ export ECO_TEST_FEATURES="snr-operator"
+$ export ECO_TEST_FOCUS="should remediate a worker node after kubelet stop"
+$ make run-tests
+Executing test-runner script
+scripts/test-runner.sh
+ginkgo -timeout=24h --keep-going --require-suite -r --focus="should remediate a worker node after kubelet stop" ./tests/snr-operator
+```
+
+When focusing on a single test, it's also useful to shorten `ECO_TEST_TIMEOUT` from the 24h default:
+
+```
+$ export ECO_TEST_TIMEOUT=30m
+$ make run-tests
+Executing test-runner script
+scripts/test-runner.sh
+ginkgo -timeout=30m --keep-going --require-suite -r --focus="should remediate a worker node after kubelet stop" ./tests/snr-operator
 ```
 # How to contribute
 
