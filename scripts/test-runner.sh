@@ -4,6 +4,7 @@ GINKGO="${GINKGO:-ginkgo}"
 GOPATH="${GOPATH:-${HOME}/go}"
 PATH=$PATH:$GOPATH/bin
 TEST_DIR="./tests"
+ECO_TEST_TIMEOUT="${ECO_TEST_TIMEOUT:-24h}"
 
 # In CI, ARTIFACT_DIR is set by ci-operator and is collected/uploaded automatically.
 # Fall back to ECO_REPORTS_DUMP_DIR if already set, then /tmp/reports for local runs.
@@ -44,7 +45,7 @@ fi
 
 
 # Build ginkgo command
-cmd="${GINKGO} -timeout=24h --keep-going --require-suite --randomize-all -r"
+cmd="${GINKGO} -timeout=${ECO_TEST_TIMEOUT} --keep-going --require-suite --randomize-all -r"
 
 if [[ "${ECO_TEST_VERBOSE}" == "true" ]]; then
     cmd+=" -vv"
@@ -56,6 +57,11 @@ fi
 
 if [[ ! -z "${ECO_TEST_LABELS}" ]]; then
     cmd+=" --label-filter=\"${ECO_TEST_LABELS}\""
+fi
+
+# ECO_TEST_FOCUS: run a single test by name, e.g. "should remediate a worker node after kubelet stop"
+if [[ ! -z "${ECO_TEST_FOCUS}" ]]; then
+    cmd+=" --focus=\"${ECO_TEST_FOCUS}\""
 fi
 cmd+=" $@ $feature_dirs"   # add user args before feature dirs
 
