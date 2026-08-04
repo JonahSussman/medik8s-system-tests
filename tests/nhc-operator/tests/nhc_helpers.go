@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -13,6 +14,7 @@ import (
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 	"github.com/medik8s/system-tests/tests/nhc-operator/internal/nhcparams"
 
+	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -313,6 +315,50 @@ func logNHCControllerState() {
 	}
 }
 
+// countReadyControllerPods returns the number of NHC controller pods that are
+// Running with all containers ready.
+func countReadyControllerPods(ctx context.Context, labelSelector string) (int, error) {
+	pods, err := pod.List(APIClient, medik8sparams.OperatorNs,
+		metav1.ListOptions{LabelSelector: labelSelector})
+	if err != nil {
+		return 0, err
+	}
+
+	ready := 0
+
+	for _, p := range pods {
+		// Skip terminating pods (being evicted from stopped-kubelet nodes)
+		if p.Object.DeletionTimestamp != nil {
+			continue
+		}
+
+		if p.Object.Status.Phase != corev1.PodRunning {
+			continue
+		}
+
+		// Skip pods with no container statuses yet
+		if len(p.Object.Status.ContainerStatuses) == 0 {
+			continue
+		}
+
+		allReady := true
+
+		for _, cs := range p.Object.Status.ContainerStatuses {
+			if !cs.Ready {
+				allReady = false
+
+				break
+			}
+		}
+
+		if allReady {
+			ready++
+		}
+	}
+
+	return ready, nil
+}
+
 // --- TestRemediation dummy CRD helpers (for multi-NHC test OCP-66814) ---
 
 // testRemediationGVK is the GVK for TestRemediation CRs.
@@ -553,14 +599,22 @@ func waitForCRDEstablished(ctx context.Context, crdName string) {
 }
 
 // snrCRExists checks if a SelfNodeRemediation CR exists for the given node.
+// NHC creates SNR CRs with the node name as a prefix plus a random suffix
+// (e.g. "worker-0-8lwbf"), so this uses List + prefix match instead of
+// exact Get (matching the Python reference: re.search(node_name, cr.name)).
 func snrCRExists(ctx context.Context, nodeName string) bool {
-	snr := &unstructured.Unstructured{}
-	snr.SetGroupVersionKind(snrGVK)
+	snrList := &unstructured.UnstructuredList{}
+	snrList.SetGroupVersionKind(snrGVK)
 
-	err := APIClient.Get(ctx, types.NamespacedName{
-		Name:      nodeName,
-		Namespace: medik8sparams.OperatorNs,
-	}, snr)
+	if err := APIClient.List(ctx, snrList, client.InNamespace(medik8sparams.OperatorNs)); err != nil {
+		return false
+	}
 
-	return err == nil
+	for i := range snrList.Items {
+		if strings.HasPrefix(snrList.Items[i].GetName(), nodeName) {
+			return true
+		}
+	}
+
+	return false
 }

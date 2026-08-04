@@ -30,9 +30,10 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 		labels.DisruptionDestructive, labels.FrequencyWeekly),
 	func() {
 		var (
-			ctx              context.Context
-			targetWorkerName string
-			oldBootID        string
+			ctx                   context.Context
+			targetWorkerName      string
+			oldBootID             string
+			nhcControllerNodeName string // set by test3 (OCP-69711) for control-plane disruption
 		)
 
 		BeforeAll(func() {
@@ -118,36 +119,40 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 			cleanupNHCCR(nhcparams.NHCOldDefaultName)
 			cleanupNHCCR(nhcparams.NHCControlPlaneTestName)
 
-			if targetWorkerName != "" {
-				cleanupSNRCR(targetWorkerName)
+			// Recover all disrupted nodes. Best-effort SSH kubelet restart
+			// followed by WaitForNodeReady safety net. MUST NOT use Expect
+			// (R-52: failure would abort JustAfterEach, skipping remaining cleanup).
+			for _, nodeName := range []string{targetWorkerName, nhcControllerNodeName} {
+				if nodeName == "" {
+					continue
+				}
 
-				// Best-effort kubelet restart via SSH in case the test failed
-				// before the explicit restart step (e.g., test 4 with TestRemediation).
-				// This MUST NOT use Expect -- a failure here would abort
-				// JustAfterEach and skip the safety-net WaitForNodeReady below,
-				// leaving the cluster dirty for subsequent tests (R-52).
+				cleanupSNRCR(nodeName)
+
 				if isSSHAvailable() {
-					if sshErr := startKubeletForRemediation(ctx, targetWorkerName); sshErr != nil {
+					if sshErr := startKubeletForRemediation(ctx, nodeName); sshErr != nil {
 						GinkgoWriter.Printf(
 							"WARNING: SSH kubelet restart failed for %s (best-effort): %v\n",
-							targetWorkerName, sshErr)
+							nodeName, sshErr)
 					}
 				}
 
-				By("Safety net: waiting for node " + targetWorkerName + " to become Ready")
+				By("Safety net: waiting for node " + nodeName + " to become Ready")
 
 				if err := helpers.WaitForNodeReady(ctx, APIClient,
-					targetWorkerName,
+					nodeName,
 					nhcparams.DefaultPollInterval, nhcparams.NodeReadyTimeout,
 					GinkgoWriter.Printf,
 				); err != nil {
 					GinkgoWriter.Printf(
 						"WARNING: node %s did not become Ready within %s: %v\n",
-						targetWorkerName, nhcparams.NodeReadyTimeout, err)
+						nodeName, nhcparams.NodeReadyTimeout, err)
 					AddReportEntry("safety-net-recovery-failed",
-						fmt.Sprintf("node %s did not recover: %v", targetWorkerName, err))
+						fmt.Sprintf("node %s did not recover: %v", nodeName, err))
 				}
 			}
+
+			nhcControllerNodeName = "" // reset for next test
 		})
 
 		It("should block selector editing and deletion during remediation",
@@ -270,23 +275,74 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 				Expect(waitForNHCPhase(ctx, nhcparams.NHCControlPlaneTestName,
 					nhcparams.NHCPhaseEnabled, medik8sparams.DefaultTimeout)).To(Succeed())
 
+				By("Finding the node hosting the active NHC controller")
+
+				var err error
+				nhcControllerNodeName, err = helpers.GetActiveControllerNode(
+					ctx, APIClient, nhcparams.ControllerLeaseName, medik8sparams.OperatorNs)
+				Expect(err).ToNot(HaveOccurred(),
+					"Failed to find active NHC controller node")
+				GinkgoWriter.Printf("Active NHC controller is on node: %s\n", nhcControllerNodeName)
+
+				By("Verifying control-plane node is Ready before disruption")
+
+				cpNode := &corev1.Node{}
+				Expect(APIClient.Get(ctx, client.ObjectKey{Name: nhcControllerNodeName}, cpNode)).To(Succeed())
+				Expect(helpers.IsNodeReady(cpNode)).To(BeTrue(),
+					"Control-plane node %s is not Ready before test", nhcControllerNodeName)
+
 				By(fmt.Sprintf("Stopping kubelet on worker %s", targetWorkerName))
 
 				Expect(stopKubeletForRemediation(ctx, targetWorkerName)).To(Succeed())
 
-				By("Waiting for SNR remediation to complete")
+				By("Verifying SNR CR is created for the worker (NHC triggered via legacy-named CR)")
 
-				Expect(waitForSNRRemediationComplete(
-					ctx, targetWorkerName, oldBootID, nhcparams.SNRDeletionTimeout,
-				)).To(Succeed())
+				Eventually(func() bool {
+					return snrCRExists(ctx, targetWorkerName)
+				}, nhcparams.NodeNotReadyTimeout, nhcparams.DefaultPollInterval).Should(BeTrue(),
+					"SNR CR should be created for %s via legacy-named NHC CR", targetWorkerName)
 
-				By("Waiting for node to become Ready")
+				GinkgoWriter.Println("SNR CR created -- NHC triggered remediation via legacy CR name")
+
+				By(fmt.Sprintf("Stopping kubelet on NHC controller node %s", nhcControllerNodeName))
+
+				Expect(stopKubeletForRemediation(ctx, nhcControllerNodeName)).To(Succeed())
+
+				By("Waiting for NHC controller leader to fail over to another node")
+
+				Eventually(func() (string, error) {
+					return helpers.GetActiveControllerNode(
+						ctx, APIClient, nhcparams.ControllerLeaseName, medik8sparams.OperatorNs)
+				}, nhcparams.SNRDeletionTimeout, nhcparams.DefaultPollInterval).ShouldNot(
+					Equal(nhcControllerNodeName),
+					"NHC controller leader should move to a different node after kubelet stop")
+
+				newLeaderNode, _ := helpers.GetActiveControllerNode(
+					ctx, APIClient, nhcparams.ControllerLeaseName, medik8sparams.OperatorNs)
+				GinkgoWriter.Printf("NHC controller leader failed over: %s -> %s\n",
+					nhcControllerNodeName, newLeaderNode)
+
+				By("Verifying NHC controller has 2 ready replicas")
+
+				Eventually(func() (int, error) {
+					return countReadyControllerPods(ctx, nhcparams.OperatorControllerPodLabelSelector)
+				}, nhcparams.SNRDeletionTimeout, nhcparams.DefaultPollInterval).Should(
+					BeNumerically(">=", 2),
+					"NHC controller should have at least 2 ready replicas after failover")
+
+				By("Waiting for all nodes to become Ready (both remediations)")
 
 				Expect(helpers.WaitForNodeReady(ctx, APIClient,
 					targetWorkerName,
 					nhcparams.DefaultPollInterval, nhcparams.NodeReadyTimeout,
 					GinkgoWriter.Printf,
-				)).To(Succeed())
+				)).To(Succeed(), "Worker node did not become Ready")
+
+				Expect(helpers.WaitForNodeReady(ctx, APIClient,
+					nhcControllerNodeName,
+					nhcparams.DefaultPollInterval, nhcparams.NodeReadyTimeout,
+					GinkgoWriter.Printf,
+				)).To(Succeed(), "Control-plane node did not become Ready")
 
 				By("Verifying NHC controller is still running (not crashed)")
 
@@ -294,7 +350,13 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 					APIClient, nhcparams.OperatorDeploymentName, medik8sparams.OperatorNs)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(nhcDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(),
-					"NHC deployment should be Ready after remediation with old default CR name")
+					"NHC deployment should be Ready after dual remediation with old default CR name")
+
+				By("Verifying control-plane NHC phase is Enabled")
+
+				Expect(waitForNHCPhase(ctx, nhcparams.NHCControlPlaneTestName,
+					nhcparams.NHCPhaseEnabled, nhcparams.SNRDeletionTimeout)).To(Succeed(),
+					"Control-plane NHC did not return to Enabled after remediation")
 			})
 
 		It("should remediate only one CR at a time when multiple NHCs exist",

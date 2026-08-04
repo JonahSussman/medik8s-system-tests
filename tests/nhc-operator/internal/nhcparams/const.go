@@ -114,4 +114,7 @@ const (
 
 	// NHCControllerServiceAccount is the NHC controller's ServiceAccount name.
 	NHCControllerServiceAccount = "node-healthcheck-controller-manager"
+
+	// ControllerLeaseName is the NHC leader election lease name (LeaderElectionID in cmd/main.go).
+	ControllerLeaseName = "e1f13584.medik8s.io"
 )

@@ -118,14 +118,15 @@ webhook blocks selector editing and CR deletion during active remediation.
 ### 7. Old Default NHC CR Name ([OCP-69711](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-69711))
 
 Creates NHC CRs with the legacy name "nhc-worker-default" and a
-control-plane NHC, triggers remediation, and verifies the NHC controller
-does not crash.
+control-plane NHC, stops kubelet on a worker and on the control-plane
+node hosting the active NHC controller, and verifies the NHC controller
+fails over to another node and both remediations complete.
 
 - **Operators**: NHC v0.12.0+, SNR
-- **Cluster**: Multi-node (2+ workers)
+- **Cluster**: Multi-node (2+ workers), SSH access to worker and control-plane nodes
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="nhc && disruption:destructive" --focus="old default NHC CR" ./tests/nhc-operator/...`
-- **Pass criteria**: Remediation completes, NHC controller remains Ready
+- **Pass criteria**: SNR CR created for worker (NHC triggered via legacy CR), NHC controller restarts on another node (2 ready replicas), both worker and control-plane nodes recover to Ready, control-plane NHC returns to Enabled, NHC deployment remains Ready
 
 ### 8. Only One NHC CR Remediates at a Time ([OCP-66814](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-66814))
 
