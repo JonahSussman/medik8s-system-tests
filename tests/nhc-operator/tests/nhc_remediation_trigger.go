@@ -134,6 +134,8 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 						GinkgoWriter.Printf(
 							"WARNING: SSH kubelet restart failed for %s (best-effort): %v\n",
 							nodeName, sshErr)
+						AddReportEntry("ssh-kubelet-restart-failed",
+							fmt.Sprintf("node %s: %v", nodeName, sshErr))
 					}
 				}
 
@@ -229,7 +231,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 				By("Waiting for SNR remediation to complete")
 
 				Expect(waitForSNRRemediationComplete(
-					ctx, targetWorkerName, oldBootID, nhcparams.SNRDeletionTimeout,
+					ctx, targetWorkerName, oldBootID, nhcparams.RemediationCompletionTimeout,
 				)).To(Succeed(),
 					"SNR remediation did not complete for %s", targetWorkerName)
 
@@ -244,7 +246,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 				By("Waiting for NHC to return to Enabled phase")
 
 				Expect(waitForNHCPhase(ctx, nhcparams.NHCTestName,
-					nhcparams.NHCPhaseEnabled, nhcparams.SNRDeletionTimeout)).To(Succeed(),
+					nhcparams.NHCPhaseEnabled, nhcparams.RemediationCompletionTimeout)).To(Succeed(),
 					"NHC did not return to Enabled after remediation")
 			})
 
@@ -297,7 +299,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 
 				By("Verifying SNR CR is created for the worker (NHC triggered via legacy-named CR)")
 
-				Eventually(func() bool {
+				Eventually(func() (bool, error) {
 					return snrCRExists(ctx, targetWorkerName)
 				}, nhcparams.NodeNotReadyTimeout, nhcparams.DefaultPollInterval).Should(BeTrue(),
 					"SNR CR should be created for %s via legacy-named NHC CR", targetWorkerName)
@@ -313,7 +315,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 				Eventually(func() (string, error) {
 					return helpers.GetActiveControllerNode(
 						ctx, APIClient, nhcparams.ControllerLeaseName, medik8sparams.OperatorNs)
-				}, nhcparams.SNRDeletionTimeout, nhcparams.DefaultPollInterval).ShouldNot(
+				}, nhcparams.RemediationCompletionTimeout, nhcparams.DefaultPollInterval).ShouldNot(
 					Equal(nhcControllerNodeName),
 					"NHC controller leader should move to a different node after kubelet stop")
 
@@ -326,7 +328,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 
 				Eventually(func() (int, error) {
 					return countReadyControllerPods(ctx, nhcparams.OperatorControllerPodLabelSelector)
-				}, nhcparams.SNRDeletionTimeout, nhcparams.DefaultPollInterval).Should(
+				}, nhcparams.RemediationCompletionTimeout, nhcparams.DefaultPollInterval).Should(
 					BeNumerically(">=", 2),
 					"NHC controller should have at least 2 ready replicas after failover")
 
@@ -355,7 +357,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 				By("Verifying control-plane NHC phase is Enabled")
 
 				Expect(waitForNHCPhase(ctx, nhcparams.NHCControlPlaneTestName,
-					nhcparams.NHCPhaseEnabled, nhcparams.SNRDeletionTimeout)).To(Succeed(),
+					nhcparams.NHCPhaseEnabled, nhcparams.RemediationCompletionTimeout)).To(Succeed(),
 					"Control-plane NHC did not return to Enabled after remediation")
 			})
 
@@ -407,7 +409,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 
 				By("Waiting for TestRemediation CR to be created (10s NHC triggers first)")
 
-				Eventually(func() bool {
+				Eventually(func() (bool, error) {
 					return testRemediationCRExists(ctx, targetWorkerName)
 				}, nhcparams.NodeNotReadyTimeout, nhcparams.DefaultPollInterval).Should(BeTrue(),
 					"TestRemediation CR should be created for %s", targetWorkerName)
@@ -416,9 +418,9 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 
 				By("Verifying SNR CR was NOT created (node already being remediated)")
 
-				Consistently(func() bool {
+				Consistently(func() (bool, error) {
 					return snrCRExists(ctx, targetWorkerName)
-				}, nhcparams.ConsistentlyDuration, nhcparams.DefaultPollInterval).Should(BeFalse(),
+				}, nhcparams.NegativeAssertionHoldDuration, nhcparams.DefaultPollInterval).Should(BeFalse(),
 					"SNR CR should NOT be created while TestRemediation is active for %s", targetWorkerName)
 
 				GinkgoWriter.Println("SNR CR not created -- one-at-a-time constraint verified")
@@ -434,7 +436,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 				By("Waiting for TestRemediation NHC to return to Enabled")
 
 				Expect(waitForNHCPhase(ctx, nhcparams.NHCSecondTestName,
-					nhcparams.NHCPhaseEnabled, nhcparams.SNRDeletionTimeout)).To(Succeed(),
+					nhcparams.NHCPhaseEnabled, nhcparams.RemediationCompletionTimeout)).To(Succeed(),
 					"TestRemediation NHC did not return to Enabled after kubelet restart")
 
 				By("Waiting for node to become Ready")
@@ -505,7 +507,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 
 				Consistently(func() (string, error) {
 					return getNHCPhase(ctx, nhcparams.NHCTestName)
-				}, nhcparams.ConsistentlyDuration, nhcparams.DefaultPollInterval).ShouldNot(
+				}, nhcparams.NegativeAssertionHoldDuration, nhcparams.DefaultPollInterval).ShouldNot(
 					Equal(nhcparams.NHCPhaseRemediating),
 					"Second NHC should NOT enter Remediating while first NHC is active")
 
@@ -522,7 +524,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 				By("Waiting for first NHC to return to Enabled (SNR reboots node)")
 
 				Expect(waitForNHCPhase(ctx, nhcparams.NHCSecondTestName,
-					nhcparams.NHCPhaseEnabled, nhcparams.SNRDeletionTimeout)).To(Succeed(),
+					nhcparams.NHCPhaseEnabled, nhcparams.RemediationCompletionTimeout)).To(Succeed(),
 					"First NHC did not return to Enabled after SNR remediation")
 
 				By("Waiting for node to become Ready")

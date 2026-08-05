@@ -55,9 +55,6 @@ const (
 	// NHCControlPlaneTestName is the NHC CR name for control-plane monitoring.
 	NHCControlPlaneTestName = "nhc-cp"
 
-	// OcDebugTimeout is the maximum time to wait for oc debug commands.
-	OcDebugTimeout = 5 * time.Minute
-
 	// SSHTimeout is the maximum time to wait for SSH commands on nodes.
 	// SSH is used instead of oc debug for kubelet stop/start because
 	// oc debug cannot schedule pods when kubelet is stopped.
@@ -68,8 +65,10 @@ const (
 	// + NHC unhealthy condition duration (60s) + detection lag.
 	NodeNotReadyTimeout = 3 * time.Minute
 
-	// SNRDeletionTimeout is the maximum time to wait for SNR remediation to complete.
-	SNRDeletionTimeout = 15 * time.Minute
+	// RemediationCompletionTimeout is the maximum time to wait for a full
+	// remediation cycle: SNR CR deletion, node reboot, NHC phase recovery,
+	// or controller failover.
+	RemediationCompletionTimeout = 15 * time.Minute
 
 	// NodeReadyTimeout is the maximum time to wait for a node to become Ready.
 	NodeReadyTimeout = 15 * time.Minute
@@ -83,8 +82,9 @@ const (
 	// NHCPhaseRemediating is the NHC status phase during active remediation.
 	NHCPhaseRemediating = "Remediating"
 
-	// ConsistentlyDuration is how long Consistently polls to verify a negative assertion holds.
-	ConsistentlyDuration = 30 * time.Second
+	// NegativeAssertionHoldDuration is how long Consistently polls to verify
+	// a negative assertion holds (e.g. "SNR CR should NOT be created").
+	NegativeAssertionHoldDuration = 30 * time.Second
 
 	// SNRCRDName is the CRD name for SelfNodeRemediation, used to detect if SNR is installed.
 	SNRCRDName = "selfnoderemediations.self-node-remediation.medik8s.io"

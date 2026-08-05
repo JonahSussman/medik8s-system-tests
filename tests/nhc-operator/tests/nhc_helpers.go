@@ -317,7 +317,7 @@ func logNHCControllerState() {
 
 // countReadyControllerPods returns the number of NHC controller pods that are
 // Running with all containers ready.
-func countReadyControllerPods(ctx context.Context, labelSelector string) (int, error) {
+func countReadyControllerPods(_ context.Context, labelSelector string) (int, error) {
 	pods, err := pod.List(APIClient, medik8sparams.OperatorNs,
 		metav1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
@@ -496,12 +496,35 @@ func setupTestRemediationResources() {
 }
 
 // cleanupTestRemediationResources removes all TestRemediation CRDs, CRs, and RBAC.
+// Uses retry + NotFound handling consistent with cleanupNHCCR/cleanupSNRCR.
 func cleanupTestRemediationResources() {
 	ctx := context.TODO()
 
-	deleteAndLog := func(obj client.Object, desc string) {
-		if err := APIClient.Delete(ctx, obj); err != nil && !k8serrors.IsNotFound(err) {
-			GinkgoWriter.Printf("Warning: failed to delete %s: %v\n", desc, err)
+	deleteWithRetry := func(obj client.Object, desc string) {
+		if waitErr := wait.PollUntilContextTimeout(
+			ctx, nhcparams.DefaultPollInterval, nhcparams.RemediationCRDeletionTimeout, true,
+			func(ctx context.Context) (bool, error) {
+				if err := APIClient.Get(ctx, client.ObjectKeyFromObject(obj), obj); err != nil {
+					if k8serrors.IsNotFound(err) {
+						return true, nil
+					}
+
+					return false, nil
+				}
+
+				if delErr := APIClient.Delete(ctx, obj); delErr != nil {
+					if k8serrors.IsNotFound(delErr) {
+						return true, nil
+					}
+
+					return false, nil
+				}
+
+				return false, nil
+			},
+		); waitErr != nil {
+			GinkgoWriter.Printf("Warning: %s not fully deleted within %s: %v\n",
+				desc, nhcparams.RemediationCRDeletionTimeout, waitErr)
 		}
 	}
 
@@ -511,52 +534,37 @@ func cleanupTestRemediationResources() {
 		Group: nhcparams.TestRemediationGroup, Version: nhcparams.TestRemediationVersion, Kind: "TestRemediationTemplate"})
 	trtCR.SetName(nhcparams.TestRemediationTemplateName)
 
-	deleteAndLog(trtCR, "TestRemediationTemplate CR")
+	deleteWithRetry(trtCR, "TestRemediationTemplate CR")
 
 	// Delete RBAC
-	deleteAndLog(&rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationClusterRoleBindingName}}, "ClusterRoleBinding")
-	deleteAndLog(&rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationClusterRoleName}}, "ClusterRole")
+	deleteWithRetry(&rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationClusterRoleBindingName}}, "ClusterRoleBinding")
+	deleteWithRetry(&rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationClusterRoleName}}, "ClusterRole")
 
 	// Delete CRDs (this also GCs all CRs)
-	deleteAndLog(&apiextensionsv1.CustomResourceDefinition{ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationCRDName}}, "TestRemediation CRD")
-	deleteAndLog(&apiextensionsv1.CustomResourceDefinition{ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationTemplateCRDName}}, "TestRemediationTemplate CRD")
+	deleteWithRetry(&apiextensionsv1.CustomResourceDefinition{ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationCRDName}}, "TestRemediation CRD")
+	deleteWithRetry(&apiextensionsv1.CustomResourceDefinition{ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationTemplateCRDName}}, "TestRemediationTemplate CRD")
 }
 
 // buildNHCWithTestRemediation builds an NHC CR that uses the TestRemediation
-// template instead of SNR. Used in multi-NHC tests where two different
-// remediators are needed.
+// template instead of SNR, with a 10s unhealthy duration. Reuses
+// buildNHCForWorkers for the base spec and overrides the remediator.
 func buildNHCWithTestRemediation(name string) *unstructured.Unstructured {
-	nhc := &unstructured.Unstructured{}
-	nhc.SetGroupVersionKind(nhcGVK)
-	nhc.SetName(name)
+	nhc := buildNHCForWorkers(name)
+	spec := nhc.Object["spec"].(map[string]interface{})
 
-	nhc.Object["spec"] = map[string]interface{}{
-		"selector": map[string]interface{}{
-			"matchExpressions": []interface{}{
-				map[string]interface{}{
-					"key":      "node-role.kubernetes.io/worker",
-					"operator": "Exists",
-				},
-			},
+	spec["remediationTemplate"] = map[string]interface{}{
+		"apiVersion": nhcparams.TestRemediationGroup + "/" + nhcparams.TestRemediationVersion,
+		"kind":       "TestRemediationTemplate",
+		"name":       nhcparams.TestRemediationTemplateName,
+		"namespace":  medik8sparams.OperatorNs,
+	}
+
+	spec["unhealthyConditions"] = []interface{}{
+		map[string]interface{}{
+			"type": "Ready", "status": "False", "duration": "10s",
 		},
-		"remediationTemplate": map[string]interface{}{
-			"apiVersion": nhcparams.TestRemediationGroup + "/" + nhcparams.TestRemediationVersion,
-			"kind":       "TestRemediationTemplate",
-			"name":       nhcparams.TestRemediationTemplateName,
-			"namespace":  medik8sparams.OperatorNs,
-		},
-		"minHealthy": int64(1),
-		"unhealthyConditions": []interface{}{
-			map[string]interface{}{
-				"type":     "Ready",
-				"status":   "False",
-				"duration": "10s",
-			},
-			map[string]interface{}{
-				"type":     "Ready",
-				"status":   "Unknown",
-				"duration": "10s",
-			},
+		map[string]interface{}{
+			"type": "Ready", "status": "Unknown", "duration": "10s",
 		},
 	}
 
@@ -564,13 +572,22 @@ func buildNHCWithTestRemediation(name string) *unstructured.Unstructured {
 }
 
 // testRemediationCRExists checks if a TestRemediation CR exists for the given node.
-func testRemediationCRExists(ctx context.Context, nodeName string) bool {
+// Returns (bool, error) so Gomega propagates API failures instead of treating
+// transient errors as "not found".
+func testRemediationCRExists(ctx context.Context, nodeName string) (bool, error) {
 	tr := &unstructured.Unstructured{}
 	tr.SetGroupVersionKind(testRemediationGVK)
 
 	err := APIClient.Get(ctx, client.ObjectKey{Name: nodeName}, tr)
+	if err == nil {
+		return true, nil
+	}
 
-	return err == nil
+	if k8serrors.IsNotFound(err) {
+		return false, nil
+	}
+
+	return false, err
 }
 
 // waitForCRDEstablished polls until a CRD's Established condition is True.
@@ -602,19 +619,21 @@ func waitForCRDEstablished(ctx context.Context, crdName string) {
 // NHC creates SNR CRs with the node name as a prefix plus a random suffix
 // (e.g. "worker-0-8lwbf"), so this uses List + prefix match instead of
 // exact Get (matching the Python reference: re.search(node_name, cr.name)).
-func snrCRExists(ctx context.Context, nodeName string) bool {
+// Returns (bool, error) so Gomega propagates API failures instead of treating
+// transient errors as "not found".
+func snrCRExists(ctx context.Context, nodeName string) (bool, error) {
 	snrList := &unstructured.UnstructuredList{}
 	snrList.SetGroupVersionKind(snrGVK)
 
 	if err := APIClient.List(ctx, snrList, client.InNamespace(medik8sparams.OperatorNs)); err != nil {
-		return false
+		return false, err
 	}
 
 	for i := range snrList.Items {
 		if strings.HasPrefix(snrList.Items[i].GetName(), nodeName) {
-			return true
+			return true, nil
 		}
 	}
 
-	return false
+	return false, nil
 }

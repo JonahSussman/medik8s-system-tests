@@ -139,7 +139,7 @@ an SNR CR while the node is already being remediated.
 - **Cluster**: Multi-node (2+ workers), SSH access to worker nodes
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="nhc && disruption:destructive" --focus="one CR at a time" ./tests/nhc-operator/...`
-- **Pass criteria**: TestRemediation CR created for target node, SNR CR NOT created (Consistently), TestRemediation NHC returns to Enabled after kubelet restart
+- **Pass criteria**: TestRemediation CR created for target node, SNR CR NOT created (Consistently), TestRemediation NHC returns to Enabled after kubelet restart, target node recovers to Ready
 
 ### 9. Non-Remediating NHC CR Deletion During Active Remediation ([OCP-71171](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-71171))
 
