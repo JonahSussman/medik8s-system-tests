@@ -275,5 +275,5 @@ var WatchdogDebugImage = func() string {
 		return img
 	}
 
-	return medik8sparams.DefaultWorkloadImage
+	return medik8sparams.WorkloadImage
 }()
