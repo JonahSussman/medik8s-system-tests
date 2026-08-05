@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -115,6 +117,235 @@ func StartKubelet(
 	ctx context.Context, nodeName string, timeout time.Duration,
 ) error {
 	_, err := RunOnNode(ctx, nodeName, timeout, "systemctl", "start", "kubelet")
+
+	return err
+}
+
+// GetNodeInternalIP returns the InternalIP address for the given node.
+func GetNodeInternalIP(
+	ctx context.Context, k8sClient client.Client, nodeName string,
+) (string, error) {
+	node := &corev1.Node{}
+	if err := k8sClient.Get(ctx, client.ObjectKey{Name: nodeName}, node); err != nil {
+		return "", fmt.Errorf("failed to get node %s: %w", nodeName, err)
+	}
+
+	for _, addr := range node.Status.Addresses {
+		if addr.Type == corev1.NodeInternalIP {
+			return addr.Address, nil
+		}
+	}
+
+	return "", fmt.Errorf("no InternalIP found for node %s", nodeName)
+}
+
+// sshKeyOnce ensures findSSHKey resolves the key once per process.
+var sshKeyOnce sync.Once
+var sshKeyPath string
+var sshKeyErr error
+
+// findSSHKey finds the first available SSH private key, copies it to a
+// temp file with 0600 permissions, and caches the path for reuse.
+// The copy is needed because ci-operator mounts secrets as 0644
+// (Kubernetes read-only mount) and ssh rejects keys with open permissions.
+// The temp file lives for the process lifetime (no cleanup needed).
+// FindSSHKey is the exported version for callers that need to check availability.
+var FindSSHKey = findSSHKey
+
+func findSSHKey() (string, error) {
+	sshKeyOnce.Do(func() {
+		candidates := []string{
+			os.Getenv("CLUSTER_PROFILE_DIR") + "/ssh-privatekey",
+			"/home/kni/.ssh/id_rsa",
+			os.Getenv("HOME") + "/.ssh/id_rsa",
+		}
+
+		for _, p := range candidates {
+			if p == "/ssh-privatekey" || p == "/.ssh/id_rsa" {
+				continue // skip if env var was empty
+			}
+
+			data, err := os.ReadFile(p)
+			if err != nil {
+				continue
+			}
+
+			tmpFile, createErr := os.CreateTemp("", "ssh-key-*")
+			if createErr != nil {
+				sshKeyErr = fmt.Errorf("findSSHKey: create temp file: %w", createErr)
+
+				return
+			}
+
+			if err := tmpFile.Chmod(0o600); err != nil {
+				os.Remove(tmpFile.Name())
+				sshKeyErr = fmt.Errorf("findSSHKey: chmod: %w", err)
+
+				return
+			}
+
+			if _, err := tmpFile.Write(data); err != nil {
+				os.Remove(tmpFile.Name())
+				sshKeyErr = fmt.Errorf("findSSHKey: write: %w", err)
+
+				return
+			}
+
+			if err := tmpFile.Close(); err != nil {
+				os.Remove(tmpFile.Name())
+				sshKeyErr = fmt.Errorf("findSSHKey: close: %w", err)
+
+				return
+			}
+
+			fmt.Fprintf(os.Stderr, "findSSHKey: using %s (copied from %s)\n",
+				tmpFile.Name(), p)
+			sshKeyPath = tmpFile.Name()
+
+			return
+		}
+
+		sshKeyErr = fmt.Errorf(
+			"no SSH private key found; checked: $CLUSTER_PROFILE_DIR/ssh-privatekey, " +
+				"/home/kni/.ssh/id_rsa, $HOME/.ssh/id_rsa")
+	})
+
+	return sshKeyPath, sshKeyErr
+}
+
+// sshBastionOnce resolves the bastion host once per process.
+var sshBastionOnce sync.Once
+var sshBastionHost string
+
+// findSSHBastion checks if an ssh-bastion service is deployed in the cluster.
+// On Prow AWS, direct SSH to nodes is blocked by security groups; the bastion
+// pod (deployed via the ssh-bastion step-registry ref) proxies SSH traffic.
+// Returns the bastion hostname, or empty string if not available.
+func findSSHBastion() string {
+	sshBastionOnce.Do(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		out, err := exec.CommandContext(ctx, "oc", "get", "service", "ssh-bastion",
+			"-n", "test-ssh-bastion",
+			"-o", "jsonpath={.status.loadBalancer.ingress[0].hostname}").Output()
+		if err == nil && len(out) > 0 {
+			sshBastionHost = strings.TrimSpace(string(out))
+			fmt.Fprintf(os.Stderr, "findSSHBastion: using bastion %s\n", sshBastionHost)
+		}
+	})
+
+	return sshBastionHost
+}
+
+// runSSH executes a command on a node via SSH to the core user.
+// Unlike oc debug, SSH works even when kubelet is stopped because
+// sshd runs independently of kubelet.
+// On Prow AWS, SSH is proxied through the ssh-bastion service (ProxyJump).
+func runSSH(
+	ctx context.Context, nodeIP string, timeout time.Duration, cmd string,
+) (string, error) {
+	childCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	args := []string{
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "BatchMode=yes",
+		"-o", "LogLevel=ERROR",
+		"-o", "ConnectTimeout=10",
+	}
+
+	keyPath, keyErr := findSSHKey()
+	if keyErr != nil {
+		return "", fmt.Errorf("runSSH: %w", keyErr)
+	}
+
+	args = append(args, "-i", keyPath)
+
+	// On Prow AWS, direct SSH is blocked by security groups.
+	// Proxy through the ssh-bastion if available.
+	if bastion := findSSHBastion(); bastion != "" {
+		args = append(args, "-o", fmt.Sprintf("ProxyCommand=ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -W %%h:%%p core@%s", keyPath, bastion))
+	}
+
+	args = append(args, fmt.Sprintf("core@%s", nodeIP), cmd)
+
+	command := exec.CommandContext(childCtx, "ssh", args...)
+
+	var stdout, stderr bytes.Buffer
+
+	command.Stdout = &stdout
+	command.Stderr = &stderr
+
+	if err := command.Run(); err != nil {
+		return "", fmt.Errorf(
+			"SSH to core@%s failed: %w (stderr: %s)",
+			nodeIP, err, stderr.String(),
+		)
+	}
+
+	return strings.TrimSpace(stdout.String()), nil
+}
+
+// StopKubeletSSH stops kubelet on the target node via SSH.
+// Uses SSH instead of oc debug because the debug pod connection
+// drops when kubelet stops, causing unreliable timeout errors.
+func StopKubeletSSH(
+	ctx context.Context, k8sClient client.Client,
+	nodeName string, timeout time.Duration,
+) error {
+	ip, err := GetNodeInternalIP(ctx, k8sClient, nodeName)
+	if err != nil {
+		return err
+	}
+
+	_, err = runSSH(ctx, ip, timeout, "sudo systemctl stop kubelet")
+	if err != nil {
+		// When kubelet stops, the SSH connection may drop.
+		// This is expected behavior -- kubelet is likely stopped.
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "connection reset") ||
+			strings.Contains(errMsg, "closed network connection") ||
+			strings.Contains(errMsg, "broken pipe") ||
+			strings.Contains(errMsg, "transport is closing") ||
+			strings.Contains(errMsg, "lost connection") ||
+			strings.Contains(errMsg, "closed by remote host") {
+			fmt.Fprintf(os.Stderr,
+				"StopKubeletSSH(%s): suppressed expected connection-loss "+
+					"error (kubelet likely stopped): %v\n", nodeName, err)
+
+			return nil
+		}
+
+		return err
+	}
+
+	return nil
+}
+
+// StartKubeletSSH starts kubelet on the target node via SSH.
+// This is the only reliable way to restart kubelet on a node where
+// it was previously stopped -- oc debug cannot schedule a pod when
+// kubelet is down, but SSH connects directly to sshd which runs
+// independently of kubelet.
+// After starting kubelet, a daemon-reload is issued to ensure systemd
+// picks up any unit file changes from the reboot cycle (matches the
+// Python reference implementation).
+func StartKubeletSSH(
+	ctx context.Context, k8sClient client.Client,
+	nodeName string, timeout time.Duration,
+) error {
+	ip, err := GetNodeInternalIP(ctx, k8sClient, nodeName)
+	if err != nil {
+		return err
+	}
+
+	if _, err := runSSH(ctx, ip, timeout, "sudo systemctl daemon-reload"); err != nil {
+		return err
+	}
+
+	_, err = runSSH(ctx, ip, timeout, "sudo systemctl start kubelet")
 
 	return err
 }
