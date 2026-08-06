@@ -53,6 +53,9 @@ const (
 	ComponentRemediation = "component:remediation"
 	// ComponentMetrics marks tests for the metrics component.
 	ComponentMetrics = "component:metrics"
+	// ComponentPostDeploy marks post-deploy validation tests that do not require
+	// functional remediation infrastructure (safe for disconnected environments).
+	ComponentPostDeploy = "component:post-deploy"
 
 	// PlatformAWS marks tests that require AWS infrastructure.
 	PlatformAWS = "platform:aws"
