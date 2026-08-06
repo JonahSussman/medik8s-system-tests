@@ -377,7 +377,7 @@ func countReadyControllerPods(_ context.Context, labelSelector string) (int, err
 	return ready, nil
 }
 
-// --- TestRemediation dummy CRD helpers (for multi-NHC test OCP-66814) ---
+// TestRemediation dummy CRD helpers (for multi-NHC test OCP-66814).
 
 // testRemediationGVK is the GVK for TestRemediation CRs.
 var testRemediationGVK = schema.GroupVersionKind{
@@ -665,6 +665,23 @@ func verifyNHCNotCreated(ctx context.Context, nhcName string) {
 
 	getErr := APIClient.Get(ctx, client.ObjectKey{Name: nhcName}, notCreated)
 
+	if getErr == nil {
+		Fail(fmt.Sprintf("NHC CR %q exists but should not have been created", nhcName))
+	}
+
 	Expect(k8serrors.IsNotFound(getErr)).To(BeTrue(),
-		"NHC CR %q should not exist after rejected creation", nhcName)
+		"NHC CR %q: expected NotFound, got: %v", nhcName, getErr)
+}
+
+// waitForNHCGone polls until the named NHC CR is confirmed deleted.
+// Used between scenarios that reuse the same CR name to avoid AlreadyExists races.
+func waitForNHCGone(ctx context.Context, nhcName string) {
+	Eventually(func() bool {
+		obj := &unstructured.Unstructured{}
+		obj.SetGroupVersionKind(nhcGVK)
+
+		return k8serrors.IsNotFound(APIClient.Get(ctx, client.ObjectKey{Name: nhcName}, obj))
+	}).WithPolling(nhcparams.DefaultPollInterval).
+		WithTimeout(nhcparams.RemediationCRDeletionTimeout).Should(BeTrue(),
+		"NHC CR %q still exists after cleanup", nhcName)
 }

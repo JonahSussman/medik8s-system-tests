@@ -230,10 +230,11 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 					}).WithPolling(nhcparams.DefaultPollInterval).
 						WithTimeout(nhcparams.NodeNotReadyTimeout).Should(Succeed())
 
-					// Must delete before reusing the same name for the poison-pill scenario.
+					// Must delete and confirm gone before reusing the same name.
 					By("Deleting NHC with wrong SNR template before next scenario")
 
 					cleanupNHCCR(nhcName)
+					waitForNHCGone(ctx, nhcName)
 
 					By("Creating NHC with poison-pill remediation template (non-existent API group)")
 
@@ -346,6 +347,7 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 					By("Cleaning up NHC before Part 2")
 
 					cleanupNHCCR(nhcName)
+					waitForNHCGone(ctx, nhcName)
 
 					By("Part 2: Cluster-scoped template (TRT) without namespace")
 
