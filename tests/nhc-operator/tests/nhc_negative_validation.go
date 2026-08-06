@@ -134,11 +134,13 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 					By("Creating NHC with negative minHealthy and duration values")
 
 					nhc := buildNHCForWorkers(nhcName)
-					spec := nhc.Object["spec"].(map[string]interface{})
+					spec := nhcSpec(nhc)
 					spec["minHealthy"] = "-30%"
 
-					conditions := spec["unhealthyConditions"].([]interface{})
-					conditions[0].(map[string]interface{})["duration"] = "-30s"
+					conditions := nhcUnhealthyConditions(spec)
+					cond, ok := conditions[0].(map[string]interface{})
+					Expect(ok).To(BeTrue(), "unhealthyConditions[0] is not a map")
+					cond["duration"] = "-30s"
 
 					err := APIClient.Create(ctx, nhc)
 					Expect(err).To(HaveOccurred(), "NHC creation with negative values should fail")
@@ -154,11 +156,13 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 					By("Creating NHC with string minHealthy and duration values")
 
 					nhcStr := buildNHCForWorkers(nhcName)
-					specStr := nhcStr.Object["spec"].(map[string]interface{})
+					specStr := nhcSpec(nhcStr)
 					specStr["minHealthy"] = "string"
 
-					conditionsStr := specStr["unhealthyConditions"].([]interface{})
-					conditionsStr[0].(map[string]interface{})["duration"] = "string"
+					conditionsStr := nhcUnhealthyConditions(specStr)
+					condStr, ok := conditionsStr[0].(map[string]interface{})
+					Expect(ok).To(BeTrue(), "unhealthyConditions[0] is not a map")
+					condStr["duration"] = "string"
 
 					err = APIClient.Create(ctx, nhcStr)
 					Expect(err).To(HaveOccurred(), "NHC creation with string values should fail")
@@ -184,7 +188,7 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 					// buildNHC with nil matchLabels creates an intermediate selector that
 					// is immediately overwritten below -- we only need the base NHC spec.
 					nhc := buildNHC(nhcName, "", "", nil)
-					nhc.Object["spec"].(map[string]interface{})["selector"] = map[string]interface{}{
+					nhcSpec(nhc)["selector"] = map[string]interface{}{
 						"matchExpressions": []interface{}{},
 					}
 
@@ -214,8 +218,10 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 					By("Creating NHC with non-existent SNR template name")
 
 					nhc := buildNHCForWorkers(nhcName)
-					spec := nhc.Object["spec"].(map[string]interface{})
-					spec["remediationTemplate"].(map[string]interface{})["name"] = "non-existent-template"
+					spec := nhcSpec(nhc)
+					tmpl, ok := spec["remediationTemplate"].(map[string]interface{})
+					Expect(ok).To(BeTrue(), "NHC spec has no remediationTemplate map")
+					tmpl["name"] = "non-existent-template"
 
 					Expect(APIClient.Create(ctx, nhc)).To(Succeed(),
 						"NHC creation should succeed even with a non-existent template")
@@ -234,7 +240,7 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 					By("Creating NHC with poison-pill remediation template (non-existent API group)")
 
 					nhcPP := buildNHCForWorkers(nhcName)
-					specPP := nhcPP.Object["spec"].(map[string]interface{})
+					specPP := nhcSpec(nhcPP)
 					specPP["remediationTemplate"] = map[string]interface{}{
 						"apiVersion": "poison-pill-remediation.medik8s.io/v1alpha1",
 						"kind":       "PoisonPillRemediationTemplate",
@@ -258,13 +264,18 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 
 					nhcName := nhcparams.NHCMissingNsTestName
 
+					if !isSNRCRDInstalled(ctx) {
+						Skip("SelfNodeRemediation CRD not found -- OCP-71184 Part 1 requires SNRT")
+					}
+
 					By("Part 1: Namespaced template (SNRT) without namespace in remediationTemplate")
 
 					By("Creating NHC with SNRT but no namespace in remediationTemplate ref")
 
 					nhc := buildNHCForWorkers(nhcName)
-					spec := nhc.Object["spec"].(map[string]interface{})
-					tmpl := spec["remediationTemplate"].(map[string]interface{})
+					spec := nhcSpec(nhc)
+					tmpl, ok := spec["remediationTemplate"].(map[string]interface{})
+					Expect(ok).To(BeTrue(), "NHC spec has no remediationTemplate map")
 					delete(tmpl, "namespace")
 
 					Expect(APIClient.Create(ctx, nhc)).To(Succeed(),
@@ -322,7 +333,7 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 					By("Creating NHC with cluster-scoped TRT and no namespace in ref")
 
 					nhcTRT := buildNHCForWorkers(nhcName)
-					specTRT := nhcTRT.Object["spec"].(map[string]interface{})
+					specTRT := nhcSpec(nhcTRT)
 					specTRT["remediationTemplate"] = map[string]interface{}{
 						"apiVersion": nhcparams.TestRemediationGroup + "/" + nhcparams.TestRemediationVersion,
 						"kind":       "TestRemediationTemplate",
@@ -342,7 +353,7 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 	})
 
 var _ = Describe("NHC Negative -- Zero Healthy Nodes",
-	Serial, Ordered,
+	Serial, Ordered, ContinueOnFailure,
 	Label(labels.OperatorNHC, nhcparams.Label,
 		labels.DisruptionDestructive, labels.FrequencyWeekly),
 	func() {
