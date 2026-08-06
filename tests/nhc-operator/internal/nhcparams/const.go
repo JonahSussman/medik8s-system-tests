@@ -123,6 +123,9 @@ const (
 	// NHCPhaseDisabled is the NHC status phase when the template is invalid or missing.
 	NHCPhaseDisabled = "Disabled"
 
+	// NHCReasonTemplateNotFound is the NHC status reason when the remediation template is missing.
+	NHCReasonTemplateNotFound = "RemediationTemplateNotFound"
+
 	// NHCDuplicateTestName is the NHC CR name used by the duplicate-name test.
 	NHCDuplicateTestName = "nhc-test-duplicate"
 

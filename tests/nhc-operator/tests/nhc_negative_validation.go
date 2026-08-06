@@ -23,7 +23,8 @@ import (
 
 var _ = Describe("NHC Negative -- Validation and Webhook",
 	Serial, Ordered, ContinueOnFailure,
-	Label(labels.OperatorNHC, nhcparams.Label),
+	Label(labels.OperatorNHC, nhcparams.Label,
+		labels.DisruptionNonDestructive, labels.FrequencyWeekly),
 	func() {
 		var ctx context.Context
 
@@ -48,6 +49,12 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 			Expect(nhcDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(),
 				"NHC deployment is not Ready")
 
+			By("Checking SNR CRD is installed (needed for template namespace tests)")
+
+			if !isSNRCRDInstalled(ctx) {
+				Skip("SelfNodeRemediation CRD not found -- skipping negative validation tests that use SNRT")
+			}
+
 			By("Pre-cleaning stale NHC CRs from previous interrupted runs")
 
 			for _, name := range allNegativeTestNames {
@@ -66,8 +73,7 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 			// This is a Polarion requirement, not NHC-specific webhook validation.
 			It("Verifying duplicate NHC name creation is rejected",
 				reportxml.ID("53769"),
-				Label(labels.TierAcceptance, labels.DisruptionNonDestructive,
-					labels.PlatformAny, labels.FrequencyWeekly,
+				Label(labels.TierAcceptance, labels.PlatformAny,
 					labels.ComponentWebhook), func() {
 
 					nhcName := nhcparams.NHCDuplicateTestName
@@ -117,8 +123,7 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 			// per-field tests.
 			It("Verifying NHC creation with invalid values is rejected",
 				reportxml.ID("51626"),
-				Label(labels.TierAcceptance, labels.DisruptionNonDestructive,
-					labels.PlatformAny, labels.FrequencyWeekly,
+				Label(labels.TierAcceptance, labels.PlatformAny,
 					labels.ComponentWebhook), func() {
 
 					nhcName := nhcparams.NHCInvalidValuesTestName
@@ -166,8 +171,7 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 
 			It("Verifying NHC creation with empty selector is rejected",
 				reportxml.ID("61591"),
-				Label(labels.TierAcceptance, labels.DisruptionNonDestructive,
-					labels.PlatformAny, labels.FrequencyWeekly,
+				Label(labels.TierAcceptance, labels.PlatformAny,
 					labels.ComponentWebhook), func() {
 
 					nhcName := nhcparams.NHCEmptySelectorTestName
@@ -199,8 +203,7 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 			// result to overwrite the other.
 			It("Verifying NHC reports Disabled phase for non-existent remediation template",
 				reportxml.ID("51625"),
-				Label(labels.TierAcceptance, labels.DisruptionNonDestructive,
-					labels.PlatformAny, labels.FrequencyWeekly,
+				Label(labels.TierAcceptance, labels.PlatformAny,
 					labels.ComponentController), func() {
 
 					nhcName := nhcparams.NHCIncorrectTemplateTestName
@@ -214,21 +217,10 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 					Expect(APIClient.Create(ctx, nhc)).To(Succeed(),
 						"NHC creation should succeed even with a non-existent template")
 
-					By("Verifying NHC status phase is Disabled")
+					By("Verifying NHC is Disabled with RemediationTemplateNotFound")
 
-					Expect(waitForNHCPhase(ctx, nhcName, nhcparams.NHCPhaseDisabled,
-						nhcparams.NodeNotReadyTimeout)).To(Succeed(),
-						"NHC %q should reach Disabled phase", nhcName)
-
-					By("Verifying NHC status reason is RemediationTemplateNotFound")
-
-					Eventually(func(g Gomega) {
-						reason, err := getNHCReason(ctx, nhcName)
-						g.Expect(err).ToNot(HaveOccurred(), "Failed to get NHC reason")
-						g.Expect(reason).To(ContainSubstring("RemediationTemplateNotFound"),
-							"NHC reason should indicate template not found")
-					}).WithPolling(nhcparams.DefaultPollInterval).
-						WithTimeout(nhcparams.NodeNotReadyTimeout).Should(Succeed())
+					verifyNHCDisabledWithReason(ctx, nhcName,
+						nhcparams.NHCReasonTemplateNotFound, nhcparams.NodeNotReadyTimeout)
 
 					// Must delete and confirm gone before reusing the same name.
 					By("Deleting NHC with wrong SNR template before next scenario")
@@ -250,27 +242,15 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 					Expect(APIClient.Create(ctx, nhcPP)).To(Succeed(),
 						"NHC creation should succeed even with a non-existent API group")
 
-					By("Verifying NHC status phase is Disabled for poison-pill template")
+					By("Verifying NHC is Disabled with RemediationTemplateNotFound for poison-pill template")
 
-					Expect(waitForNHCPhase(ctx, nhcName, nhcparams.NHCPhaseDisabled,
-						nhcparams.NodeNotReadyTimeout)).To(Succeed(),
-						"NHC %q should reach Disabled phase for poison-pill template", nhcName)
-
-					By("Verifying NHC status reason is RemediationTemplateNotFound for poison-pill template")
-
-					Eventually(func(g Gomega) {
-						reason, err := getNHCReason(ctx, nhcName)
-						g.Expect(err).ToNot(HaveOccurred(), "Failed to get NHC reason")
-						g.Expect(reason).To(ContainSubstring("RemediationTemplateNotFound"),
-							"NHC reason should indicate template not found for poison-pill template")
-					}).WithPolling(nhcparams.DefaultPollInterval).
-						WithTimeout(nhcparams.NodeNotReadyTimeout).Should(Succeed())
+					verifyNHCDisabledWithReason(ctx, nhcName,
+						nhcparams.NHCReasonTemplateNotFound, nhcparams.NodeNotReadyTimeout)
 				})
 
 			It("Verifying NHC handles missing template namespace correctly",
 				reportxml.ID("71184"),
-				Label(labels.TierAcceptance, labels.DisruptionNonDestructive,
-					labels.PlatformAny, labels.FrequencyWeekly,
+				Label(labels.TierAcceptance, labels.PlatformAny,
 					labels.ComponentController), func() {
 
 					nhcName := nhcparams.NHCMissingNsTestName
@@ -289,17 +269,8 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 
 					By("Verifying NHC is Disabled due to missing namespace")
 
-					Expect(waitForNHCPhase(ctx, nhcName, nhcparams.NHCPhaseDisabled,
-						nhcparams.NodeNotReadyTimeout)).To(Succeed(),
-						"NHC %q should be Disabled when SNRT namespace is missing", nhcName)
-
-					Eventually(func(g Gomega) {
-						reason, err := getNHCReason(ctx, nhcName)
-						g.Expect(err).ToNot(HaveOccurred())
-						g.Expect(reason).To(ContainSubstring("RemediationTemplateNotFound"),
-							"NHC reason should indicate template not found")
-					}).WithPolling(nhcparams.DefaultPollInterval).
-						WithTimeout(nhcparams.NodeNotReadyTimeout).Should(Succeed())
+					verifyNHCDisabledWithReason(ctx, nhcName,
+						nhcparams.NHCReasonTemplateNotFound, nhcparams.NodeNotReadyTimeout)
 
 					By("Adding namespace to remediationTemplate via patch")
 
@@ -330,19 +301,8 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 
 					By("Verifying NHC transitions back to Disabled after namespace removed")
 
-					Expect(waitForNHCPhase(ctx, nhcName, nhcparams.NHCPhaseDisabled,
-						nhcparams.NodeNotReadyTimeout)).To(Succeed(),
-						"NHC %q should return to Disabled after removing namespace", nhcName)
-
-					By("Verifying NHC reason is RemediationTemplateNotFound after re-disable")
-
-					Eventually(func(g Gomega) {
-						reason, err := getNHCReason(ctx, nhcName)
-						g.Expect(err).ToNot(HaveOccurred())
-						g.Expect(reason).To(ContainSubstring("RemediationTemplateNotFound"),
-							"NHC reason should indicate template not found after namespace removal")
-					}).WithPolling(nhcparams.DefaultPollInterval).
-						WithTimeout(nhcparams.NodeNotReadyTimeout).Should(Succeed())
+					verifyNHCDisabledWithReason(ctx, nhcName,
+						nhcparams.NHCReasonTemplateNotFound, nhcparams.NodeNotReadyTimeout)
 
 					By("Cleaning up NHC before Part 2")
 

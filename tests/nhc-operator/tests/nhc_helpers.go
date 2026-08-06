@@ -219,7 +219,7 @@ func getNHCReason(ctx context.Context, name string) (string, error) {
 	nhc.SetGroupVersionKind(nhcGVK)
 
 	if err := APIClient.Get(ctx, client.ObjectKey{Name: name}, nhc); err != nil {
-		return "", err
+		return "", fmt.Errorf("getting NHC %s reason: %w", name, err)
 	}
 
 	reason, found, err := unstructured.NestedString(nhc.Object, "status", "reason")
@@ -671,6 +671,21 @@ func verifyNHCNotCreated(ctx context.Context, nhcName string) {
 
 	Expect(k8serrors.IsNotFound(getErr)).To(BeTrue(),
 		"NHC CR %q: expected NotFound, got: %v", nhcName, getErr)
+}
+
+// verifyNHCDisabledWithReason waits for NHC to reach Disabled phase and then
+// verifies the status.reason contains the expected substring.
+func verifyNHCDisabledWithReason(ctx context.Context, nhcName, expectedReason string, timeout time.Duration) {
+	Expect(waitForNHCPhase(ctx, nhcName, nhcparams.NHCPhaseDisabled, timeout)).To(Succeed(),
+		"NHC %q should reach Disabled phase", nhcName)
+
+	Eventually(func(g Gomega) {
+		reason, err := getNHCReason(ctx, nhcName)
+		g.Expect(err).ToNot(HaveOccurred(), "Failed to get NHC %q reason", nhcName)
+		g.Expect(reason).To(ContainSubstring(expectedReason),
+			"NHC %q reason should contain %q", nhcName, expectedReason)
+	}).WithPolling(nhcparams.DefaultPollInterval).
+		WithTimeout(timeout).Should(Succeed())
 }
 
 // waitForNHCGone polls until the named NHC CR is confirmed deleted.
