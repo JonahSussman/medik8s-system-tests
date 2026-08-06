@@ -7,6 +7,7 @@ import (
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/pod"
 
 	"github.com/medik8s/system-tests/tests/internal/helpers"
@@ -210,6 +211,23 @@ func getNHCObservedNodes(ctx context.Context, name string) (int64, error) {
 	}
 
 	return observed, nil
+}
+
+// getNHCReason returns the current .status.reason of the named NHC CR.
+func getNHCReason(ctx context.Context, name string) (string, error) {
+	nhc := &unstructured.Unstructured{}
+	nhc.SetGroupVersionKind(nhcGVK)
+
+	if err := APIClient.Get(ctx, client.ObjectKey{Name: name}, nhc); err != nil {
+		return "", err
+	}
+
+	reason, found, err := unstructured.NestedString(nhc.Object, "status", "reason")
+	if err != nil || !found {
+		return "", fmt.Errorf("NHC %s has no status.reason", name)
+	}
+
+	return reason, nil
 }
 
 // waitForNHCPhase polls until the NHC CR reaches the expected phase.
@@ -636,4 +654,17 @@ func snrCRExists(ctx context.Context, nodeName string) (bool, error) {
 	}
 
 	return false, nil
+}
+
+// verifyNHCNotCreated asserts that an NHC CR with the given name does not exist.
+// Used after webhook-rejected creation attempts where the API server synchronously
+// refused the request, so the CR should never appear.
+func verifyNHCNotCreated(ctx context.Context, nhcName string) {
+	notCreated := &unstructured.Unstructured{}
+	notCreated.SetGroupVersionKind(nhcGVK)
+
+	getErr := APIClient.Get(ctx, client.ObjectKey{Name: nhcName}, notCreated)
+
+	Expect(k8serrors.IsNotFound(getErr)).To(BeTrue(),
+		"NHC CR %q should not exist after rejected creation", nhcName)
 }

@@ -117,4 +117,24 @@ const (
 
 	// ControllerLeaseName is the NHC leader election lease name (LeaderElectionID in cmd/main.go).
 	ControllerLeaseName = "e1f13584.medik8s.io"
+
+	// --- Negative validation test constants (RHWA-1244) ---
+
+	// NHCPhaseDisabled is the NHC status phase when the template is invalid or missing.
+	NHCPhaseDisabled = "Disabled"
+
+	// NHCDuplicateTestName is the NHC CR name used by the duplicate-name test.
+	NHCDuplicateTestName = "nhc-test-duplicate"
+
+	// NHCIncorrectTemplateTestName is the NHC CR name for the non-existent template test.
+	NHCIncorrectTemplateTestName = "nhc-test-incorrect-template"
+
+	// NHCInvalidValuesTestName is the NHC CR name for the invalid-values test.
+	NHCInvalidValuesTestName = "nhc-test-invalid-values"
+
+	// NHCMissingNsTestName is the NHC CR name for the missing-namespace test.
+	NHCMissingNsTestName = "nhc-test-missing-ns"
+
+	// NHCEmptySelectorTestName is the NHC CR name for the empty-selector test.
+	NHCEmptySelectorTestName = "nhc-test-empty-selector"
 )
