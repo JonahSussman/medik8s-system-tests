@@ -213,6 +213,23 @@ func getNHCObservedNodes(ctx context.Context, name string) (int64, error) {
 	return observed, nil
 }
 
+// getNHCHealthyNodes returns the .status.healthyNodes count from the named NHC CR.
+func getNHCHealthyNodes(ctx context.Context, name string) (int64, error) {
+	nhc := &unstructured.Unstructured{}
+	nhc.SetGroupVersionKind(nhcGVK)
+
+	if err := APIClient.Get(ctx, client.ObjectKey{Name: name}, nhc); err != nil {
+		return 0, fmt.Errorf("getting NHC %s healthyNodes: %w", name, err)
+	}
+
+	healthy, found, err := unstructured.NestedInt64(nhc.Object, "status", "healthyNodes")
+	if err != nil || !found {
+		return 0, fmt.Errorf("NHC %s has no status.healthyNodes", name)
+	}
+
+	return healthy, nil
+}
+
 // getNHCReason returns the current .status.reason of the named NHC CR.
 func getNHCReason(ctx context.Context, name string) (string, error) {
 	nhc := &unstructured.Unstructured{}

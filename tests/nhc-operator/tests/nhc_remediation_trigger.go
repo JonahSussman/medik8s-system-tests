@@ -120,8 +120,8 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 			cleanupNHCCR(nhcparams.NHCControlPlaneTestName)
 
 			// Recover all disrupted nodes. Best-effort SSH kubelet restart
-			// followed by WaitForNodeReady safety net. MUST NOT use Expect
-			// (R-52: failure would abort JustAfterEach, skipping remaining cleanup).
+			// followed by WaitForNodeReady safety net. MUST NOT use Expect --
+			// failure would abort JustAfterEach, skipping remaining cleanup.
 			for _, nodeName := range []string{targetWorkerName, nhcControllerNodeName} {
 				if nodeName == "" {
 					continue

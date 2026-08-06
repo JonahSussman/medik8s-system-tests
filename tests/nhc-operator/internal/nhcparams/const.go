@@ -140,4 +140,7 @@ const (
 
 	// NHCEmptySelectorTestName is the NHC CR name for the empty-selector test.
 	NHCEmptySelectorTestName = "nhc-test-empty-selector"
+
+	// NHCZeroHealthyTestName is the NHC CR name for the zero-healthy-nodes test.
+	NHCZeroHealthyTestName = "nhc-test-zero-healthy"
 )

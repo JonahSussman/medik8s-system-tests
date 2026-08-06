@@ -15,6 +15,9 @@ import (
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 	"github.com/medik8s/system-tests/tests/nhc-operator/internal/nhcparams"
 
+	"github.com/medik8s/system-tests/tests/internal/helpers"
+
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
@@ -336,4 +339,215 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 						"NHC %q should be Enabled with cluster-scoped TRT (no namespace needed)", nhcName)
 				})
 		})
+	})
+
+var _ = Describe("NHC Negative -- Zero Healthy Nodes",
+	Serial, Ordered,
+	Label(labels.OperatorNHC, nhcparams.Label,
+		labels.DisruptionDestructive, labels.FrequencyWeekly),
+	func() {
+		var (
+			ctx              context.Context
+			targetWorkerName string
+			oldBootID        string
+		)
+
+		BeforeAll(func() {
+			ctx = context.Background()
+
+			By("Checking SSH access is available")
+
+			if !isSSHAvailable() {
+				Skip("SSH not available -- zero-healthy-nodes test requires SSH to stop kubelet")
+			}
+
+			By("Checking SNR CRD is installed")
+
+			if !isSNRCRDInstalled(ctx) {
+				Skip("SelfNodeRemediation CRD not found -- skipping zero-healthy-nodes test")
+			}
+
+			By("Verifying NHC controller deployment is ready")
+
+			nhcDeployment, err := deployment.Pull(
+				APIClient, nhcparams.OperatorDeploymentName, medik8sparams.OperatorNs)
+			Expect(err).ToNot(HaveOccurred(), "Failed to get NHC deployment")
+			Expect(nhcDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(),
+				"NHC deployment is not Ready")
+
+			By("Verifying at least 1 Ready worker node")
+
+			workerCount, err := helpers.CountReadyWorkerNodes(ctx, APIClient)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(workerCount).To(BeNumerically(">=", 1),
+				"Zero-healthy-nodes test requires at least 1 Ready worker node")
+
+			By("Selecting target worker node")
+
+			targetNode, err := helpers.SelectWorkerNode(ctx, APIClient)
+			Expect(err).ToNot(HaveOccurred(), "Failed to select worker node")
+
+			targetWorkerName = targetNode.Name
+			GinkgoWriter.Printf("Target worker node: %s\n", targetWorkerName)
+		})
+
+		BeforeEach(func() {
+			By("Verifying NHC controller deployment is ready")
+
+			nhcDeployment, err := deployment.Pull(
+				APIClient, nhcparams.OperatorDeploymentName, medik8sparams.OperatorNs)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(nhcDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(),
+				"NHC deployment is not Ready")
+
+			By("Verifying target node is Ready")
+
+			node := &corev1.Node{}
+			Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetWorkerName}, node)).To(Succeed())
+			Expect(helpers.IsNodeReady(node)).To(BeTrue(),
+				"Target node %s is not Ready before test", targetWorkerName)
+
+			By("Recording boot ID")
+
+			oldBootID, err = helpers.GetNodeBootIDFromAPI(ctx, APIClient, targetWorkerName)
+			Expect(err).ToNot(HaveOccurred(),
+				"Must read boot ID from node %s", targetWorkerName)
+
+			By("Pre-cleaning stale CRs")
+
+			cleanupNHCCR(nhcparams.NHCZeroHealthyTestName)
+			cleanupSNRCR(targetWorkerName)
+
+			GinkgoWriter.Printf("Pre-remediation boot ID: %s\n", oldBootID)
+		})
+
+		JustAfterEach(func() {
+			if CurrentSpecReport().Failed() {
+				logNHCControllerState()
+			}
+
+			cleanupNHCCR(nhcparams.NHCZeroHealthyTestName)
+			cleanupSNRCR(targetWorkerName)
+
+			if isSSHAvailable() {
+				if sshErr := startKubeletForRemediation(ctx, targetWorkerName); sshErr != nil {
+					GinkgoWriter.Printf(
+						"WARNING: SSH kubelet restart failed for %s: %v\n",
+						targetWorkerName, sshErr)
+					AddReportEntry("ssh-kubelet-restart-failed",
+						fmt.Sprintf("node %s: %v", targetWorkerName, sshErr))
+				}
+			}
+
+			By("Safety net: waiting for node " + targetWorkerName + " to become Ready")
+
+			if err := helpers.WaitForNodeReady(ctx, APIClient,
+				targetWorkerName,
+				nhcparams.DefaultPollInterval, nhcparams.NodeReadyTimeout,
+				GinkgoWriter.Printf,
+			); err != nil {
+				GinkgoWriter.Printf(
+					"WARNING: node %s did not become Ready within %s: %v\n",
+					targetWorkerName, nhcparams.NodeReadyTimeout, err)
+				AddReportEntry("safety-net-recovery-failed",
+					fmt.Sprintf("node %s did not recover: %v", targetWorkerName, err))
+			}
+		})
+
+		It("Verifying healthyNodes drops to zero during remediation",
+			reportxml.ID("56599"),
+			Label(labels.TierAcceptance, labels.PlatformAny,
+				labels.ComponentRemediation), func() {
+
+				nhcName := nhcparams.NHCZeroHealthyTestName
+
+				By("Creating NHC CR targeting single worker node")
+
+				nhcCR := buildNHCWithHostnameSelector(nhcName, targetWorkerName)
+				Expect(APIClient.Create(ctx, nhcCR)).To(Succeed(),
+					"Failed to create NHC CR %q for node %s", nhcName, targetWorkerName)
+
+				By("Verifying pre-remediation status: healthyNodes=1, observedNodes=1, phase=Enabled")
+
+				Expect(waitForNHCPhase(ctx, nhcName, nhcparams.NHCPhaseEnabled,
+					nhcparams.NodeNotReadyTimeout)).To(Succeed(),
+					"NHC %q should be Enabled before remediation", nhcName)
+
+				Eventually(func(g Gomega) {
+					healthy, err := getNHCHealthyNodes(ctx, nhcName)
+					g.Expect(err).ToNot(HaveOccurred())
+					g.Expect(healthy).To(Equal(int64(1)),
+						"healthyNodes should be 1 before remediation")
+				}).WithPolling(nhcparams.DefaultPollInterval).
+					WithTimeout(nhcparams.NodeNotReadyTimeout).Should(Succeed())
+
+				Eventually(func(g Gomega) {
+					observed, err := getNHCObservedNodes(ctx, nhcName)
+					g.Expect(err).ToNot(HaveOccurred())
+					g.Expect(observed).To(Equal(int64(1)),
+						"observedNodes should be 1 (single-node selector)")
+				}).WithPolling(nhcparams.DefaultPollInterval).
+					WithTimeout(nhcparams.NodeNotReadyTimeout).Should(Succeed())
+
+				By("Stopping kubelet on target node to trigger remediation")
+
+				Expect(stopKubeletForRemediation(ctx, targetWorkerName)).To(Succeed(),
+					"Failed to stop kubelet on %s", targetWorkerName)
+
+				By("Waiting for NHC to enter Remediating phase")
+
+				Expect(waitForNHCPhase(ctx, nhcName, nhcparams.NHCPhaseRemediating,
+					nhcparams.NodeNotReadyTimeout)).To(Succeed(),
+					"NHC %q should enter Remediating after kubelet stop", nhcName)
+
+				By("Verifying healthyNodes=0 during remediation")
+
+				Eventually(func(g Gomega) {
+					healthy, err := getNHCHealthyNodes(ctx, nhcName)
+					g.Expect(err).ToNot(HaveOccurred())
+					g.Expect(healthy).To(Equal(int64(0)),
+						"healthyNodes should be 0 during remediation")
+				}).WithPolling(nhcparams.DefaultPollInterval).
+					WithTimeout(nhcparams.NodeNotReadyTimeout).Should(Succeed())
+
+				By("Verifying observedNodes=1 during remediation")
+
+				Eventually(func(g Gomega) {
+					observed, err := getNHCObservedNodes(ctx, nhcName)
+					g.Expect(err).ToNot(HaveOccurred())
+					g.Expect(observed).To(Equal(int64(1)),
+						"observedNodes should remain 1 during remediation")
+				}).WithPolling(nhcparams.DefaultPollInterval).
+					WithTimeout(nhcparams.NodeNotReadyTimeout).Should(Succeed())
+
+				By("Waiting for SNR remediation to complete (node reboot)")
+
+				Expect(waitForSNRRemediationComplete(ctx, targetWorkerName, oldBootID,
+					nhcparams.RemediationCompletionTimeout)).To(Succeed(),
+					"SNR remediation should complete for node %s", targetWorkerName)
+
+				By("Waiting for NHC to return to Enabled after recovery")
+
+				Expect(waitForNHCPhase(ctx, nhcName, nhcparams.NHCPhaseEnabled,
+					nhcparams.RemediationCompletionTimeout)).To(Succeed(),
+					"NHC %q should return to Enabled after remediation", nhcName)
+
+				By("Verifying post-recovery status: healthyNodes=1, observedNodes=1")
+
+				Eventually(func(g Gomega) {
+					healthy, err := getNHCHealthyNodes(ctx, nhcName)
+					g.Expect(err).ToNot(HaveOccurred())
+					g.Expect(healthy).To(Equal(int64(1)),
+						"healthyNodes should be 1 after recovery")
+				}).WithPolling(nhcparams.DefaultPollInterval).
+					WithTimeout(nhcparams.NodeNotReadyTimeout).Should(Succeed())
+
+				Eventually(func(g Gomega) {
+					observed, err := getNHCObservedNodes(ctx, nhcName)
+					g.Expect(err).ToNot(HaveOccurred())
+					g.Expect(observed).To(Equal(int64(1)),
+						"observedNodes should be 1 after recovery")
+				}).WithPolling(nhcparams.DefaultPollInterval).
+					WithTimeout(nhcparams.NodeNotReadyTimeout).Should(Succeed())
+			})
 	})
