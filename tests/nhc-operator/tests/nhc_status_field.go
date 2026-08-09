@@ -7,7 +7,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/deployment"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/reportxml"
 
 	"github.com/medik8s/system-tests/tests/internal/helpers"
@@ -48,11 +47,7 @@ var _ = Describe("NHC Status Field Tracking",
 
 			By("Verifying NHC controller deployment is ready")
 
-			nhcDeployment, err := deployment.Pull(
-				APIClient, nhcparams.OperatorDeploymentName, medik8sparams.OperatorNs)
-			Expect(err).ToNot(HaveOccurred(), "Failed to get NHC deployment")
-			Expect(nhcDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(),
-				"NHC deployment is not Ready")
+			verifyNHCDeploymentReady()
 
 			By("Verifying at least 2 Ready worker nodes")
 
@@ -77,28 +72,30 @@ var _ = Describe("NHC Status Field Tracking",
 		BeforeEach(func() {
 			By("Verifying NHC controller deployment is ready")
 
-			nhcDeployment, err := deployment.Pull(
-				APIClient, nhcparams.OperatorDeploymentName, medik8sparams.OperatorNs)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(nhcDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(),
-				"NHC deployment is not Ready")
+			verifyNHCDeploymentReady()
 
 			By("Verifying target node is Ready")
 
-			node := &corev1.Node{}
-			Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetWorkerName}, node)).To(Succeed())
-			Expect(helpers.IsNodeReady(node)).To(BeTrue(),
-				"Target node %s is not Ready before test", targetWorkerName)
+			Eventually(func(g Gomega) {
+				node := &corev1.Node{}
+				g.Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetWorkerName}, node)).To(Succeed())
+				g.Expect(helpers.IsNodeReady(node)).To(BeTrue(),
+					"Target node %s is not Ready before test", targetWorkerName)
+			}).WithPolling(nhcparams.DefaultPollInterval).
+				WithTimeout(nhcparams.NodeReadyTimeout).Should(Succeed())
 
 			By("Recording boot ID")
+
+			var err error
 
 			oldBootID, err = helpers.GetNodeBootIDFromAPI(ctx, APIClient, targetWorkerName)
 			Expect(err).ToNot(HaveOccurred(),
 				"Must read boot ID from node %s", targetWorkerName)
 
-			By("Pre-cleaning stale CRs")
+			By("Pre-cleaning stale CRs and confirming gone")
 
 			cleanupNHCCR(nhcparams.NHCStatusTestName)
+			waitForNHCGone(ctx, nhcparams.NHCStatusTestName)
 			cleanupSNRCR(targetWorkerName)
 
 			GinkgoWriter.Printf("Pre-remediation boot ID: %s\n", oldBootID)
@@ -140,7 +137,7 @@ var _ = Describe("NHC Status Field Tracking",
 		It("Verifying NHC status phase and reason transitions during remediation",
 			reportxml.ID("53093"),
 			Label(labels.TierAcceptance, labels.PlatformAny,
-				labels.ComponentController), func() {
+				labels.ComponentRemediation), func() {
 
 				nhcName := nhcparams.NHCStatusTestName
 

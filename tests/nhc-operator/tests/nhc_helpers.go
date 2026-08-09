@@ -8,6 +8,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/deployment"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/pod"
 
 	"github.com/medik8s/system-tests/tests/internal/helpers"
@@ -690,6 +691,17 @@ func nhcUnhealthyConditions(spec map[string]interface{}) []interface{} {
 	Expect(ok).To(BeTrue(), "NHC spec has no unhealthyConditions slice")
 
 	return conditions
+}
+
+// verifyNHCDeploymentReady checks that the NHC controller deployment exists and is ready.
+func verifyNHCDeploymentReady() {
+	GinkgoHelper()
+
+	nhcDeployment, err := deployment.Pull(
+		APIClient, nhcparams.OperatorDeploymentName, medik8sparams.OperatorNs)
+	Expect(err).ToNot(HaveOccurred(), "Failed to get NHC deployment")
+	Expect(nhcDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(),
+		"NHC deployment is not Ready")
 }
 
 // verifyNHCNotCreated asserts that an NHC CR with the given name does not exist.
