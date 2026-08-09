@@ -99,11 +99,11 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 
 			By("Pre-cleaning stale CRs")
 
-			cleanupSNRCR(targetWorkerName)
-			cleanupNHCCR(nhcparams.NHCTestName)
-			cleanupNHCCR(nhcparams.NHCSecondTestName)
-			cleanupNHCCR(nhcparams.NHCOldDefaultName)
-			cleanupNHCCR(nhcparams.NHCControlPlaneTestName)
+			cleanupSNRCR(ctx, targetWorkerName)
+			cleanupNHCCR(ctx, nhcparams.NHCTestName)
+			cleanupNHCCR(ctx, nhcparams.NHCSecondTestName)
+			cleanupNHCCR(ctx, nhcparams.NHCOldDefaultName)
+			cleanupNHCCR(ctx, nhcparams.NHCControlPlaneTestName)
 
 			GinkgoWriter.Printf("Pre-remediation boot ID: %s\n", oldBootID)
 		})
@@ -114,10 +114,10 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 			}
 
 			// Cleanup order: NHC CRs first, then SNR CR, then node recovery.
-			cleanupNHCCR(nhcparams.NHCTestName)
-			cleanupNHCCR(nhcparams.NHCSecondTestName)
-			cleanupNHCCR(nhcparams.NHCOldDefaultName)
-			cleanupNHCCR(nhcparams.NHCControlPlaneTestName)
+			cleanupNHCCR(ctx, nhcparams.NHCTestName)
+			cleanupNHCCR(ctx, nhcparams.NHCSecondTestName)
+			cleanupNHCCR(ctx, nhcparams.NHCOldDefaultName)
+			cleanupNHCCR(ctx, nhcparams.NHCControlPlaneTestName)
 
 			// Recover all disrupted nodes. Best-effort SSH kubelet restart
 			// followed by WaitForNodeReady safety net. MUST NOT use Expect --
@@ -127,7 +127,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 					continue
 				}
 
-				cleanupSNRCR(nodeName)
+				cleanupSNRCR(ctx, nodeName)
 
 				if isSSHAvailable() {
 					if sshErr := startKubeletForRemediation(ctx, nodeName); sshErr != nil {
@@ -564,7 +564,7 @@ var _ = Describe("NHC Functional -- Selector and CR Management",
 		})
 
 		AfterEach(func() {
-			cleanupNHCCR(nhcparams.NHCTestName)
+			cleanupNHCCR(ctx, nhcparams.NHCTestName)
 		})
 
 		It("should update observed nodes when selector is edited",

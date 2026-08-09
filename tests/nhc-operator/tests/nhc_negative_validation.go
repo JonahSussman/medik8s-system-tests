@@ -61,13 +61,13 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 			By("Pre-cleaning stale NHC CRs from previous interrupted runs")
 
 			for _, name := range allNegativeTestNames {
-				cleanupNHCCR(name)
+				cleanupNHCCR(ctx, name)
 			}
 		})
 
 		AfterEach(func() {
 			for _, name := range allNegativeTestNames {
-				cleanupNHCCR(name)
+				cleanupNHCCR(ctx, name)
 			}
 		})
 
@@ -234,7 +234,7 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 					// Must delete and confirm gone before reusing the same name.
 					By("Deleting NHC with wrong SNR template before next scenario")
 
-					cleanupNHCCR(nhcName)
+					cleanupNHCCR(ctx, nhcName)
 					waitForNHCGone(ctx, nhcName)
 
 					By("Creating NHC with poison-pill remediation template (non-existent API group)")
@@ -320,7 +320,7 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 
 					By("Cleaning up NHC before Part 2")
 
-					cleanupNHCCR(nhcName)
+					cleanupNHCCR(ctx, nhcName)
 					waitForNHCGone(ctx, nhcName)
 
 					By("Part 2: Cluster-scoped template (TRT) without namespace")
@@ -426,8 +426,8 @@ var _ = Describe("NHC Negative -- Zero Healthy Nodes",
 
 			By("Pre-cleaning stale CRs")
 
-			cleanupNHCCR(nhcparams.NHCZeroHealthyTestName)
-			cleanupSNRCR(targetWorkerName)
+			cleanupNHCCR(ctx, nhcparams.NHCZeroHealthyTestName)
+			cleanupSNRCR(ctx, targetWorkerName)
 
 			GinkgoWriter.Printf("Pre-remediation boot ID: %s\n", oldBootID)
 		})
@@ -437,8 +437,8 @@ var _ = Describe("NHC Negative -- Zero Healthy Nodes",
 				logNHCControllerState()
 			}
 
-			cleanupNHCCR(nhcparams.NHCZeroHealthyTestName)
-			cleanupSNRCR(targetWorkerName)
+			cleanupNHCCR(ctx, nhcparams.NHCZeroHealthyTestName)
+			cleanupSNRCR(ctx, targetWorkerName)
 
 			if isSSHAvailable() {
 				if sshErr := startKubeletForRemediation(ctx, targetWorkerName); sshErr != nil {

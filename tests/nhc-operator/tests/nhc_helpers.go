@@ -163,18 +163,18 @@ func isSSHAvailable() bool {
 
 // cleanupNHCCR safely deletes a NodeHealthCheck CR by name.
 // NHC CRs are cluster-scoped (namespace is empty).
-func cleanupNHCCR(name string) {
+func cleanupNHCCR(ctx context.Context, name string) {
 	helpers.DeleteRemediationCR(
-		context.TODO(), APIClient, nhcGVK, name, "",
+		ctx, APIClient, nhcGVK, name, "",
 		nhcparams.DefaultPollInterval, nhcparams.RemediationCRDeletionTimeout,
 		GinkgoWriter.Printf)
 }
 
 // cleanupSNRCR safely deletes a SelfNodeRemediation CR by name.
 // SNR CRs are namespaced in the operator namespace.
-func cleanupSNRCR(name string) {
+func cleanupSNRCR(ctx context.Context, name string) {
 	helpers.DeleteRemediationCR(
-		context.TODO(), APIClient, snrGVK, name, medik8sparams.OperatorNs,
+		ctx, APIClient, snrGVK, name, medik8sparams.OperatorNs,
 		nhcparams.DefaultPollInterval, nhcparams.RemediationCRDeletionTimeout,
 		GinkgoWriter.Printf)
 }
