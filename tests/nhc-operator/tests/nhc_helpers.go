@@ -68,7 +68,7 @@ func buildSNRT(name string) *unstructured.Unstructured {
 }
 
 // cleanupSNRT safely deletes a SelfNodeRemediationTemplate CR by name.
-// TODO: accept ctx parameter for cancellation support (same as cleanupNHCCR/cleanupSNRCR).
+// Context propagation tracked in PR #79 (cleanupNHCCR/cleanupSNRCR).
 func cleanupSNRT(name string) {
 	helpers.DeleteRemediationCR(
 		context.TODO(), APIClient, snrtGVK, name, medik8sparams.OperatorNs,
