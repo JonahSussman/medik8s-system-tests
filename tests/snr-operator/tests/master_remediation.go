@@ -61,7 +61,8 @@ var _ = Describe("SNR Functional - Master Remediation",
 		BeforeEach(func() {
 			By("Removing any stale kubelet stop guard from a previous run")
 
-			_ = helpers.RemoveKubeletStopGuard(ctx, targetMasterName, snrparams.OcDebugTimeout)
+			Expect(helpers.RemoveKubeletStopGuard(ctx, targetMasterName, snrparams.OcDebugTimeout)).To(Succeed(),
+				"Failed to remove kubelet stop guard on master %s", targetMasterName)
 
 			By("Verifying SNR operator deployment is ready")
 
@@ -102,7 +103,7 @@ var _ = Describe("SNR Functional - Master Remediation",
 				} else {
 					By("Removing kubelet stop guard file")
 
-					_ = helpers.RemoveKubeletStopGuard(ctx, targetMasterName, snrparams.OcDebugTimeout)
+					bestEffortRemoveKubeletStopGuard(ctx, targetMasterName)
 				}
 			}
 
@@ -209,6 +210,12 @@ var _ = Describe("SNR Functional - Master Remediation",
 				targetWorkerName := targetWorkerNode.Name
 				GinkgoWriter.Printf("Target worker node: %s\n", targetWorkerName)
 
+				DeferCleanup(func() {
+					By("Removing deferred worker kubelet stop guard")
+
+					bestEffortRemoveKubeletStopGuard(ctx, targetWorkerName)
+				})
+
 				By("Recording boot IDs and creation timestamps for both nodes")
 
 				oldMasterBootID, err := helpers.GetNodeBootIDFromAPI(ctx, APIClient, targetMasterName)
@@ -229,6 +236,11 @@ var _ = Describe("SNR Functional - Master Remediation",
 
 				GinkgoWriter.Printf("Pre-remediation boot IDs: master=%s, worker=%s\n",
 					oldMasterBootID, oldWorkerBootID)
+
+				By("Removing any stale kubelet stop guard on worker")
+
+				Expect(helpers.RemoveKubeletStopGuard(ctx, targetWorkerName, snrparams.OcDebugTimeout)).To(Succeed(),
+					"Failed to remove kubelet stop guard on worker %s", targetWorkerName)
 
 				By("Pre-cleaning any stale CRs from previous runs")
 
