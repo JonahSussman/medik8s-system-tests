@@ -156,6 +156,51 @@ cluster-scoped CRDs).
 - **Standalone**: `ginkgo --label-filter="nhc && disruption:nondestructive" --focus="missing template namespace" ./tests/nhc-operator/...`
 - **Pass criteria**: Part 1: NHC Disabled with RemediationTemplateNotFound when namespace missing, Enabled after namespace added, Disabled again after namespace removed with same reason; Part 2: NHC Enabled with cluster-scoped TRT and no namespace
 
+## Non-Destructive Tests -- Template Watch
+
+Tests that verify NHC watches remediation template lifecycle. Deleting a
+template causes NHC to transition to Disabled; re-creating it causes NHC
+to return to Enabled. Requires SNR operator for the SNRT template.
+
+### 10. NHC Watches Template Deletion and Re-Creation ([OCP-71185](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-71185))
+
+Creates an SNRT (SelfNodeRemediationTemplate) and an NHC pointing to it.
+Verifies NHC is Enabled, then deletes the SNRT and verifies NHC transitions
+to Disabled with RemediationTemplateNotFound. Re-creates the SNRT and
+verifies NHC returns to Enabled.
+
+- **Operators**: NHC v0.12.0+, SNR
+- **Cluster**: Any topology
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="nhc && disruption:nondestructive" --focus="watches template deletion" ./tests/nhc-operator/...`
+- **Pass criteria**: NHC Enabled with SNRT present, NHC Disabled with RemediationTemplateNotFound after SNRT deletion, NHC Enabled again after SNRT re-creation
+
+## Destructive Tests -- Custom Remediation Template
+
+Tests that verify NHC triggers remediation with a custom TestRemediation
+template (not SNR). Creates dummy CRDs and RBAC, stops kubelet, and
+verifies the full remediation lifecycle with status field tracking.
+
+### Prerequisites (Custom Remediation)
+
+- NHC operator installed
+- SSH access to worker nodes (2+ Ready workers)
+- `KUBECONFIG` set with cluster-admin access
+
+### 11. NHC Custom Remediation Template ([OCP-61976](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-61976))
+
+Creates TestRemediation CRDs, RBAC, and an NHC using TRT as the remediator.
+Verifies pre-remediation status (healthyNodes=N, observedNodes=N, Enabled).
+Stops kubelet, verifies during-remediation status (healthyNodes=N-1,
+observedNodes=N, Remediating), confirms TestRemediation CR created. Starts
+kubelet, verifies post-recovery status and TestRemediation CR cleanup.
+
+- **Operators**: NHC v0.12.0+
+- **Cluster**: Multi-node (2+ workers), SSH access to worker nodes
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="nhc && disruption:destructive" --focus="custom TRT" ./tests/nhc-operator/...`
+- **Pass criteria**: Pre-remediation healthyNodes=N and observedNodes=N with Enabled phase, Remediating after kubelet stop with healthyNodes=N-1, TestRemediation CR created for target node, kubelet starts and node returns to Ready, post-recovery healthyNodes=N and observedNodes=N with Enabled phase, TestRemediation CR deleted
+
 ## Destructive Tests -- Status Field Tracking
 
 Tests that verify NHC status.phase and status.reason transitions through
@@ -167,7 +212,7 @@ the full remediation lifecycle: Enabled -> Remediating -> Enabled.
 - SSH access to worker nodes (2+ Ready workers)
 - `KUBECONFIG` set with cluster-admin access
 
-### 10. Status Phase and Reason Transitions ([OCP-53093](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-53093))
+### 12. Status Phase and Reason Transitions ([OCP-53093](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-53093))
 
 Creates an NHC CR for workers and verifies pre-remediation status
 (phase=Enabled, reason="no ongoing remediation"). Stops kubelet via SSH
@@ -194,7 +239,7 @@ healthyNodes counter drops to zero while observedNodes remains stable.
 - SSH access to worker nodes
 - `KUBECONFIG` set with cluster-admin access
 
-### 11. Zero Healthy Nodes During Remediation ([OCP-56599](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-56599))
+### 13. Zero Healthy Nodes During Remediation ([OCP-56599](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-56599))
 
 Creates an NHC CR targeting a single worker node (hostname selector,
 minHealthy=0). Verifies healthyNodes=1 and observedNodes=1 before
@@ -223,7 +268,7 @@ remediator.
 - At least 2 Ready worker nodes
 - `KUBECONFIG` set with cluster-admin access
 
-### 12. NHC Selector Editing ([OCP-56938](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-56938))
+### 14. NHC Selector Editing ([OCP-56938](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-56938))
 
 Edits the NHC selector to a non-existent key and verifies observed nodes
 drops to 0 without crashing the NHC controller. Also verifies webhook
@@ -235,7 +280,7 @@ rejects invalid selector operator values and empty selectors.
 - **Standalone**: `ginkgo --label-filter="nhc && disruption:nondestructive" --focus="selector is edited" ./tests/nhc-operator/...`
 - **Pass criteria**: Observed nodes drops to 0, NHC remains Enabled, invalid operator value rejected ("is not a valid"), empty selector rejected ("Selector is mandatory"), NHC state unchanged after rejected edits
 
-### 13. NHC Editing and Deletion Blocked During Remediation ([OCP-56600](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-56600))
+### 15. NHC Editing and Deletion Blocked During Remediation ([OCP-56600](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-56600))
 
 Stops kubelet via SSH to trigger remediation, then verifies non-selector
 fields (minHealthy, unhealthyConditions) remain editable, while NHC
@@ -247,7 +292,7 @@ webhook blocks selector editing and CR deletion during active remediation.
 - **Standalone**: `ginkgo --label-filter="nhc && disruption:destructive" --focus="selector editing and deletion" ./tests/nhc-operator/...`
 - **Pass criteria**: minHealthy and unhealthyConditions edit succeeds during remediation, selector edit rejected ("selector update prohibited due to running remediation"), CR deletion rejected ("deletion prohibited due to running remediation"), NHC CR still exists and Remediating after delete attempt, SNR remediation completes, node recovers, NHC returns to Enabled
 
-### 14. Old Default NHC CR Name ([OCP-69711](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-69711))
+### 16. Old Default NHC CR Name ([OCP-69711](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-69711))
 
 Creates NHC CRs with the legacy name "nhc-worker-default" and a
 control-plane NHC, stops kubelet on a worker and on the control-plane
@@ -260,7 +305,7 @@ fails over to another node and both remediations complete.
 - **Standalone**: `ginkgo --label-filter="nhc && disruption:destructive" --focus="old default NHC CR" ./tests/nhc-operator/...`
 - **Pass criteria**: SNR CR created for worker (NHC triggered via legacy CR), NHC controller restarts on another node (2 ready replicas), both worker and control-plane nodes recover to Ready, control-plane NHC returns to Enabled, NHC deployment remains Ready
 
-### 15. Only One NHC CR Remediates at a Time ([OCP-66814](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-66814))
+### 17. Only One NHC CR Remediates at a Time ([OCP-66814](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-66814))
 
 Creates two NHC CRs with different remediators (SNR at 30s, TestRemediation
 at 10s), stops kubelet via SSH, and verifies only the shorter-duration
@@ -273,7 +318,7 @@ an SNR CR while the node is already being remediated.
 - **Standalone**: `ginkgo --label-filter="nhc && disruption:destructive" --focus="one CR at a time" ./tests/nhc-operator/...`
 - **Pass criteria**: TestRemediation CR created for target node, SNR CR NOT created (Consistently), TestRemediation NHC returns to Enabled after kubelet restart, target node recovers to Ready
 
-### 16. Non-Remediating NHC CR Deletion During Active Remediation ([OCP-71171](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-71171))
+### 18. Non-Remediating NHC CR Deletion During Active Remediation ([OCP-71171](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-71171))
 
 Creates two SNR-based NHC CRs with different unhealthy durations (10s and
 11s). The faster NHC triggers SNR remediation first. Verifies the slower

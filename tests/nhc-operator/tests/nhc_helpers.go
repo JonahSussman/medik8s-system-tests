@@ -43,6 +43,52 @@ var snrGVK = schema.GroupVersionKind{
 	Kind:    "SelfNodeRemediation",
 }
 
+// snrtGVK is the GroupVersionKind for SelfNodeRemediationTemplate CRs.
+var snrtGVK = schema.GroupVersionKind{
+	Group:   nhcparams.SNRCRDGroup,
+	Version: nhcparams.SNRCRDVersion,
+	Kind:    "SelfNodeRemediationTemplate",
+}
+
+// buildSNRT builds an unstructured SelfNodeRemediationTemplate CR.
+func buildSNRT(name string) *unstructured.Unstructured {
+	snrt := &unstructured.Unstructured{}
+	snrt.SetGroupVersionKind(snrtGVK)
+	snrt.SetName(name)
+	snrt.SetNamespace(medik8sparams.OperatorNs)
+	snrt.Object["spec"] = map[string]interface{}{
+		"template": map[string]interface{}{
+			"spec": map[string]interface{}{
+				"remediationStrategy": "ResourceDeletion",
+			},
+		},
+	}
+
+	return snrt
+}
+
+// cleanupSNRT safely deletes a SelfNodeRemediationTemplate CR by name.
+func cleanupSNRT(name string) {
+	helpers.DeleteRemediationCR(
+		context.TODO(), APIClient, snrtGVK, name, medik8sparams.OperatorNs,
+		nhcparams.DefaultPollInterval, nhcparams.RemediationCRDeletionTimeout,
+		GinkgoWriter.Printf)
+}
+
+// buildNHCWithSNRT builds an NHC CR that uses a specific SNRT as the remediator.
+func buildNHCWithSNRT(nhcName, snrtName string) *unstructured.Unstructured {
+	nhc := buildNHCForWorkers(nhcName)
+	spec := nhcSpec(nhc)
+	spec["remediationTemplate"] = map[string]interface{}{
+		"apiVersion": nhcparams.SNRCRDGroup + "/" + nhcparams.SNRCRDVersion,
+		"kind":       "SelfNodeRemediationTemplate",
+		"name":       snrtName,
+		"namespace":  medik8sparams.OperatorNs,
+	}
+
+	return nhc
+}
+
 // buildNHCForWorkers builds an unstructured NodeHealthCheck CR that monitors
 // worker nodes. Uses SNR as the remediator for these tests; NHC works with
 // any operator that provides a remediation template CRD.
@@ -59,7 +105,7 @@ func buildNHCWithHostnameSelector(name, hostname string) *unstructured.Unstructu
 	})
 
 	// Override minHealthy for single-node selector.
-	nhc.Object["spec"].(map[string]interface{})["minHealthy"] = int64(0)
+	nhcSpec(nhc)["minHealthy"] = int64(0)
 
 	return nhc
 }
@@ -186,7 +232,7 @@ func getNHCPhase(ctx context.Context, name string) (string, error) {
 	nhc.SetGroupVersionKind(nhcGVK)
 
 	if err := APIClient.Get(ctx, client.ObjectKey{Name: name}, nhc); err != nil {
-		return "", err
+		return "", fmt.Errorf("get NHC %s phase: %w", name, err)
 	}
 
 	phase, found, err := unstructured.NestedString(nhc.Object, "status", "phase")
@@ -253,6 +299,10 @@ func waitForNHCPhase(ctx context.Context, name, expectedPhase string, timeout ti
 		func(ctx context.Context) (bool, error) {
 			phase, err := getNHCPhase(ctx, name)
 			if err != nil {
+				// Log but retry -- errors include both transient API issues
+				// and "has no status.phase" (controller hasn't reconciled yet).
+				GinkgoWriter.Printf("waitForNHCPhase(%s): %v (retrying)\n", name, err)
+
 				return false, nil
 			}
 
@@ -584,13 +634,13 @@ func cleanupTestRemediationResources() {
 // buildNHCForWorkers for the base spec and overrides the remediator.
 func buildNHCWithTestRemediation(name string) *unstructured.Unstructured {
 	nhc := buildNHCForWorkers(name)
-	spec := nhc.Object["spec"].(map[string]interface{})
+	spec := nhcSpec(nhc)
 
+	// TestRemediationTemplate is cluster-scoped, so no namespace is needed.
 	spec["remediationTemplate"] = map[string]interface{}{
 		"apiVersion": nhcparams.TestRemediationGroup + "/" + nhcparams.TestRemediationVersion,
 		"kind":       "TestRemediationTemplate",
 		"name":       nhcparams.TestRemediationTemplateName,
-		"namespace":  medik8sparams.OperatorNs,
 	}
 
 	spec["unhealthyConditions"] = []interface{}{
