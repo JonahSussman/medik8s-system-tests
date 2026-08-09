@@ -8,6 +8,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -25,10 +26,7 @@ import (
 	"github.com/medik8s/system-tests/tests/nmo-operator/internal/nmoparams"
 )
 
-const (
-	schedulePodName = "nmo-schedule-test"
-	schedulePodNs   = "default"
-)
+const schedulePodName = "nmo-schedule-test"
 
 var _ = Describe(
 	"NMO Maintenance Lifecycle",
@@ -99,7 +97,7 @@ var _ = Describe(
 			staleTestPod := &corev1.Pod{}
 
 			err = APIClient.Get(context.Background(),
-				client.ObjectKey{Name: schedulePodName, Namespace: schedulePodNs}, staleTestPod)
+				client.ObjectKey{Name: schedulePodName, Namespace: medik8sparams.OperatorNs}, staleTestPod)
 
 			switch {
 			case err == nil:
@@ -137,7 +135,7 @@ var _ = Describe(
 			testPod := &corev1.Pod{}
 
 			cleanupErr = APIClient.Get(context.Background(),
-				client.ObjectKey{Name: schedulePodName, Namespace: schedulePodNs}, testPod)
+				client.ObjectKey{Name: schedulePodName, Namespace: medik8sparams.OperatorNs}, testPod)
 
 			switch {
 			case cleanupErr == nil:
@@ -149,26 +147,7 @@ var _ = Describe(
 			}
 
 			if targetNodeName != "" {
-				By("Waiting for target node to become Ready before uncordon check")
-
-				if err := helpers.WaitForNodeReady(
-					context.Background(), APIClient, targetNodeName,
-					nmoparams.DefaultPollInterval, nmoparams.RebootTimeout,
-					GinkgoWriter.Printf,
-				); err != nil {
-					GinkgoWriter.Printf("WARNING: node %s did not become Ready: %v\n", targetNodeName, err)
-				}
-
-				By("Verifying target node is uncordoned after cleanup")
-				Eventually(func() bool {
-					node, err := nodes.Pull(APIClient, targetNodeName)
-					if err != nil {
-						return false
-					}
-
-					return !node.Object.Spec.Unschedulable
-				}, nmoparams.UncordonTimeout, nmoparams.DefaultPollInterval).Should(BeTrue(),
-					"Target node is still cordoned after cleanup")
+				waitForNodeReadyAndUncordoned(context.Background(), targetNodeName, nmoparams.RebootTimeout)
 			}
 		})
 
@@ -208,12 +187,18 @@ var _ = Describe(
 				}, nmoparams.MaintenanceTimeout, nmoparams.DefaultPollInterval).Should(Equal(nmov1beta1.MaintenanceSucceeded),
 					"NodeMaintenance did not reach Succeeded phase")
 
-				By("Verifying target node is cordoned")
+				By("Verifying target node is cordoned and drain taint is applied")
+				assertNodeCordonAndTaint(targetNodeName, true, nmoparams.MaintenanceTimeout)
 
-				node, err := nodes.Pull(APIClient, targetNodeName)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(node.Object.Spec.Unschedulable).To(BeTrue(),
-					"Node should be cordoned (Unschedulable=true)")
+				By("Verifying NodeMaintenance CR status shows drain completed")
+				assertDrainCompleted(context.Background(), nmCRName)
+
+				By("Verifying BeginMaintenance and SucceedMaintenance events were emitted")
+				assertMaintenanceEvent(context.Background(), nmCRName, nmoparams.EventReasonBeginMaintenance)
+				assertMaintenanceEvent(context.Background(), nmCRName, nmoparams.EventReasonSucceedMaintenance)
+
+				By("Verifying maintenance lease exists with correct fields")
+				assertMaintenanceLease(context.Background(), targetNodeName, true)
 			})
 
 		It("Schedule pod to node under maintenance",
@@ -230,7 +215,7 @@ var _ = Describe(
 				testPod := &corev1.Pod{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      schedulePodName,
-						Namespace: schedulePodNs,
+						Namespace: medik8sparams.OperatorNs,
 					},
 					Spec: corev1.PodSpec{
 						NodeSelector: map[string]string{
@@ -252,7 +237,7 @@ var _ = Describe(
 					pod := &corev1.Pod{}
 
 					err := APIClient.Get(context.Background(),
-						client.ObjectKey{Name: schedulePodName, Namespace: schedulePodNs}, pod)
+						client.ObjectKey{Name: schedulePodName, Namespace: medik8sparams.OperatorNs}, pod)
 					if err != nil {
 						return ""
 					}
@@ -265,15 +250,18 @@ var _ = Describe(
 
 				pod := &corev1.Pod{}
 				Expect(APIClient.Get(context.Background(),
-					client.ObjectKey{Name: schedulePodName, Namespace: schedulePodNs}, pod)).To(Succeed())
+					client.ObjectKey{Name: schedulePodName, Namespace: medik8sparams.OperatorNs}, pod)).To(Succeed())
 				Expect(pod.Spec.NodeName).To(BeEmpty(),
 					"Pod should not be assigned to any node")
+
+				By("Verifying NodeMaintenance CR status confirms drain completed")
+				assertDrainCompleted(context.Background(), nmCRName)
 
 				By("Cleaning up schedule test pod")
 				Expect(APIClient.Delete(context.Background(), pod)).To(Succeed())
 				Eventually(func() bool {
 					err := APIClient.Get(context.Background(),
-						client.ObjectKey{Name: schedulePodName, Namespace: schedulePodNs}, &corev1.Pod{})
+						client.ObjectKey{Name: schedulePodName, Namespace: medik8sparams.OperatorNs}, &corev1.Pod{})
 
 					return errors.IsNotFound(err)
 				}, nmoparams.ScheduleCheckTimeout, nmoparams.DefaultPollInterval).Should(BeTrue(),
@@ -297,7 +285,13 @@ var _ = Describe(
 				Expect(err).ToNot(HaveOccurred(), "Failed to get boot ID before reboot")
 
 				By(fmt.Sprintf("Rebooting node %s via oc debug", targetNodeName))
-				_, _ = helpers.RunOnNode(context.Background(), targetNodeName, 2*time.Minute, "systemctl", "reboot")
+
+				_, rebootErr := helpers.RunOnNode(
+					context.Background(), targetNodeName, nmoparams.RunOnNodeTimeout, "systemctl", "reboot")
+				if rebootErr != nil {
+					GinkgoWriter.Printf("INFO: reboot command returned error (expected due to connection drop): %v\n",
+						rebootErr)
+				}
 
 				By("Waiting for node to reboot (boot ID change)")
 				Expect(helpers.WaitForNodeReboot(
@@ -322,13 +316,11 @@ var _ = Describe(
 						"NodeMaintenance phase should still be Succeeded after reboot")
 				}, nmoparams.MaintenanceTimeout, nmoparams.DefaultPollInterval).Should(Succeed())
 
-				By("Verifying target node remains cordoned after reboot")
-				Eventually(func(g Gomega) {
-					node, err := nodes.Pull(APIClient, targetNodeName)
-					g.Expect(err).ToNot(HaveOccurred())
-					g.Expect(node.Object.Spec.Unschedulable).To(BeTrue(),
-						"Node should remain cordoned after reboot")
-				}, nmoparams.MaintenanceTimeout, nmoparams.DefaultPollInterval).Should(Succeed())
+				By("Verifying target node remains cordoned and tainted after reboot")
+				assertNodeCordonAndTaint(targetNodeName, true, nmoparams.MaintenanceTimeout)
+
+				By("Verifying maintenance lease persists after reboot")
+				assertMaintenanceLease(context.Background(), targetNodeName, true)
 			})
 
 		It("Stop node maintenance",
@@ -344,18 +336,92 @@ var _ = Describe(
 				By(fmt.Sprintf("Deleting NodeMaintenance CR %s and waiting for removal", nmCRName))
 				deleteAndWaitForNMCR(context.Background(), nmCRName, nmoparams.UncordonTimeout)
 
-				By("Verifying target node is uncordoned")
-				Eventually(func() bool {
-					node, err := nodes.Pull(APIClient, targetNodeName)
-					if err != nil {
-						return false
-					}
+				By("Verifying target node is uncordoned and drain taint removed")
+				assertNodeCordonAndTaint(targetNodeName, false, nmoparams.UncordonTimeout)
 
-					return !node.Object.Spec.Unschedulable
-				}, nmoparams.UncordonTimeout, nmoparams.DefaultPollInterval).Should(BeTrue(),
-					"Node should be uncordoned after maintenance stop")
+				By("Verifying RemovedMaintenance event was emitted")
+				assertMaintenanceEvent(context.Background(), nmCRName, nmoparams.EventReasonRemovedMaintenance)
+
+				By("Verifying maintenance lease is deleted")
+				assertMaintenanceLease(context.Background(), targetNodeName, false)
 			})
 	})
+
+func assertNodeCordonAndTaint(nodeName string, expectCordoned bool, timeout time.Duration) {
+	EventuallyWithOffset(1, func(g Gomega) {
+		node, err := nodes.Pull(APIClient, nodeName)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(node.Object.Spec.Unschedulable).To(Equal(expectCordoned),
+			fmt.Sprintf("Node %s Unschedulable should be %v", nodeName, expectCordoned))
+		g.Expect(hasDrainTaint(node.Object.Spec.Taints)).To(Equal(expectCordoned),
+			fmt.Sprintf("Node %s drain taint presence should be %v", nodeName, expectCordoned))
+	}, timeout, nmoparams.DefaultPollInterval).Should(Succeed())
+}
+
+func assertDrainCompleted(ctx context.Context, nmCRName string) {
+	currentNM := &nmov1beta1.NodeMaintenance{}
+	ExpectWithOffset(1, APIClient.Get(ctx, client.ObjectKey{Name: nmCRName}, currentNM)).To(Succeed())
+	ExpectWithOffset(1, currentNM.Status.Phase).To(Equal(nmov1beta1.MaintenanceSucceeded),
+		"Maintenance phase should be Succeeded")
+	ExpectWithOffset(1, currentNM.Status.DrainProgress).To(Equal(nmoparams.DrainProgressComplete),
+		"Drain progress should be 100%%")
+	ExpectWithOffset(1, currentNM.Status.PendingPods).To(BeEmpty(),
+		"No pods should be pending eviction")
+}
+
+func assertMaintenanceEvent(ctx context.Context, nmCRName, expectedReason string) {
+	EventuallyWithOffset(1, func(assertion Gomega) {
+		eventList := &corev1.EventList{}
+		assertion.Expect(APIClient.List(ctx, eventList)).To(Succeed())
+
+		found := false
+
+		for i := range eventList.Items {
+			event := &eventList.Items[i]
+			if event.InvolvedObject.Kind == "NodeMaintenance" &&
+				event.InvolvedObject.Name == nmCRName &&
+				event.Reason == expectedReason {
+				found = true
+
+				break
+			}
+		}
+
+		assertion.Expect(found).To(BeTrue(),
+			fmt.Sprintf("Expected %s event for NodeMaintenance %s", expectedReason, nmCRName))
+	}, nmoparams.EventTimeout, nmoparams.DefaultPollInterval).Should(Succeed())
+}
+
+func assertMaintenanceLease(ctx context.Context, nodeName string, shouldExist bool) {
+	leaseName := fmt.Sprintf("node-%s", nodeName)
+
+	if shouldExist {
+		EventuallyWithOffset(1, func(assertion Gomega) {
+			lease := &coordinationv1.Lease{}
+			assertion.Expect(APIClient.Get(ctx, client.ObjectKey{
+				Namespace: nmoparams.LeaseNamespace,
+				Name:      leaseName,
+			}, lease)).To(Succeed())
+			assertion.Expect(lease.Spec.LeaseDurationSeconds).ToNot(BeNil())
+			assertion.Expect(*lease.Spec.LeaseDurationSeconds).To(Equal(nmoparams.LeaseDurationSeconds),
+				"Lease duration should be 3600s")
+			assertion.Expect(lease.Spec.HolderIdentity).ToNot(BeNil())
+			assertion.Expect(*lease.Spec.HolderIdentity).To(Equal(nmoparams.LeaseHolderIdentity),
+				"Lease holder should be node-maintenance")
+		}, nmoparams.LeaseTimeout, nmoparams.DefaultPollInterval).Should(Succeed())
+	} else {
+		EventuallyWithOffset(1, func() bool {
+			lease := &coordinationv1.Lease{}
+			err := APIClient.Get(ctx, client.ObjectKey{
+				Namespace: nmoparams.LeaseNamespace,
+				Name:      leaseName,
+			}, lease)
+
+			return errors.IsNotFound(err)
+		}, nmoparams.LeaseTimeout, nmoparams.DefaultPollInterval).Should(BeTrue(),
+			fmt.Sprintf("Lease %s should be deleted after maintenance stop", leaseName))
+	}
+}
 
 func deleteAndWaitForNMCR(ctx context.Context, name string, timeout time.Duration) {
 	existing := &nmov1beta1.NodeMaintenance{}
@@ -364,9 +430,9 @@ func deleteAndWaitForNMCR(ctx context.Context, name string, timeout time.Duratio
 
 	switch {
 	case err == nil:
-		Expect(APIClient.Delete(ctx, existing)).To(Succeed(),
+		ExpectWithOffset(1, APIClient.Delete(ctx, existing)).To(Succeed(),
 			fmt.Sprintf("Failed to delete NodeMaintenance CR %s", name))
-		Eventually(func() bool {
+		EventuallyWithOffset(1, func() bool {
 			err := APIClient.Get(ctx,
 				client.ObjectKey{Name: name}, &nmov1beta1.NodeMaintenance{})
 
@@ -376,7 +442,32 @@ func deleteAndWaitForNMCR(ctx context.Context, name string, timeout time.Duratio
 	case errors.IsNotFound(err):
 		return
 	default:
-		Expect(err).ToNot(HaveOccurred(),
+		ExpectWithOffset(1, err).ToNot(HaveOccurred(),
 			fmt.Sprintf("Unexpected error checking NodeMaintenance CR %s", name))
 	}
+}
+
+func hasDrainTaint(taints []corev1.Taint) bool {
+	for _, taint := range taints {
+		if taint.Key == nmoparams.DrainTaintKey && taint.Effect == corev1.TaintEffectNoSchedule {
+			return true
+		}
+	}
+
+	return false
+}
+
+func waitForNodeReadyAndUncordoned(ctx context.Context, nodeName string, timeout time.Duration) {
+	By("Waiting for target node to become Ready")
+
+	if err := helpers.WaitForNodeReady(
+		ctx, APIClient, nodeName,
+		nmoparams.DefaultPollInterval, timeout,
+		GinkgoWriter.Printf,
+	); err != nil {
+		GinkgoWriter.Printf("WARNING: node %s did not become Ready: %v\n", nodeName, err)
+	}
+
+	By("Verifying target node is uncordoned and drain taint removed")
+	assertNodeCordonAndTaint(nodeName, false, nmoparams.UncordonTimeout)
 }

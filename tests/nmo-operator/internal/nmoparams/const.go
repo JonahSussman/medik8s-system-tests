@@ -33,4 +33,31 @@ const (
 	UncordonTimeout = 2 * time.Minute
 	// ScheduleCheckTimeout is the timeout for verifying pod scheduling behavior on cordoned nodes.
 	ScheduleCheckTimeout = 30 * time.Second
+	// RunOnNodeTimeout is the timeout for running commands on a node via oc debug.
+	RunOnNodeTimeout = 2 * time.Minute
+
+	// DrainProgressComplete is the DrainProgress value indicating all pods have been evicted.
+	DrainProgressComplete = 100
+
+	// DrainTaintKey is the taint key applied by NMO to nodes under maintenance.
+	DrainTaintKey = "medik8s.io/drain"
+
+	// LeaseNamespace is the namespace where NMO creates maintenance leases (medik8s/common default).
+	LeaseNamespace = "medik8s-leases"
+	// LeaseHolderIdentity is the identity string set on maintenance leases by the NMO controller.
+	LeaseHolderIdentity = "node-maintenance"
+	// LeaseDurationSeconds is the expected lease duration set by the NMO controller.
+	LeaseDurationSeconds = int32(3600)
+
+	// EventReasonBeginMaintenance is emitted when a NodeMaintenance CR is created.
+	EventReasonBeginMaintenance = "BeginMaintenance"
+	// EventReasonSucceedMaintenance is emitted when drain completes successfully.
+	EventReasonSucceedMaintenance = "SucceedMaintenance"
+	// EventReasonRemovedMaintenance is emitted when a NodeMaintenance CR is deleted.
+	EventReasonRemovedMaintenance = "RemovedMaintenance"
+
+	// EventTimeout is the maximum wait for a Kubernetes event to appear.
+	EventTimeout = 3 * time.Minute
+	// LeaseTimeout is the maximum wait for a maintenance lease to appear or be deleted.
+	LeaseTimeout = 1 * time.Minute
 )
