@@ -17,8 +17,6 @@ import (
 	"github.com/medik8s/system-tests/tests/nhc-operator/internal/nhcparams"
 
 	corev1 "k8s.io/api/core/v1"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -82,30 +80,11 @@ var _ = Describe("NHC Template Management -- Template Watch",
 					medik8sparams.DefaultTimeout)).To(Succeed(),
 					"NHC %q should be Enabled when SNRT exists", nhcName)
 
-				By("Deleting SNRT")
+				By("Deleting SNRT and waiting for it to be fully gone")
 
+				// cleanupSNRT uses DeleteRemediationCR which retries internally
+				// and waits for the resource to be deleted.
 				cleanupSNRT(snrtName)
-
-				By("Waiting for SNRT to be fully deleted")
-
-				Eventually(ctx, func() (bool, error) {
-					obj := &unstructured.Unstructured{}
-					obj.SetGroupVersionKind(snrtGVK)
-
-					err := APIClient.Get(ctx, client.ObjectKey{
-						Name: snrtName, Namespace: medik8sparams.OperatorNs}, obj)
-					if k8serrors.IsNotFound(err) {
-						return true, nil
-					}
-
-					if err != nil {
-						return false, err
-					}
-
-					return false, nil
-				}).WithPolling(nhcparams.DefaultPollInterval).
-					WithTimeout(nhcparams.RemediationCRDeletionTimeout).Should(BeTrue(),
-					"SNRT %q should be deleted", snrtName)
 
 				By("Verifying NHC transitions to Disabled after SNRT deletion")
 
@@ -197,6 +176,10 @@ var _ = Describe("NHC Template Management -- Custom Remediation",
 			}
 
 			cleanupNHCCR(nhcparams.NHCCustomTemplateTestName)
+
+			if targetWorkerName == "" {
+				return
+			}
 
 			if isSSHAvailable() {
 				if sshErr := startKubeletForRemediation(ctx, targetWorkerName); sshErr != nil {
