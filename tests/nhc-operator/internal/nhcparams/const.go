@@ -27,7 +27,7 @@ const (
 	// ManagerContainerName is the name of the main controller container in the NHC pod.
 	ManagerContainerName = "manager"
 
-	// --- Remediation trigger test constants (RHWA-1243) ---
+	// Remediation trigger test constants (RHWA-1243).
 
 	// SNRCRDGroup is the API group for SNR custom resources (used as remediator).
 	SNRCRDGroup = "self-node-remediation.medik8s.io"
@@ -89,7 +89,7 @@ const (
 	// SNRCRDName is the CRD name for SelfNodeRemediation, used to detect if SNR is installed.
 	SNRCRDName = "selfnoderemediations.self-node-remediation.medik8s.io"
 
-	// --- TestRemediation dummy CRD constants (for multi-NHC tests) ---
+	// TestRemediation dummy CRD constants (for multi-NHC tests).
 
 	// TestRemediationGroup is the API group for the dummy TestRemediation CRDs.
 	TestRemediationGroup = "test.medik8s.io"
@@ -117,4 +117,30 @@ const (
 
 	// ControllerLeaseName is the NHC leader election lease name (LeaderElectionID in cmd/main.go).
 	ControllerLeaseName = "e1f13584.medik8s.io"
+
+	// Negative validation test constants (RHWA-1244).
+
+	// NHCPhaseDisabled is the NHC status phase when the template is invalid or missing.
+	NHCPhaseDisabled = "Disabled"
+
+	// NHCReasonTemplateNotFound is the NHC status reason when the remediation template is missing.
+	NHCReasonTemplateNotFound = "RemediationTemplateNotFound"
+
+	// NHCDuplicateTestName is the NHC CR name used by the duplicate-name test.
+	NHCDuplicateTestName = "nhc-test-duplicate"
+
+	// NHCIncorrectTemplateTestName is the NHC CR name for the non-existent template test.
+	NHCIncorrectTemplateTestName = "nhc-test-incorrect-template"
+
+	// NHCInvalidValuesTestName is the NHC CR name for the invalid-values test.
+	NHCInvalidValuesTestName = "nhc-test-invalid-values"
+
+	// NHCMissingNsTestName is the NHC CR name for the missing-namespace test.
+	NHCMissingNsTestName = "nhc-test-missing-ns"
+
+	// NHCEmptySelectorTestName is the NHC CR name for the empty-selector test.
+	NHCEmptySelectorTestName = "nhc-test-empty-selector"
+
+	// NHCZeroHealthyTestName is the NHC CR name for the zero-healthy-nodes test.
+	NHCZeroHealthyTestName = "nhc-test-zero-healthy"
 )

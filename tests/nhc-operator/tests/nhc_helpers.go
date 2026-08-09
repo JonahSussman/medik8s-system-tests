@@ -7,6 +7,7 @@ import (
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/pod"
 
 	"github.com/medik8s/system-tests/tests/internal/helpers"
@@ -195,21 +196,53 @@ func getNHCPhase(ctx context.Context, name string) (string, error) {
 	return phase, nil
 }
 
-// getNHCObservedNodes returns the .status.observedNodes count from the named NHC CR.
-func getNHCObservedNodes(ctx context.Context, name string) (int64, error) {
+// getNHCStatusInt64 returns an int64 status field from the named NHC CR.
+func getNHCStatusInt64(ctx context.Context, name, field string) (int64, error) {
 	nhc := &unstructured.Unstructured{}
 	nhc.SetGroupVersionKind(nhcGVK)
 
 	if err := APIClient.Get(ctx, client.ObjectKey{Name: name}, nhc); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("get NHC %s: %w", name, err)
 	}
 
-	observed, found, err := unstructured.NestedInt64(nhc.Object, "status", "observedNodes")
+	value, found, err := unstructured.NestedInt64(nhc.Object, "status", field)
 	if err != nil || !found {
-		return 0, fmt.Errorf("NHC %s has no status.observedNodes", name)
+		return 0, fmt.Errorf("NHC %s has no status.%s", name, field)
 	}
 
-	return observed, nil
+	return value, nil
+}
+
+// getNHCStatusString returns a string status field from the named NHC CR.
+func getNHCStatusString(ctx context.Context, name, field string) (string, error) {
+	nhc := &unstructured.Unstructured{}
+	nhc.SetGroupVersionKind(nhcGVK)
+
+	if err := APIClient.Get(ctx, client.ObjectKey{Name: name}, nhc); err != nil {
+		return "", fmt.Errorf("get NHC %s: %w", name, err)
+	}
+
+	value, found, err := unstructured.NestedString(nhc.Object, "status", field)
+	if err != nil || !found {
+		return "", fmt.Errorf("NHC %s has no status.%s", name, field)
+	}
+
+	return value, nil
+}
+
+// getNHCObservedNodes returns the .status.observedNodes count from the named NHC CR.
+func getNHCObservedNodes(ctx context.Context, name string) (int64, error) {
+	return getNHCStatusInt64(ctx, name, "observedNodes")
+}
+
+// getNHCHealthyNodes returns the .status.healthyNodes count from the named NHC CR.
+func getNHCHealthyNodes(ctx context.Context, name string) (int64, error) {
+	return getNHCStatusInt64(ctx, name, "healthyNodes")
+}
+
+// getNHCReason returns the current .status.reason of the named NHC CR.
+func getNHCReason(ctx context.Context, name string) (string, error) {
+	return getNHCStatusString(ctx, name, "reason")
 }
 
 // waitForNHCPhase polls until the NHC CR reaches the expected phase.
@@ -359,7 +392,7 @@ func countReadyControllerPods(_ context.Context, labelSelector string) (int, err
 	return ready, nil
 }
 
-// --- TestRemediation dummy CRD helpers (for multi-NHC test OCP-66814) ---
+// TestRemediation dummy CRD helpers (for multi-NHC test OCP-66814).
 
 // testRemediationGVK is the GVK for TestRemediation CRs.
 var testRemediationGVK = schema.GroupVersionKind{
@@ -636,4 +669,82 @@ func snrCRExists(ctx context.Context, nodeName string) (bool, error) {
 	}
 
 	return false, nil
+}
+
+// nhcSpec returns the spec map of an NHC unstructured object built by the
+// local builders. It fails the test if the shape is unexpected.
+func nhcSpec(nhc *unstructured.Unstructured) map[string]interface{} {
+	GinkgoHelper()
+
+	spec, ok := nhc.Object["spec"].(map[string]interface{})
+	Expect(ok).To(BeTrue(), "NHC object has no map spec")
+
+	return spec
+}
+
+// nhcUnhealthyConditions returns the unhealthyConditions slice from an NHC spec.
+func nhcUnhealthyConditions(spec map[string]interface{}) []interface{} {
+	GinkgoHelper()
+
+	conditions, ok := spec["unhealthyConditions"].([]interface{})
+	Expect(ok).To(BeTrue(), "NHC spec has no unhealthyConditions slice")
+
+	return conditions
+}
+
+// verifyNHCNotCreated asserts that an NHC CR with the given name does not exist.
+// Used after webhook-rejected creation attempts where the API server synchronously
+// refused the request, so the CR should never appear.
+func verifyNHCNotCreated(ctx context.Context, nhcName string) {
+	notCreated := &unstructured.Unstructured{}
+	notCreated.SetGroupVersionKind(nhcGVK)
+
+	getErr := APIClient.Get(ctx, client.ObjectKey{Name: nhcName}, notCreated)
+
+	if getErr == nil {
+		Fail(fmt.Sprintf("NHC CR %q exists but should not have been created", nhcName))
+	}
+
+	Expect(k8serrors.IsNotFound(getErr)).To(BeTrue(),
+		"NHC CR %q: expected NotFound, got: %v", nhcName, getErr)
+}
+
+// verifyNHCDisabledWithReason waits for NHC to reach Disabled phase and then
+// verifies the status.reason contains the expected substring.
+func verifyNHCDisabledWithReason(ctx context.Context, nhcName, expectedReason string, timeout time.Duration) {
+	Expect(waitForNHCPhase(ctx, nhcName, nhcparams.NHCPhaseDisabled, timeout)).To(Succeed(),
+		"NHC %q should reach Disabled phase", nhcName)
+
+	Eventually(func(g Gomega) {
+		reason, err := getNHCReason(ctx, nhcName)
+		g.Expect(err).ToNot(HaveOccurred(), "Failed to get NHC %q reason", nhcName)
+		g.Expect(reason).To(ContainSubstring(expectedReason),
+			"NHC %q reason should contain %q", nhcName, expectedReason)
+	}).WithPolling(nhcparams.DefaultPollInterval).
+		WithTimeout(timeout).Should(Succeed())
+}
+
+// waitForNHCGone polls until the named NHC CR is confirmed deleted.
+// Returns (bool, error) so Gomega fails fast on non-NotFound API errors
+// instead of retrying until timeout.
+func waitForNHCGone(ctx context.Context, nhcName string) {
+	GinkgoHelper()
+
+	Eventually(ctx, func() (bool, error) {
+		obj := &unstructured.Unstructured{}
+		obj.SetGroupVersionKind(nhcGVK)
+
+		err := APIClient.Get(ctx, client.ObjectKey{Name: nhcName}, obj)
+		if k8serrors.IsNotFound(err) {
+			return true, nil
+		}
+
+		if err != nil {
+			return false, err
+		}
+
+		return false, nil
+	}).WithPolling(nhcparams.DefaultPollInterval).
+		WithTimeout(nhcparams.RemediationCRDeletionTimeout).Should(BeTrue(),
+		"NHC CR %q still exists after cleanup", nhcName)
 }
