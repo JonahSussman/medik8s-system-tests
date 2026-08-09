@@ -143,4 +143,15 @@ const (
 
 	// NHCZeroHealthyTestName is the NHC CR name for the zero-healthy-nodes test.
 	NHCZeroHealthyTestName = "nhc-test-zero-healthy"
+
+	// Status field test constants (RHWA-1247).
+
+	// NHCStatusTestName is the NHC CR name for the status field tracking test.
+	NHCStatusTestName = "nhc-test-status-field"
+
+	// NHCReasonEnabled is the expected reason substring when NHC is healthy.
+	NHCReasonEnabled = "no ongoing remediation"
+
+	// NHCReasonRemediating is the expected reason substring during active remediation.
+	NHCReasonRemediating = "remediating"
 )

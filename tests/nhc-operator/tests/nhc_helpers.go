@@ -709,11 +709,13 @@ func verifyNHCNotCreated(ctx context.Context, nhcName string) {
 		"NHC CR %q: expected NotFound, got: %v", nhcName, getErr)
 }
 
-// verifyNHCDisabledWithReason waits for NHC to reach Disabled phase and then
+// verifyNHCPhaseAndReason waits for NHC to reach the expected phase and then
 // verifies the status.reason contains the expected substring.
-func verifyNHCDisabledWithReason(ctx context.Context, nhcName, expectedReason string, timeout time.Duration) {
-	Expect(waitForNHCPhase(ctx, nhcName, nhcparams.NHCPhaseDisabled, timeout)).To(Succeed(),
-		"NHC %q should reach Disabled phase", nhcName)
+func verifyNHCPhaseAndReason(ctx context.Context, nhcName, phase, expectedReason string, timeout time.Duration) {
+	GinkgoHelper()
+
+	Expect(waitForNHCPhase(ctx, nhcName, phase, timeout)).To(Succeed(),
+		"NHC %q should reach phase %s", nhcName, phase)
 
 	Eventually(func(g Gomega) {
 		reason, err := getNHCReason(ctx, nhcName)
@@ -722,6 +724,13 @@ func verifyNHCDisabledWithReason(ctx context.Context, nhcName, expectedReason st
 			"NHC %q reason should contain %q", nhcName, expectedReason)
 	}).WithPolling(nhcparams.DefaultPollInterval).
 		WithTimeout(timeout).Should(Succeed())
+}
+
+// verifyNHCDisabledWithReason waits for NHC to reach Disabled phase and then
+// verifies the status.reason contains the expected substring.
+func verifyNHCDisabledWithReason(ctx context.Context, nhcName, expectedReason string, timeout time.Duration) {
+	GinkgoHelper()
+	verifyNHCPhaseAndReason(ctx, nhcName, nhcparams.NHCPhaseDisabled, expectedReason, timeout)
 }
 
 // waitForNHCGone polls until the named NHC CR is confirmed deleted.
