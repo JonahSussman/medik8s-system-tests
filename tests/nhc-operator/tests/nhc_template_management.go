@@ -164,10 +164,13 @@ var _ = Describe("NHC Template Management -- Custom Remediation",
 
 			By("Verifying target node is Ready")
 
-			node := &corev1.Node{}
-			Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetWorkerName}, node)).To(Succeed())
-			Expect(helpers.IsNodeReady(node)).To(BeTrue(),
-				"Target node %s is not Ready", targetWorkerName)
+			Eventually(func(g Gomega) {
+				node := &corev1.Node{}
+				g.Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetWorkerName}, node)).To(Succeed())
+				g.Expect(helpers.IsNodeReady(node)).To(BeTrue(),
+					"Target node %s is not Ready", targetWorkerName)
+			}).WithPolling(nhcparams.DefaultPollInterval).
+				WithTimeout(nhcparams.NodeReadyTimeout).Should(Succeed())
 		})
 
 		JustAfterEach(func() {

@@ -68,6 +68,7 @@ func buildSNRT(name string) *unstructured.Unstructured {
 }
 
 // cleanupSNRT safely deletes a SelfNodeRemediationTemplate CR by name.
+// TODO: accept ctx parameter for cancellation support (same as cleanupNHCCR/cleanupSNRCR).
 func cleanupSNRT(name string) {
 	helpers.DeleteRemediationCR(
 		context.TODO(), APIClient, snrtGVK, name, medik8sparams.OperatorNs,
@@ -299,11 +300,14 @@ func waitForNHCPhase(ctx context.Context, name, expectedPhase string, timeout ti
 		func(ctx context.Context) (bool, error) {
 			phase, err := getNHCPhase(ctx, name)
 			if err != nil {
-				// Log but retry -- errors include both transient API issues
-				// and "has no status.phase" (controller hasn't reconciled yet).
-				GinkgoWriter.Printf("waitForNHCPhase(%s): %v (retrying)\n", name, err)
+				// "has no status.phase" means the CR exists but the controller
+				// hasn't reconciled yet -- retry.
+				if strings.Contains(err.Error(), "has no status.phase") {
+					return false, nil
+				}
 
-				return false, nil
+				// Real API errors (RBAC, network) -- fail fast.
+				return false, err
 			}
 
 			return phase == expectedPhase, nil
