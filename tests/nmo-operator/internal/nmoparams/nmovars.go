@@ -13,6 +13,9 @@ var (
 
 	operatorNs = medik8sparams.OperatorNs
 
+	// WorkloadTestImage is the container image used for test workload pods.
+	WorkloadTestImage = medik8sparams.DefaultWorkloadImage
+
 	// ReporterNamespacesToDump tells the reporter from where to collect logs.
 	ReporterNamespacesToDump = map[string]string{
 		medik8sparams.OperatorNs: medik8sparams.OperatorNs,

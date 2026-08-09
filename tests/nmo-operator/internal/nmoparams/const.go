@@ -24,4 +24,13 @@ const (
 
 	// CSVNamePattern is the substring used to match the NMO operator ClusterServiceVersion by name.
 	CSVNamePattern = "node-maintenance-operator"
+
+	// MaintenanceTimeout is the maximum wait for a NodeMaintenance CR to reach Succeeded phase.
+	MaintenanceTimeout = 5 * time.Minute
+	// RebootTimeout is the maximum wait for a node to recover after reboot.
+	RebootTimeout = 10 * time.Minute
+	// UncordonTimeout is the maximum wait for a node to become schedulable after maintenance ends.
+	UncordonTimeout = 2 * time.Minute
+	// ScheduleCheckTimeout is the timeout for verifying pod scheduling behavior on cordoned nodes.
+	ScheduleCheckTimeout = 30 * time.Second
 )
