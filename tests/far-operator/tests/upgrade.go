@@ -205,9 +205,14 @@ var _ = Describe("FAR Operator Upgrade",
 
 				By("Step 5: Verify FAR operator pod survived OCP upgrade and CSV is Succeeded")
 
-				verifyFAROperatorReady(
+				previousCSV = verifyFAROperatorReady(
 					medik8sparams.PostUpgradeRecoveryTimeout,
 					medik8sparams.PostUpgradeRecoveryTimeout, "after OCP upgrade")
+
+				preUpgradeImage, err = farutils.GetFARControllerImage(APIClient)
+				Expect(err).NotTo(HaveOccurred())
+				GinkgoWriter.Printf("Post-OCP-upgrade baseline for FBC upgrade: CSV=%s image=%s\n",
+					previousCSV.Object.Name, preUpgradeImage)
 
 				By("Step 6: Validate GA FAR on OCP N (post-OCP-upgrade remediation)")
 
