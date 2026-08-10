@@ -81,7 +81,7 @@ that the node enters maintenance mode (cordoned, Succeeded phase).
 - **Cluster**: MNO with at least 2 schedulable worker nodes
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="operator:nmo" --focus="Start node maintenance" ./tests/nmo-operator/...`
-- **Pass criteria**: NodeMaintenance CR reaches Succeeded phase; target node is cordoned (Unschedulable=true)
+- **Pass criteria**: NodeMaintenance CR reaches Succeeded phase; target node is cordoned (Unschedulable=true) with medik8s.io/drain NoSchedule taint; DrainProgress=100 and PendingPods empty; BeginMaintenance and SucceedMaintenance events emitted; maintenance lease created in medik8s-leases namespace with correct LeaseDurationSeconds and HolderIdentity
 
 ### 6. Schedule Pod to Node Under Maintenance ([OCP-29603](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-29603))
 
@@ -92,18 +92,18 @@ remains Pending with no node assignment.
 - **Cluster**: MNO with at least 2 schedulable worker nodes
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="operator:nmo" --focus="Schedule pod to node under maintenance" ./tests/nmo-operator/...`
-- **Pass criteria**: Pod stays in Pending phase; pod has no nodeName assigned
+- **Pass criteria**: Pod stays in Pending phase; pod has no nodeName assigned; DrainProgress=100 and PendingPods empty
 
 ### 7. Maintenance Mode Persists After Node Reboot ([OCP-46761](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-46761))
 
 Reboots the node under maintenance via `oc debug` and verifies that
-maintenance mode (cordon + Succeeded phase) survives the reboot.
+maintenance mode (cordon + drain taint + Succeeded phase) survives the reboot.
 
 - **Operators**: NMO v0.17.0+
 - **Cluster**: MNO with at least 2 schedulable worker nodes
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="operator:nmo" --focus="Maintenance mode persists" ./tests/nmo-operator/...`
-- **Pass criteria**: Node reboots (boot ID changes) and recovers to Ready; NodeMaintenance CR still exists with Succeeded phase; node remains cordoned
+- **Pass criteria**: Node reboots (boot ID changes) and recovers to Ready; NodeMaintenance CR still exists with Succeeded phase; node remains cordoned with medik8s.io/drain taint; maintenance lease persists
 
 ### 8. Stop Node Maintenance ([OCP-29594](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-29594))
 
@@ -114,4 +114,4 @@ and returns to schedulable state.
 - **Cluster**: MNO with at least 2 schedulable worker nodes
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="operator:nmo" --focus="Stop node maintenance" ./tests/nmo-operator/...`
-- **Pass criteria**: NodeMaintenance CR is fully deleted; target node is uncordoned (Unschedulable=false)
+- **Pass criteria**: NodeMaintenance CR is fully deleted; target node is uncordoned (Unschedulable=false) and medik8s.io/drain taint removed; RemovedMaintenance event emitted; maintenance lease deleted
