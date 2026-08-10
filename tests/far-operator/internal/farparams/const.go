@@ -92,6 +92,15 @@ const (
 	// FARNoScheduleTaintKey is the taint key applied by FAR during remediation.
 	FARNoScheduleTaintKey = "remediation.medik8s.io/fence-agents-remediation"
 
+	// FAREventRemediationStarted is the event reason emitted when remediation begins.
+	FAREventRemediationStarted = "RemediationStarted"
+	// FAREventFenceAgentSucceeded is the event reason emitted when the fence agent action succeeds.
+	FAREventFenceAgentSucceeded = "FenceAgentSucceeded"
+	// FAREventRemediationFinished is the event reason emitted when remediation completes.
+	FAREventRemediationFinished = "RemediationFinished"
+	// FAREventNodeRemediationCompleted is the event reason emitted on the Node when remediation completes.
+	FAREventNodeRemediationCompleted = "NodeRemediationCompleted"
+
 	// ControllerHandoverTimeout is how long to wait for controller leadership transfer.
 	ControllerHandoverTimeout = 3 * time.Minute
 	// WorkloadEvictionTimeout is how long to wait for workload pods to be evicted.

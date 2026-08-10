@@ -128,7 +128,7 @@ Creates a FenceAgentsRemediation CR targeting a worker node. Validates that the 
 - **Storage**: None
 - **Environment**: Connected
 - **Standalone**: `ginkgo --label-filter="far && disruption:destructive" --focus="standalone FAR CR" ./tests/far-operator/...`
-- **Pass criteria**: Node boot ID changes, node creation timestamp unchanged, node returns to Ready
+- **Pass criteria**: Node boot ID changes, node creation timestamp unchanged, node returns to Ready, FAR lifecycle events emitted on CR (RemediationStarted, FenceAgentSucceeded, RemediationFinished) and NodeRemediationCompleted event emitted on Node
 
 ### 11. Verify Remediation on Active Controller Node ([OCP-70638](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-70638))
 
@@ -139,7 +139,7 @@ Creates a FAR CR targeting the node hosting the active FAR controller pod. Valid
 - **Storage**: None
 - **Environment**: Connected
 - **Standalone**: `ginkgo --label-filter="far && disruption:destructive" --focus="active FAR controller" ./tests/far-operator/...`
-- **Pass criteria**: Node reboots, node returns to Ready, FAR controller replicas recover
+- **Pass criteria**: Node reboots, node returns to Ready, FAR controller replicas recover, controller lease transfers to a different pod, workload pod evicted, FAR lifecycle events survive leader failover (RemediationStarted, FenceAgentSucceeded, RemediationFinished on CR; NodeRemediationCompleted on Node)
 
 ### 12. Verify FAR NoSchedule Taint During Remediation ([OCP-65960](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-65960))
 

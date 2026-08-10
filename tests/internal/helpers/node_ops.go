@@ -198,6 +198,7 @@ func findSSHKey() (string, error) {
 
 			if err := tmpFile.Chmod(0o600); err != nil {
 				os.Remove(tmpFile.Name())
+
 				sshKeyErr = fmt.Errorf("findSSHKey: chmod: %w", err)
 
 				return
@@ -205,6 +206,7 @@ func findSSHKey() (string, error) {
 
 			if _, err := tmpFile.Write(data); err != nil {
 				os.Remove(tmpFile.Name())
+
 				sshKeyErr = fmt.Errorf("findSSHKey: write: %w", err)
 
 				return
@@ -212,6 +214,7 @@ func findSSHKey() (string, error) {
 
 			if err := tmpFile.Close(); err != nil {
 				os.Remove(tmpFile.Name())
+
 				sshKeyErr = fmt.Errorf("findSSHKey: close: %w", err)
 
 				return

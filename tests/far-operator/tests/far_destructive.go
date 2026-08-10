@@ -419,6 +419,37 @@ var _ = Describe("FAR Destructive Tests",
 						Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetNode.Name}, node)).To(Succeed())
 						Expect(node.CreationTimestamp.Equal(&creationTimestamp)).To(BeTrue(),
 							"Node creation timestamp changed - node was re-created instead of rebooted")
+
+						By("Verifying FAR lifecycle events on CR")
+
+						Expect(helpers.WaitForEvents(ctx, APIClient.K8sClient,
+							helpers.InvolvedObjectRef{
+								Kind:      "FenceAgentsRemediation",
+								Name:      targetNode.Name,
+								Namespace: medik8sparams.OperatorNs,
+								UID:       string(farCR.GetUID()),
+							},
+							[]helpers.EventExpectation{
+								{Reason: farparams.FAREventRemediationStarted, Type: corev1.EventTypeNormal},
+								{Reason: farparams.FAREventFenceAgentSucceeded, Type: corev1.EventTypeNormal},
+								{Reason: farparams.FAREventRemediationFinished, Type: corev1.EventTypeNormal},
+							},
+							farparams.FARConditionTimeout, farparams.DefaultPollInterval,
+						)).To(Succeed(), "FAR lifecycle events not found on CR %s", targetNode.Name)
+
+						By("Verifying remediation completion event on Node")
+
+						Expect(helpers.WaitForEvents(ctx, APIClient.K8sClient,
+							helpers.InvolvedObjectRef{
+								Kind: "Node",
+								Name: targetNode.Name,
+								UID:  string(node.GetUID()),
+							},
+							[]helpers.EventExpectation{
+								{Reason: farparams.FAREventNodeRemediationCompleted, Type: corev1.EventTypeNormal},
+							},
+							farparams.FARConditionTimeout, farparams.DefaultPollInterval,
+						)).To(Succeed(), "NodeRemediationCompleted event not found on node %s", targetNode.Name)
 					})
 
 				It("should apply FAR NoSchedule taint during remediation",
@@ -648,6 +679,40 @@ var _ = Describe("FAR Destructive Tests",
 							}
 						}, farparams.ControllerHandoverTimeout, farparams.DefaultPollInterval).Should(Succeed(),
 							"Controller lease did not transfer to a different pod after leader node reboot")
+
+						By("Verifying FAR lifecycle events survived leader failover")
+
+						node = &corev1.Node{}
+						Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetNode.Name}, node)).To(Succeed())
+
+						Expect(helpers.WaitForEvents(ctx, APIClient.K8sClient,
+							helpers.InvolvedObjectRef{
+								Kind:      "FenceAgentsRemediation",
+								Name:      targetNode.Name,
+								Namespace: medik8sparams.OperatorNs,
+								UID:       string(farCR.GetUID()),
+							},
+							[]helpers.EventExpectation{
+								{Reason: farparams.FAREventRemediationStarted, Type: corev1.EventTypeNormal},
+								{Reason: farparams.FAREventFenceAgentSucceeded, Type: corev1.EventTypeNormal},
+								{Reason: farparams.FAREventRemediationFinished, Type: corev1.EventTypeNormal},
+							},
+							farparams.FARConditionTimeout, farparams.DefaultPollInterval,
+						)).To(Succeed(), "FAR lifecycle events not found on CR after leader failover")
+
+						By("Verifying remediation completion event on Node after failover")
+
+						Expect(helpers.WaitForEvents(ctx, APIClient.K8sClient,
+							helpers.InvolvedObjectRef{
+								Kind: "Node",
+								Name: targetNode.Name,
+								UID:  string(node.GetUID()),
+							},
+							[]helpers.EventExpectation{
+								{Reason: farparams.FAREventNodeRemediationCompleted, Type: corev1.EventTypeNormal},
+							},
+							farparams.FARConditionTimeout, farparams.DefaultPollInterval,
+						)).To(Succeed(), "NodeRemediationCompleted event not found on node after leader failover")
 
 						By("Verifying workload pod was evicted from leader node")
 
