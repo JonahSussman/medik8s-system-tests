@@ -747,6 +747,23 @@ func nhcUnhealthyConditions(spec map[string]interface{}) []interface{} {
 	return conditions
 }
 
+// verifyNHCNodeCount polls until the given int64 status field matches the expected value.
+// Used for healthyNodes and observedNodes assertions.
+func verifyNHCNodeCount(
+	ctx context.Context, nhcName string,
+	getter func(context.Context, string) (int64, error),
+	expected int64, timeout time.Duration, msg string,
+) {
+	GinkgoHelper()
+
+	Eventually(func(g Gomega) {
+		value, err := getter(ctx, nhcName)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(value).To(Equal(expected), msg)
+	}).WithPolling(nhcparams.DefaultPollInterval).
+		WithTimeout(timeout).Should(Succeed())
+}
+
 // verifyNHCDeploymentReady checks that the NHC controller deployment exists and is ready.
 func verifyNHCDeploymentReady() {
 	GinkgoHelper()

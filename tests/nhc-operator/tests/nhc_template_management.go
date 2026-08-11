@@ -240,21 +240,12 @@ var _ = Describe("NHC Template Management -- Custom Remediation",
 					medik8sparams.DefaultTimeout)).To(Succeed(),
 					"NHC %q should be Enabled", nhcName)
 
-				Eventually(func(g Gomega) {
-					healthy, err := getNHCHealthyNodes(ctx, nhcName)
-					g.Expect(err).ToNot(HaveOccurred())
-					g.Expect(healthy).To(Equal(expectedWorkers),
-						"healthyNodes should match worker count before remediation")
-				}).WithPolling(nhcparams.DefaultPollInterval).
-					WithTimeout(nhcparams.NodeNotReadyTimeout).Should(Succeed())
-
-				Eventually(func(g Gomega) {
-					observed, err := getNHCObservedNodes(ctx, nhcName)
-					g.Expect(err).ToNot(HaveOccurred())
-					g.Expect(observed).To(Equal(expectedWorkers),
-						"observedNodes should match worker count")
-				}).WithPolling(nhcparams.DefaultPollInterval).
-					WithTimeout(nhcparams.NodeNotReadyTimeout).Should(Succeed())
+				verifyNHCNodeCount(ctx, nhcName, getNHCHealthyNodes,
+					expectedWorkers, nhcparams.NodeNotReadyTimeout,
+					"healthyNodes should match worker count before remediation")
+				verifyNHCNodeCount(ctx, nhcName, getNHCObservedNodes,
+					expectedWorkers, nhcparams.NodeNotReadyTimeout,
+					"observedNodes should match worker count")
 
 				By("Stopping kubelet on target node to trigger remediation")
 
@@ -267,21 +258,12 @@ var _ = Describe("NHC Template Management -- Custom Remediation",
 					nhcparams.NodeNotReadyTimeout)).To(Succeed(),
 					"NHC %q should enter Remediating after kubelet stop", nhcName)
 
-				Eventually(func(g Gomega) {
-					healthy, err := getNHCHealthyNodes(ctx, nhcName)
-					g.Expect(err).ToNot(HaveOccurred())
-					g.Expect(healthy).To(Equal(expectedWorkers-1),
-						"healthyNodes should be workers-1 during remediation")
-				}).WithPolling(nhcparams.DefaultPollInterval).
-					WithTimeout(nhcparams.NodeNotReadyTimeout).Should(Succeed())
-
-				Eventually(func(g Gomega) {
-					observed, err := getNHCObservedNodes(ctx, nhcName)
-					g.Expect(err).ToNot(HaveOccurred())
-					g.Expect(observed).To(Equal(expectedWorkers),
-						"observedNodes should remain unchanged during remediation")
-				}).WithPolling(nhcparams.DefaultPollInterval).
-					WithTimeout(nhcparams.NodeNotReadyTimeout).Should(Succeed())
+				verifyNHCNodeCount(ctx, nhcName, getNHCHealthyNodes,
+					expectedWorkers-1, nhcparams.NodeNotReadyTimeout,
+					"healthyNodes should be workers-1 during remediation")
+				verifyNHCNodeCount(ctx, nhcName, getNHCObservedNodes,
+					expectedWorkers, nhcparams.NodeNotReadyTimeout,
+					"observedNodes should remain unchanged during remediation")
 
 				By("Verifying TestRemediation CR was created for the target node")
 
@@ -311,21 +293,12 @@ var _ = Describe("NHC Template Management -- Custom Remediation",
 					nhcparams.RemediationCompletionTimeout)).To(Succeed(),
 					"NHC %q should return to Enabled after recovery", nhcName)
 
-				Eventually(func(g Gomega) {
-					healthy, err := getNHCHealthyNodes(ctx, nhcName)
-					g.Expect(err).ToNot(HaveOccurred())
-					g.Expect(healthy).To(Equal(expectedWorkers),
-						"healthyNodes should be restored after recovery")
-				}).WithPolling(nhcparams.DefaultPollInterval).
-					WithTimeout(nhcparams.NodeNotReadyTimeout).Should(Succeed())
-
-				Eventually(func(g Gomega) {
-					observed, err := getNHCObservedNodes(ctx, nhcName)
-					g.Expect(err).ToNot(HaveOccurred())
-					g.Expect(observed).To(Equal(expectedWorkers),
-						"observedNodes should be unchanged after recovery")
-				}).WithPolling(nhcparams.DefaultPollInterval).
-					WithTimeout(nhcparams.NodeNotReadyTimeout).Should(Succeed())
+				verifyNHCNodeCount(ctx, nhcName, getNHCHealthyNodes,
+					expectedWorkers, nhcparams.NodeNotReadyTimeout,
+					"healthyNodes should be restored after recovery")
+				verifyNHCNodeCount(ctx, nhcName, getNHCObservedNodes,
+					expectedWorkers, nhcparams.NodeNotReadyTimeout,
+					"observedNodes should be unchanged after recovery")
 
 				By("Verifying TestRemediation CR was cleaned up")
 
