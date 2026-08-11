@@ -64,9 +64,6 @@ const (
 	// NodeReadyTimeout is how long to wait for a node to become Ready after reboot.
 	NodeReadyTimeout = 10 * time.Minute
 
-	// NodeNotReadyTimeout is how long to wait for a node to become NotReady after kubelet stop.
-	NodeNotReadyTimeout = 5 * time.Minute
-
 	// NodeRebootTimeout is how long to wait for a node reboot to complete.
 	NodeRebootTimeout = 6 * time.Minute
 
@@ -123,6 +120,24 @@ const (
 	// SharedCredentialsSecretName is the Secret created by the test suite to hold
 	// fence agent credentials in the format expected by SharedSecretName.
 	SharedCredentialsSecretName = "far-test-shared-credentials"
+
+	// MinControlPlaneNodes is the minimum Ready CP nodes needed for safe CP remediation.
+	MinControlPlaneNodes = 3
+
+	// CPRebootTimeout is how long to wait for a CP node reboot (slower than worker due to etcd).
+	CPRebootTimeout = 10 * time.Minute
+	// CPNodeReadyTimeout is how long to wait for a CP node to return Ready after reboot.
+	CPNodeReadyTimeout = 12 * time.Minute
+	// EtcdRejoinTimeout is how long to wait for etcd ClusterOperator to recover.
+	EtcdRejoinTimeout = 10 * time.Minute
+
+	// MinWorkersForDestructiveTests is the minimum Ready workers for standard destructive tests.
+	MinWorkersForDestructiveTests = 3
+	// MinWorkersForTwoWorkerTest is the minimum Ready workers for the 2-worker topology test.
+	MinWorkersForTwoWorkerTest = 2
+
+	// TestCordonAnnotation marks nodes cordoned by the test for cleanup identification.
+	TestCordonAnnotation = "system-tests.medik8s.io/cordoned-for-topology-test"
 )
 
 // WorkloadTestImage is the container image used for test workload pods.
