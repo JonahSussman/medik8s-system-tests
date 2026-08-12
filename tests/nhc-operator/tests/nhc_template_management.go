@@ -209,7 +209,7 @@ var _ = Describe("NHC Template Management -- Custom Remediation",
 			}
 		})
 
-		It("Verifying NHC triggers remediation with custom TRT template",
+		It("Verifying NHC triggers remediation with custom TRT",
 			reportxml.ID("61976"),
 			Label(labels.TierAcceptance, labels.PlatformAny,
 				labels.ComponentRemediation), func() {
