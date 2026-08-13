@@ -63,6 +63,9 @@ const (
 	// oc debug cannot schedule pods when kubelet is stopped.
 	SSHTimeout = 30 * time.Second
 
+	// UnhealthyConditionDuration is the standard NHC detection duration.
+	UnhealthyConditionDuration = "30s"
+
 	// NodeNotReadyTimeout is the maximum time to wait for NHC to detect an
 	// unhealthy node and enter Remediating. Includes SSH timeout (30s)
 	// + NHC unhealthy condition duration (60s) + detection lag.
@@ -248,4 +251,9 @@ const (
 	// EscalationWebhookOngoingRemediation is the expected webhook error reason when editing
 	// escalating remediations while remediation is in progress.
 	EscalationWebhookOngoingRemediation = "prohibited due to running remediation"
+
+	// Escalation E2E test constants (RHWA-1245).
+	NHCEscalationTestName    = "nhc-test-escalation"
+	EscalationSNRStepTimeout = "180s"
+	EscalationWaitTimeout    = 5 * time.Minute
 )

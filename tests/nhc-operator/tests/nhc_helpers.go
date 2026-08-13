@@ -954,6 +954,13 @@ func deleteMultiTemplate(ctx context.Context, name string) {
 // testRemediationCRExists checks if a TestRemediation CR exists for the given node.
 // Returns (bool, error) so Gomega propagates API failures instead of treating
 // transient errors as "not found".
+func cleanupTestRemediationCR(name string) {
+	helpers.DeleteRemediationCR(
+		context.TODO(), APIClient, testRemediationGVK, name, "",
+		nhcparams.DefaultPollInterval, nhcparams.RemediationCRDeletionTimeout,
+		GinkgoWriter.Printf)
+}
+
 func testRemediationCRExists(ctx context.Context, nodeName string) (bool, error) {
 	tr := &unstructured.Unstructured{}
 	tr.SetGroupVersionKind(testRemediationGVK)
