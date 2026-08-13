@@ -47,7 +47,7 @@ var snrGVK = schema.GroupVersionKind{
 var snrtGVK = schema.GroupVersionKind{
 	Group:   nhcparams.SNRCRDGroup,
 	Version: nhcparams.SNRCRDVersion,
-	Kind:    "SelfNodeRemediationTemplate",
+	Kind:    nhcparams.SNRTemplateKind,
 }
 
 // buildSNRT builds an unstructured SelfNodeRemediationTemplate CR.
@@ -82,7 +82,7 @@ func buildNHCWithSNRT(nhcName, snrtName string) *unstructured.Unstructured {
 	spec := nhcSpec(nhc)
 	spec["remediationTemplate"] = map[string]interface{}{
 		"apiVersion": nhcparams.SNRCRDGroup + "/" + nhcparams.SNRCRDVersion,
-		"kind":       "SelfNodeRemediationTemplate",
+		"kind":       nhcparams.SNRTemplateKind,
 		"name":       snrtName,
 		"namespace":  medik8sparams.OperatorNs,
 	}
@@ -120,7 +120,7 @@ func buildNHC(name, selectorKey, selectorOp string, matchLabels map[string]inter
 	spec := map[string]interface{}{
 		"remediationTemplate": map[string]interface{}{
 			"apiVersion": nhcparams.SNRCRDGroup + "/" + nhcparams.SNRCRDVersion,
-			"kind":       "SelfNodeRemediationTemplate",
+			"kind":       nhcparams.SNRTemplateKind,
 			"name":       nhcparams.SNRTemplateName,
 			"namespace":  medik8sparams.OperatorNs,
 		},

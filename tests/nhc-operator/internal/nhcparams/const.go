@@ -35,6 +35,9 @@ const (
 	// SNRCRDVersion is the API version for SNR custom resources.
 	SNRCRDVersion = "v1alpha1"
 
+	// SNRTemplateKind is the Kind string for SelfNodeRemediationTemplate CRs.
+	SNRTemplateKind = "SelfNodeRemediationTemplate"
+
 	// SNRTemplateName is the default SNR template name deployed by the operator.
 	SNRTemplateName = "self-node-remediation-automatic-strategy-template"
 
