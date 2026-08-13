@@ -251,6 +251,21 @@ const (
 	// AgentMetricsPort is the port on which SBR agent pods expose custom Prometheus metrics.
 	// Port 8080 is controller-runtime's built-in metrics; port 8082 is the SBR agent's own metrics.
 	AgentMetricsPort = "8082"
+
+	// MustGatherOCTimeout is the --timeout flag passed to oc adm must-gather so it cleans up gracefully.
+	MustGatherOCTimeout = 14 * time.Minute
+
+	// MustGatherContextTimeout is the outer Go context timeout, strictly greater than MustGatherOCTimeout.
+	MustGatherContextTimeout = 16 * time.Minute
+
+	// MustGatherImageRepo is the registry path for the RHWA must-gather image (without tag).
+	MustGatherImageRepo = "registry.redhat.io/workload-availability/node-healthcheck-must-gather-rhel9"
+
+	// MustGatherDefaultTag is the fallback image tag when dynamic resolution fails.
+	MustGatherDefaultTag = "v0.9.0"
+
+	// MustGatherCleanupTimeout is the deadline for best-effort cleanup of leftover must-gather namespaces.
+	MustGatherCleanupTimeout = 2 * time.Minute
 )
 
 // AgentExpectedMetricNames lists the Prometheus metric names that must be present in the agent output.
