@@ -380,7 +380,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 				By("Creating SNR-based NHC CR (30s unhealthy duration)")
 
 				nhcSNR := buildNHCForWorkers(nhcparams.NHCTestName)
-				nhcSNR.Object["spec"].(map[string]interface{})["unhealthyConditions"] = []interface{}{
+				nhcSpec(nhcSNR)["unhealthyConditions"] = []interface{}{
 					map[string]interface{}{
 						"type": "Ready", "status": "False", "duration": "30s",
 					},
@@ -461,7 +461,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 				By("Creating first SNR-based NHC CR (10s, triggers first)")
 
 				nhcFirst := buildNHCForWorkers(nhcparams.NHCSecondTestName)
-				nhcFirst.Object["spec"].(map[string]interface{})["unhealthyConditions"] = []interface{}{
+				nhcSpec(nhcFirst)["unhealthyConditions"] = []interface{}{
 					map[string]interface{}{
 						"type": "Ready", "status": "False", "duration": "10s",
 					},
@@ -475,7 +475,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 				By("Creating second SNR-based NHC CR (11s, triggers slower)")
 
 				nhcSecond := buildNHCForWorkers(nhcparams.NHCTestName)
-				nhcSecond.Object["spec"].(map[string]interface{})["unhealthyConditions"] = []interface{}{
+				nhcSpec(nhcSecond)["unhealthyConditions"] = []interface{}{
 					map[string]interface{}{
 						"type": "Ready", "status": "False", "duration": "11s",
 					},

@@ -35,6 +35,9 @@ const (
 	// SNRCRDVersion is the API version for SNR custom resources.
 	SNRCRDVersion = "v1alpha1"
 
+	// SNRTemplateKind is the Kind string for SelfNodeRemediationTemplate CRs.
+	SNRTemplateKind = "SelfNodeRemediationTemplate"
+
 	// SNRTemplateName is the default SNR template name deployed by the operator.
 	SNRTemplateName = "self-node-remediation-automatic-strategy-template"
 
@@ -143,6 +146,17 @@ const (
 
 	// NHCZeroHealthyTestName is the NHC CR name for the zero-healthy-nodes test.
 	NHCZeroHealthyTestName = "nhc-test-zero-healthy"
+
+	// Template management test constants (RHWA-1246).
+
+	// NHCTemplateWatchTestName is the NHC CR name for the template-watch test.
+	NHCTemplateWatchTestName = "nhc-test-template-watch"
+
+	// NHCCustomTemplateTestName is the NHC CR name for the custom TRT test.
+	NHCCustomTemplateTestName = "nhc-test-custom-template"
+
+	// SNRTTestName is the SNRT CR name created for template-watch tests.
+	SNRTTestName = "snrt-test-sample"
 
 	// Status field test constants (RHWA-1247).
 
