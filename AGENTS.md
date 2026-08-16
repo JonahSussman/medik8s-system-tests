@@ -88,28 +88,28 @@ Test specs dot-import `medik8sinittools` to access `APIClient` and `Medik8sConfi
 
 ### Shared Internal Packages (`tests/internal/`)
 
-| Package | Purpose |
-|---|---|
-| `inittools` | Base init; global `APIClient`, `GeneralConfig` |
-| `medik8sinittools` | Medik8s-specific init; wraps inittools |
-| `medik8sconfig` | `Medik8sConfig` struct — embeds GeneralConfig |
-| `medik8sparams` | Shared constants: `OperatorNs = "openshift-workload-availability"`, `DefaultTimeout`, top-level `Label = "medik8s"` |
-| `labels` | Full label taxonomy constants (see below) |
-| `reporter` | `ReportIfFailed()` — wraps k8sreporter to dump namespaces + CRDs on failure |
-| `config` | `GeneralConfig` struct; reads YAML + `ECO_*` env vars via envconfig |
+| Package            | Purpose                                                                                                             |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `inittools`        | Base init; global `APIClient`, `GeneralConfig`                                                                      |
+| `medik8sinittools` | Medik8s-specific init; wraps inittools                                                                              |
+| `medik8sconfig`    | `Medik8sConfig` struct — embeds GeneralConfig                                                                       |
+| `medik8sparams`    | Shared constants: `OperatorNs = "openshift-workload-availability"`, `DefaultTimeout`, top-level `Label = "medik8s"` |
+| `labels`           | Full label taxonomy constants (see below)                                                                           |
+| `reporter`         | `ReportIfFailed()` — wraps k8sreporter to dump namespaces + CRDs on failure                                         |
+| `config`           | `GeneralConfig` struct; reads YAML + `ECO_*` env vars via envconfig                                                 |
 
 ### Label Taxonomy
 
 All `It`/`DescribeTable` specs should be labelled using constants from `tests/internal/labels`:
 
-| Axis | Examples |
-|---|---|
-| Operator | `operator:far`, `operator:nhc`, `operator:snr`, `operator:mdr`, `operator:nmo`, `operator:sbr`, `operator:cur` |
-| Tier | `tier:smoke`, `tier:acceptance`, `tier:resiliency`, `tier:upgrade`, `tier:interop` |
-| Frequency | `frequency:presubmit`, `frequency:nightly`, `frequency:weekly`, `frequency:release` |
-| Disruption | `disruption:destructive`, `disruption:nondestructive` |
-| Component | `component:controller`, `component:remediation`, `component:webhook`, `component:metrics` |
-| Platform | `platform:aws`, `platform:baremetal`, `platform:any` |
+| Axis       | Examples                                                                                                           |
+| ---------- | ------------------------------------------------------------------------------------------------------------------ |
+| Operator   | `operator:far`, `operator:nhc`, `operator:snr`, `operator:mdr`, `operator:nmo`, `operator:sbr`, `operator:cur`     |
+| Tier       | `tier:smoke`, `tier:acceptance`, `tier:resiliency`, `tier:upgrade`, `tier:interop`                                 |
+| Frequency  | `frequency:presubmit`, `frequency:nightly`, `frequency:weekly`, `frequency:release`                                |
+| Disruption | `disruption:destructive`, `disruption:nondestructive`                                                              |
+| Component  | `component:controller`, `component:remediation`, `component:webhook`, `component:metrics`, `component:post-deploy` |
+| Platform   | `platform:aws`, `platform:baremetal`, `platform:any`                                                               |
 
 ### Key Conventions
 

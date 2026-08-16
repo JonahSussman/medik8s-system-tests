@@ -56,8 +56,9 @@ func watchdogDebugPodName(nodeName string) string {
 var _ = Describe(
 	"SBR Debug — Cluster Watchdog Inventory",
 	Ordered,
-	Label(labels.OperatorSBR), func() {
+	Label(labels.OperatorSBR, labels.ComponentPostDeploy), func() {
 		It("Discover /dev/watchdog* devices on all cluster nodes",
+			reportxml.ID("90163"),
 			Label(
 				labels.DisruptionNonDestructive,
 				labels.TierSmoke,
@@ -194,7 +195,7 @@ var _ = Describe(
 	"SBR Post Deployment tests",
 	Ordered,
 	ContinueOnFailure,
-	Label(labels.OperatorSBR), func() {
+	Label(labels.OperatorSBR, labels.ComponentPostDeploy), func() {
 		var controlPlaneTopology configv1.TopologyMode
 
 		BeforeAll(func() {
@@ -563,7 +564,7 @@ var _ = Describe(
 	"SBR Negative Tests",
 	Ordered,
 	ContinueOnFailure,
-	Label(labels.OperatorSBR), func() {
+	Label(labels.OperatorSBR, labels.ComponentPostDeploy), func() {
 		BeforeAll(func() {
 			By("Cleaning up any leftover test SBRCs from previous runs")
 
