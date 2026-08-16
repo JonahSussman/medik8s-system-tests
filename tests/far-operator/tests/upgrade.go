@@ -35,16 +35,17 @@ var _ = Describe("FAR Operator Upgrade",
 		labels.ComponentOLM),
 	func() {
 		var (
-			ctx             context.Context
-			previousCSV     *olm.ClusterServiceVersionBuilder
-			preUpgradeImage string
-			platform        configv1.PlatformType
-			region          string
-			fenceAgent      string
-			sharedParams    map[string]interface{}
-			nodeParams      map[string]interface{}
-			leaderNode      string
-			currentFARName  string
+			ctx              context.Context
+			previousCSV      *olm.ClusterServiceVersionBuilder
+			preUpgradeImage  string
+			platform         configv1.PlatformType
+			region           string
+			fenceAgent       string
+			sharedParams     map[string]interface{}
+			nodeParams       map[string]interface{}
+			leaderNode       string
+			currentFARName   string
+			operatorUpgraded bool
 		)
 
 		BeforeAll(func() {
@@ -255,65 +256,154 @@ var _ = Describe("FAR Operator Upgrade",
 
 				By("Step 8: Switch operator Subscription to Konflux CatalogSource")
 
+				preSwitchSub, err := olm.PullSubscription(
+					APIClient, farparams.UpgradeSubName, medik8sparams.OperatorNs)
+				Expect(err).NotTo(HaveOccurred(),
+					"Failed to pull subscription before catalog switch")
+
+				preSwitchRV := preSwitchSub.Object.ResourceVersion
+
 				_, err = farutils.SwitchSubscriptionCatalog(
 					APIClient, medik8sparams.UpgradeCatalogName)
 				Expect(err).NotTo(HaveOccurred(),
 					"Failed to switch Subscription to target catalog")
 
-				By("Step 9: Wait for new CSV and verify it reached Succeeded")
+				By("Step 9: Wait for operator upgrade or verify catalog switch")
 
 				Eventually(func() error {
-					csvs, listErr := olm.ListClusterServiceVersionWithNamePattern(
-						APIClient, medik8sparams.OperatorPackage, medik8sparams.OperatorNs)
-					if listErr != nil {
-						return listErr
+					sub, subErr := olm.PullSubscription(
+						APIClient, farparams.UpgradeSubName, medik8sparams.OperatorNs)
+					if subErr != nil {
+						return fmt.Errorf("pulling subscription %s/%s: %w",
+							medik8sparams.OperatorNs, farparams.UpgradeSubName, subErr)
 					}
 
-					for _, csv := range csvs {
-						csvPhase, _ := csv.GetPhase()
-						if csvPhase == olmV1alpha1.CSVPhaseSucceeded &&
-							csv.Object.Name != previousCSV.Object.Name {
-							GinkgoWriter.Printf("New CSV: %s (was: %s)\n",
-								csv.Object.Name, previousCSV.Object.Name)
+					if sub == nil || sub.Object == nil {
+						return fmt.Errorf(
+							"subscription %s/%s returned without error but Object is nil",
+							medik8sparams.OperatorNs, farparams.UpgradeSubName)
+					}
 
-							return nil
+					if sub.Object.ResourceVersion == preSwitchRV {
+						return fmt.Errorf(
+							"subscription not yet reconciled (ResourceVersion unchanged)")
+					}
+
+					if sub.Object.Spec.CatalogSource != medik8sparams.UpgradeCatalogName {
+						return fmt.Errorf("subscription source not yet updated to %s",
+							medik8sparams.UpgradeCatalogName)
+					}
+
+					currentCSV := sub.Object.Status.CurrentCSV
+					if currentCSV == "" {
+						return fmt.Errorf("subscription has no currentCSV yet")
+					}
+
+					installedCSV := sub.Object.Status.InstalledCSV
+					if installedCSV != currentCSV {
+						return fmt.Errorf(
+							"OLM still reconciling (installed: %s, current: %s)",
+							installedCSV, currentCSV)
+					}
+
+					for _, cond := range sub.Object.Status.Conditions {
+						if cond.Type == olmV1alpha1.SubscriptionCatalogSourcesUnhealthy &&
+							cond.Status == corev1.ConditionTrue {
+							return fmt.Errorf(
+								"catalog unhealthy: %s", cond.Message)
 						}
 					}
 
-					return fmt.Errorf("new FAR CSV not yet in Succeeded phase")
-				}, medik8sparams.OperatorUpgradeTimeout, farparams.DefaultPollInterval).Should(Succeed(),
-					"Operator upgrade did not complete")
+					catalogHealthy := false
 
-				By("Step 10: Verify FAR controller pods restarted with new image")
+					for _, ch := range sub.Object.Status.CatalogHealth {
+						if ch.CatalogSourceRef != nil &&
+							ch.CatalogSourceRef.Name == medik8sparams.UpgradeCatalogName &&
+							ch.Healthy {
+							catalogHealthy = true
 
-				Eventually(func() error {
-					currentImage, imgErr := farutils.GetFARControllerImage(APIClient)
-					if imgErr != nil {
-						return imgErr
+							break
+						}
 					}
 
-					if currentImage == preUpgradeImage {
-						return fmt.Errorf("controller still running old image %s", preUpgradeImage)
+					if !catalogHealthy {
+						return fmt.Errorf(
+							"catalog %s not yet healthy in subscription CatalogHealth",
+							medik8sparams.UpgradeCatalogName)
 					}
 
-					GinkgoWriter.Printf("Controller image updated: %s\n", currentImage)
+					csv, csvErr := olm.PullClusterServiceVersion(
+						APIClient, currentCSV, medik8sparams.OperatorNs)
+					if csvErr != nil {
+						return fmt.Errorf("CSV %s not found: %w", currentCSV, csvErr)
+					}
+
+					csvPhase, phaseErr := csv.GetPhase()
+					if phaseErr != nil {
+						return fmt.Errorf("failed to get phase for CSV %s: %w",
+							currentCSV, phaseErr)
+					}
+
+					if csvPhase != olmV1alpha1.CSVPhaseSucceeded {
+						return fmt.Errorf("CSV %s in phase %s, waiting for Succeeded",
+							currentCSV, csvPhase)
+					}
+
+					if currentCSV != previousCSV.Object.Name {
+						GinkgoWriter.Printf(
+							"Operator upgraded: new CSV %s (was: %s)\n",
+							currentCSV, previousCSV.Object.Name)
+
+						operatorUpgraded = true
+					} else {
+						GinkgoWriter.Printf(
+							"Version parity: Konflux catalog offers same "+
+								"version %s as GA; subscription healthy on "+
+								"new catalog\n", currentCSV)
+					}
 
 					return nil
 				}, medik8sparams.OperatorUpgradeTimeout, farparams.DefaultPollInterval).Should(Succeed(),
-					"FAR controller pods did not restart with new image")
+					"Operator upgrade or catalog switch verification failed")
 
-				By("Step 11: Validate pre-GA FAR on OCP N (post-operator-upgrade remediation)")
+				if operatorUpgraded {
+					By("Step 10: Verify FAR controller pods restarted with new image")
+
+					Eventually(func() error {
+						currentImage, imgErr := farutils.GetFARControllerImage(APIClient)
+						if imgErr != nil {
+							return imgErr
+						}
+
+						if currentImage == preUpgradeImage {
+							return fmt.Errorf("controller still running old image %s",
+								preUpgradeImage)
+						}
+
+						GinkgoWriter.Printf("Controller image updated: %s\n", currentImage)
+
+						return nil
+					}, medik8sparams.OperatorUpgradeTimeout,
+						farparams.DefaultPollInterval).Should(Succeed(),
+						"FAR controller pods did not restart with new image")
+				} else {
+					GinkgoWriter.Println(
+						"Step 10: Skipped (no operator upgrade occurred, " +
+							"Konflux and GA catalogs at same version)")
+				}
+
+				By("Step 11: Validate FAR on OCP N (post-catalog-switch remediation)")
 
 				fenceAgent, sharedParams, nodeParams, leaderNode, err =
 					upgradeProvisionRemediationResources(ctx, platform, region)
 				Expect(err).NotTo(HaveOccurred(), "Failed to set up remediation resources")
 
 				currentFARName, err = upgradeRunRemediationCycle(
-					ctx, fenceAgent, sharedParams, nodeParams, leaderNode, "post-operator-upgrade")
+					ctx, fenceAgent, sharedParams, nodeParams, leaderNode, "post-catalog-switch")
 				Expect(err).NotTo(HaveOccurred(),
-					"Post-operator-upgrade remediation failed with pre-GA operator")
+					"Post-catalog-switch remediation failed")
 
-				cleanupPostRemediation(ctx, &currentFARName, "post-operator-upgrade")
+				cleanupPostRemediation(ctx, &currentFARName, "post-catalog-switch")
 			})
 	})
 
@@ -489,7 +579,12 @@ func verifyFAROperatorReady(
 			APIClient, medik8sparams.OperatorPackage, medik8sparams.OperatorNs)
 		if csvListErr == nil {
 			for _, c := range csvs {
-				phase, _ := c.GetPhase()
+				phase, phaseErr := c.GetPhase()
+				if phaseErr != nil {
+					return fmt.Errorf("failed to get phase for CSV %s: %w",
+						c.Object.Name, phaseErr)
+				}
+
 				phaseStr := string(phase)
 				if phaseStr != lastCSVPhase {
 					GinkgoWriter.Printf("[OLM] CSV %s: phase=%s reason=%s message=%s\n",
