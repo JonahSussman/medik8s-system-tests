@@ -80,15 +80,15 @@ container or pod level). Only checks the `manager` container.
 ### 5. Verify MDRT With Invalid Values Is Rejected ([OCP-60889](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-60889))
 
 Validates that the API server rejects MachineDeletionRemediationTemplate CRs
-with invalid metadata. First attempts creation with an invalid namespace (`-2`),
-then with an invalid name (`-1-invalid-value`) that violates RFC 1123 subdomain
-rules.
+with invalid metadata. First attempts creation with a non-existent namespace
+(`mdr-test-nonexistent-ns`), then with an invalid name (`-1-invalid-value`)
+that violates RFC 1123 subdomain rules.
 
 - **Operators**: MDR v0.7.0+
 - **Cluster**: Any topology (MNO or SNO)
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="mdr" --focus="invalid values" ./tests/mdr-operator/...`
-- **Pass criteria**: MDRT with namespace `-2` rejected with NotFound error; MDRT with name `-1-invalid-value` rejected with RFC 1123 validation error; MDR controller pod running with expected replicas after test
+- **Pass criteria**: MDRT with non-existent namespace rejected with NotFound error; MDRT with invalid name rejected with Invalid error (k8serrors.IsInvalid); MDR controller pod running with expected replicas after test
 
 ## Destructive Tests -- NHC-Triggered Remediation
 

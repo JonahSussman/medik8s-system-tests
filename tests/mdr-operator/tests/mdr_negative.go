@@ -57,7 +57,7 @@ var _ = Describe(
 
 		It("Verify MDRT with invalid values is rejected by API server",
 			reportxml.ID("60889"),
-			Label(labels.TierAcceptance, labels.ComponentController,
+			Label(labels.TierAcceptance,
 				labels.DisruptionNonDestructive, labels.PlatformAny,
 				labels.FrequencyPresubmit), func() {
 				var validationErrors []string
@@ -69,7 +69,9 @@ var _ = Describe(
 
 				err := APIClient.Create(context.TODO(), mdrtInvalidNs)
 				if err == nil {
-					DeferCleanup(func() { cleanupMDRT(mdrtInvalidNs.GetName()) })
+					DeferCleanup(func() {
+						_ = APIClient.Delete(context.Background(), mdrtInvalidNs)
+					})
 
 					validationErrors = append(validationErrors,
 						fmt.Sprintf("MDRT with namespace %q was unexpectedly created",
@@ -91,9 +93,9 @@ var _ = Describe(
 					validationErrors = append(validationErrors,
 						fmt.Sprintf("MDRT with name %q was unexpectedly created",
 							mdrparams.MDRTInvalidTestName))
-				} else if !strings.Contains(err.Error(), "a lowercase RFC 1123 subdomain must consist of") {
+				} else if !k8serrors.IsInvalid(err) {
 					validationErrors = append(validationErrors,
-						fmt.Sprintf("MDRT with name %q: expected RFC 1123 validation error, got: %v",
+						fmt.Sprintf("MDRT with name %q: expected Invalid error, got: %v",
 							mdrparams.MDRTInvalidTestName, err))
 				}
 

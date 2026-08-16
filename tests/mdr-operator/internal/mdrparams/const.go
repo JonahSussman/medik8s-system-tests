@@ -74,6 +74,6 @@ const (
 	// MDRTInvalidTestName is a name that violates RFC 1123 subdomain rules.
 	MDRTInvalidTestName = "-1-invalid-value"
 
-	// MDRTInvalidTestNamespace is a namespace value that does not exist.
-	MDRTInvalidTestNamespace = "-2"
+	// MDRTInvalidTestNamespace is a syntactically valid namespace that does not exist.
+	MDRTInvalidTestNamespace = "mdr-test-nonexistent-ns"
 )
