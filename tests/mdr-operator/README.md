@@ -88,7 +88,7 @@ that violates RFC 1123 subdomain rules.
 - **Cluster**: Any topology (MNO or SNO)
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="mdr" --focus="invalid values" ./tests/mdr-operator/...`
-- **Pass criteria**: MDRT with non-existent namespace rejected with NotFound error; MDRT with invalid name rejected with Invalid error (k8serrors.IsInvalid); MDR controller pod running with expected replicas after test
+- **Pass criteria**: MDRT with non-existent namespace rejected with NotFound error; MDRT with invalid name rejected with Invalid error (k8serrors.IsInvalid)
 
 ## Destructive Tests -- NHC-Triggered Remediation
 

@@ -70,7 +70,11 @@ var _ = Describe(
 				err := APIClient.Create(context.TODO(), mdrtInvalidNs)
 				if err == nil {
 					DeferCleanup(func() {
-						_ = APIClient.Delete(context.Background(), mdrtInvalidNs)
+						By("Cleaning up unexpectedly created MDRT in non-existent namespace")
+						if delErr := APIClient.Delete(context.Background(), mdrtInvalidNs); delErr != nil && !k8serrors.IsNotFound(delErr) {
+							GinkgoWriter.Printf("Warning: failed to delete MDRT %s/%s: %v\n",
+								mdrtInvalidNs.GetNamespace(), mdrtInvalidNs.GetName(), delErr)
+						}
 					})
 
 					validationErrors = append(validationErrors,
