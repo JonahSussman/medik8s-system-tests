@@ -215,7 +215,7 @@ Fences any control plane node via fence_aws and verifies etcd quorum is preserve
 
 ### 18. Fence Leader and Complete FAR Remediation with Only 2 Schedulable Workers ([OCP-90218](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-90218))
 
-Simulates a minimal 2-worker topology by cordoning extra workers, then fences the FAR leader node via fence_aws, forcing leader election failover to the surviving worker. Verifies the surviving worker takes over leadership and completes remediation despite degraded capacity (at least 1 FAR replica stays Running), workloads are evicted, and FAR recovers to full replicas after the leader node returns.
+Simulates a minimal 2-worker topology by cordoning extra workers, then fences the FAR leader node via fence_aws, forcing leader election failover to the surviving worker. Verifies the surviving worker takes over leadership and completes remediation despite degraded capacity (at least 1 FAR replica stays Running), workloads are evicted, and FAR recovers to 2 replicas once the cordoned capacity is restored (the fenced node stays NoSchedule-tainted until its CR is deleted, so the recovered replica lands on an uncordoned worker).
 
 - **Operators**: FAR
 - **Cluster**: AWS IPI, 2+ worker nodes (extra workers are cordoned to simulate topology)
@@ -224,7 +224,7 @@ Simulates a minimal 2-worker topology by cordoning extra workers, then fences th
 - **Labels**: `tier:acceptance`, `disruption:destructive`, `platform:aws`, `frequency:weekly`, `component:remediation`, `topology:minimal-worker`
 - **Env vars (required)**: AWS credentials provisioned by the `medik8s-aws-credentials` CI step
 - **Standalone**: `ginkgo --label-filter="far && topology:minimal-worker" ./tests/far-operator/...`
-- **Pass criteria**: At least 1 FAR replica Running during degraded capacity, leader node rebooted (boot ID change), leader node returns to Ready, workload pod evicted, FAR recovers to 2 replicas
+- **Pass criteria**: At least 1 FAR replica Running during degraded capacity, leader node rebooted (boot ID change), leader node returns to Ready, workload pod evicted, FAR recovers to 2 replicas after schedulable capacity is restored
 
 ### 19. Verify FAR Deployment Unavailability with Zero Schedulable Workers ([OCP-90308](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-90308))
 

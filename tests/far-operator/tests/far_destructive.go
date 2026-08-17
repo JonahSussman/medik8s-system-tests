@@ -402,7 +402,7 @@ var _ = Describe("FAR Destructive Tests",
 								{Reason: farparams.FAREventFenceAgentSucceeded, Type: corev1.EventTypeNormal},
 								{Reason: farparams.FAREventRemediationFinished, Type: corev1.EventTypeNormal},
 							},
-							farparams.FARConditionTimeout, farparams.DefaultPollInterval,
+							farparams.EventVerifyTimeout, farparams.EventVerifyInterval,
 						)).To(Succeed(), "FAR lifecycle events not found on CR %s", targetNode.Name)
 
 						By("Verifying remediation completion event on Node")
@@ -416,7 +416,7 @@ var _ = Describe("FAR Destructive Tests",
 							[]helpers.EventExpectation{
 								{Reason: farparams.FAREventNodeRemediationCompleted, Type: corev1.EventTypeNormal},
 							},
-							farparams.FARConditionTimeout, farparams.DefaultPollInterval,
+							farparams.EventVerifyTimeout, farparams.EventVerifyInterval,
 						)).To(Succeed(), "NodeRemediationCompleted event not found on node %s", targetNode.Name)
 					})
 
@@ -633,7 +633,7 @@ var _ = Describe("FAR Destructive Tests",
 								{Reason: farparams.FAREventFenceAgentSucceeded, Type: corev1.EventTypeNormal},
 								{Reason: farparams.FAREventRemediationFinished, Type: corev1.EventTypeNormal},
 							},
-							farparams.FARConditionTimeout, farparams.DefaultPollInterval,
+							farparams.EventVerifyTimeout, farparams.EventVerifyInterval,
 						)).To(Succeed(), "FAR lifecycle events not found on CR after leader failover")
 
 						By("Verifying remediation completion event on Node after failover")
@@ -647,7 +647,7 @@ var _ = Describe("FAR Destructive Tests",
 							[]helpers.EventExpectation{
 								{Reason: farparams.FAREventNodeRemediationCompleted, Type: corev1.EventTypeNormal},
 							},
-							farparams.FARConditionTimeout, farparams.DefaultPollInterval,
+							farparams.EventVerifyTimeout, farparams.EventVerifyInterval,
 						)).To(Succeed(), "NodeRemediationCompleted event not found on node after leader failover")
 
 						By("Verifying workload pod was evicted from leader node")
@@ -731,7 +731,21 @@ var _ = Describe("FAR Destructive Tests",
 							GinkgoWriter.Printf)).To(Succeed(),
 							"etcd ClusterOperator did not recover after CP node reboot")
 
-						By("Verifying FAR CR reached Succeeded status")
+						By("Verifying FAR CR status conditions (fence action + overall outcome)")
+
+						// The fence agent's success is verified via the DURABLE
+						// FenceAgentActionSucceeded status condition rather than the
+						// transient FenceAgentSucceeded Kubernetes Event. That event is
+						// emitted the instant fencing triggers the control-plane reboot,
+						// exactly when the target node's apiserver/etcd is disrupted, so
+						// best-effort event delivery can drop it (see the event step below).
+						// Status conditions are persisted on the CR and updated with retry,
+						// so they survive the disruption.
+						expectedConditions := map[string]string{
+							farparams.FARConditionProcessing:          string(metav1.ConditionFalse),
+							farparams.FARConditionFenceAgentSucceeded: string(metav1.ConditionTrue),
+							farparams.FARConditionSucceeded:           string(metav1.ConditionTrue),
+						}
 
 						Eventually(func(assertion Gomega) {
 							farObj := &unstructured.Unstructured{}
@@ -745,27 +759,39 @@ var _ = Describe("FAR Destructive Tests",
 							assertion.Expect(condErr).ToNot(HaveOccurred())
 							assertion.Expect(found).To(BeTrue(), "FAR CR has no status.conditions")
 
-							for _, cond := range conditions {
-								condMap, ok := cond.(map[string]interface{})
-								if !ok {
-									continue
+							for condType, expectedStatus := range expectedConditions {
+								condFound := false
+
+								for _, c := range conditions {
+									condMap, ok := c.(map[string]interface{})
+									if !ok {
+										continue
+									}
+
+									if condMap["type"] == condType {
+										condFound = true
+
+										assertion.Expect(condMap["status"]).To(Equal(expectedStatus),
+											"Condition %s has unexpected status", condType)
+
+										break
+									}
 								}
 
-								if condMap["type"] == farparams.FARConditionSucceeded {
-									assertion.Expect(condMap["status"]).To(
-										Equal(string(metav1.ConditionTrue)),
-										"FAR CR Succeeded condition is not True")
-
-									return
-								}
+								assertion.Expect(condFound).To(BeTrue(),
+									"Condition %s not found in FAR CR status", condType)
 							}
-
-							assertion.Expect(false).To(BeTrue(),
-								"Succeeded condition not found in FAR CR status")
 						}, farparams.FARConditionTimeout, farparams.DefaultPollInterval).Should(Succeed())
 
 						By("Verifying FAR lifecycle events on CR")
 
+						// FenceAgentSucceeded is intentionally NOT asserted as an event on a
+						// control-plane target: it is emitted during the apiserver/etcd
+						// disruption the CP reboot causes and can be lost (Kubernetes events
+						// are best-effort). It is verified via the durable
+						// FenceAgentActionSucceeded condition above. RemediationStarted
+						// (before the reboot) and RemediationFinished (after the node rejoins)
+						// are emitted outside the disruption window and remain reliable.
 						Expect(helpers.WaitForEvents(ctx, APIClient.K8sClient,
 							helpers.InvolvedObjectRef{
 								Kind:      "FenceAgentsRemediation",
@@ -775,10 +801,9 @@ var _ = Describe("FAR Destructive Tests",
 							},
 							[]helpers.EventExpectation{
 								{Reason: farparams.FAREventRemediationStarted, Type: corev1.EventTypeNormal},
-								{Reason: farparams.FAREventFenceAgentSucceeded, Type: corev1.EventTypeNormal},
 								{Reason: farparams.FAREventRemediationFinished, Type: corev1.EventTypeNormal},
 							},
-							farparams.FARConditionTimeout, farparams.DefaultPollInterval,
+							farparams.EventVerifyTimeout, farparams.EventVerifyInterval,
 						)).To(Succeed(), "FAR lifecycle events not found on CR %s", targetNode.Name)
 
 						By("Verifying remediation completion event on Node")
@@ -795,7 +820,7 @@ var _ = Describe("FAR Destructive Tests",
 							[]helpers.EventExpectation{
 								{Reason: farparams.FAREventNodeRemediationCompleted, Type: corev1.EventTypeNormal},
 							},
-							farparams.FARConditionTimeout, farparams.DefaultPollInterval,
+							farparams.EventVerifyTimeout, farparams.EventVerifyInterval,
 						)).To(Succeed(), "NodeRemediationCompleted event not found on node %s", targetNode.Name)
 					})
 			})
@@ -835,10 +860,17 @@ var _ = Describe("FAR Destructive Tests",
 
 						keepNames := []string{leaderNode, survivor.Name}
 
+						// Declared at It scope so it can be uncordoned inline (to restore
+						// schedulable capacity before verifying FAR recovery) and again via
+						// DeferCleanup as an idempotent safety net.
+						var cordonedNodes []string
+
 						if workerCount > farparams.MinWorkersForTwoWorkerTest {
 							By("Cordoning extra workers to simulate 2-worker topology")
 
-							cordonedNodes, cordonErr := farutils.CordonExtraWorkers(ctx, APIClient, keepNames)
+							var cordonErr error
+
+							cordonedNodes, cordonErr = farutils.CordonExtraWorkers(ctx, APIClient, keepNames)
 
 							DeferCleanup(func() {
 								if len(cordonedNodes) > 0 {
@@ -908,7 +940,18 @@ var _ = Describe("FAR Destructive Tests",
 						}, farparams.WorkloadEvictionTimeout, farparams.DefaultPollInterval).Should(BeTrue(),
 							"Workload pod was not evicted after remediation in 2-worker topology")
 
-						By("Verifying FAR recovers to 2 Ready replicas after worker returns")
+						// Restore schedulable capacity so FAR can recover its second replica.
+						// The fenced leader node stays NoSchedule-tainted until its CR is deleted
+						// (in JustAfterEach), so recovery to 2 replicas relies on the uncordoned
+						// extra worker(s). On a cluster with exactly 2 workers there is nothing to
+						// uncordon and full recovery only completes after CR deletion; this test
+						// targets the 3+-worker CI topology.
+						if len(cordonedNodes) > 0 {
+							By("Restoring schedulable capacity: uncordoning extra worker(s)")
+							farutils.UncordonNodes(ctx, APIClient, cordonedNodes, GinkgoWriter.Printf)
+						}
+
+						By("Verifying FAR recovers to 2 Ready replicas after capacity is restored")
 
 						Eventually(func() int32 {
 							dep, depErr := deployment.Pull(
@@ -921,7 +964,7 @@ var _ = Describe("FAR Destructive Tests",
 							return dep.Object.Status.ReadyReplicas
 						}, medik8sparams.DefaultTimeout, farparams.DefaultPollInterval).Should(
 							BeNumerically(">=", 2),
-							"FAR should recover to 2 Ready replicas after worker returns")
+							"FAR should recover to 2 Ready replicas after capacity is restored")
 					})
 			})
 

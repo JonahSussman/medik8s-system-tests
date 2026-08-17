@@ -73,6 +73,15 @@ const (
 	// FARConditionTimeout is how long to wait for a FAR CR condition to appear.
 	FARConditionTimeout = 2 * time.Minute
 
+	// EventVerifyTimeout is how long to wait for Kubernetes lifecycle events to
+	// appear. Longer than FARConditionTimeout because event delivery lags the CR
+	// condition and the shared, rate-limited API client can throttle event List
+	// calls during the destructive suite.
+	EventVerifyTimeout = 5 * time.Minute
+	// EventVerifyInterval is the poll interval for event verification. Longer than
+	// DefaultPollInterval to reduce List pressure on the shared rate-limited client.
+	EventVerifyInterval = 10 * time.Second
+
 	// RemediationCRDeletionTimeout is how long to wait for a FAR/FART CR to be fully deleted.
 	RemediationCRDeletionTimeout = 2 * time.Minute
 
