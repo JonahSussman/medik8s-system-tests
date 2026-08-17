@@ -585,7 +585,6 @@ func setupTestRemediationResources(ctx context.Context) {
 // cleanupTestRemediationResources removes all TestRemediation CRDs, CRs, and RBAC.
 // Uses retry + NotFound handling consistent with cleanupNHCCR/cleanupSNRCR.
 func cleanupTestRemediationResources(ctx context.Context) {
-
 	deleteWithRetry := func(obj client.Object, desc string) {
 		if waitErr := wait.PollUntilContextTimeout(
 			ctx, nhcparams.DefaultPollInterval, nhcparams.RemediationCRDeletionTimeout, true,
