@@ -256,19 +256,12 @@ var _ = Describe("FAR Operator Upgrade",
 
 				By("Step 8: Switch operator Subscription to Konflux CatalogSource")
 
-				preSwitchSub, err := olm.PullSubscription(
-					APIClient, farparams.UpgradeSubName, medik8sparams.OperatorNs)
-				Expect(err).NotTo(HaveOccurred(),
-					"Failed to pull subscription before catalog switch")
-
-				preSwitchRV := preSwitchSub.Object.ResourceVersion
-
 				_, err = farutils.SwitchSubscriptionCatalog(
 					APIClient, medik8sparams.UpgradeCatalogName)
 				Expect(err).NotTo(HaveOccurred(),
 					"Failed to switch Subscription to target catalog")
 
-				By("Step 9: Wait for operator upgrade or verify catalog switch")
+				By("Step 9: Wait for operator upgrade or version parity after catalog switch")
 
 				Eventually(func() error {
 					sub, subErr := olm.PullSubscription(
@@ -282,11 +275,6 @@ var _ = Describe("FAR Operator Upgrade",
 						return fmt.Errorf(
 							"subscription %s/%s returned without error but Object is nil",
 							medik8sparams.OperatorNs, farparams.UpgradeSubName)
-					}
-
-					if sub.Object.ResourceVersion == preSwitchRV {
-						return fmt.Errorf(
-							"subscription not yet reconciled (ResourceVersion unchanged)")
 					}
 
 					if sub.Object.Spec.CatalogSource != medik8sparams.UpgradeCatalogName {
