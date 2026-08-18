@@ -29,6 +29,7 @@ import (
 
 var _ = Describe(
 	"SBR Must-Gather Diagnostics",
+	Serial,
 	Ordered,
 	Label(labels.OperatorSBR), func() {
 		It("Verify SBR must-gather collects diagnostic data",
@@ -61,7 +62,10 @@ var _ = Describe(
 
 				By("Capturing cluster state before must-gather for validation")
 
-				nodeList, err := APIClient.CoreV1Interface.Nodes().List(context.TODO(), metav1.ListOptions{})
+				listCtx, listCancel := context.WithTimeout(context.Background(), medik8sparams.DefaultTimeout)
+				defer listCancel()
+
+				nodeList, err := APIClient.CoreV1Interface.Nodes().List(listCtx, metav1.ListOptions{})
 				Expect(err).ToNot(HaveOccurred(), "Failed to list cluster nodes")
 				Expect(nodeList.Items).ToNot(BeEmpty(), "Cluster has no nodes")
 
