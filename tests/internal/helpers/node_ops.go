@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -73,6 +74,14 @@ func RunOnNode(
 // kubeletStopGuardPath is the host path used by StopKubelet to prevent
 // re-execution of "systemctl stop kubelet" after a node reboot.
 const kubeletStopGuardPath = "/var/tmp/.medik8s-kubelet-stop-guard"
+
+// defaultBastionUser is the SSH user for both in-cluster and external
+// bastions when no bastion_ssh_user file is present in SHARED_DIR.
+const defaultBastionUser = "core"
+
+// defaultNodeUser is the SSH user for connecting to cluster nodes
+// (distinct from defaultBastionUser which is for the bastion hop).
+const defaultNodeUser = "core"
 
 // StopKubelet stops the kubelet service on the target node via
 // "oc debug node/". A guard file is created on the host before
@@ -235,16 +244,91 @@ func findSSHKey() (string, error) {
 	return sshKeyPath, sshKeyErr
 }
 
+// readSharedDirFile reads a file from the $SHARED_DIR directory and
+// returns its trimmed content. Returns empty string if SHARED_DIR is
+// unset, the file does not exist, an unexpected read error occurs
+// (logged to stderr), or the content is empty after trimming.
+func readSharedDirFile(name string) string {
+	dir := os.Getenv("SHARED_DIR")
+	if dir == "" {
+		return ""
+	}
+
+	path := filepath.Join(dir, name)
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "readSharedDirFile: unexpected error reading %s: %v\n", path, err)
+		}
+
+		return ""
+	}
+
+	return strings.TrimSpace(string(data))
+}
+
+func isInvalidHostname(addr string) bool {
+	invalid := strings.ContainsFunc(addr, func(r rune) bool {
+		return (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') &&
+			(r < '0' || r > '9') && r != '.' && r != '-' && r != ':'
+	})
+	if invalid {
+		fmt.Fprintf(os.Stderr,
+			"findSSHBastion: bastion_public_address contains invalid characters: %q\n", addr)
+	}
+
+	return invalid
+}
+
+func isInvalidSSHUser(user string) bool {
+	invalid := strings.ContainsFunc(user, func(r rune) bool {
+		return (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') &&
+			(r < '0' || r > '9') && r != '-' && r != '_' && r != '.'
+	})
+	if invalid {
+		fmt.Fprintf(os.Stderr,
+			"findSSHBastion: bastion_ssh_user contains invalid characters: %q, using default %q\n",
+			user, defaultBastionUser)
+	}
+
+	return invalid
+}
+
 // sshBastionOnce resolves the bastion host once per process.
 var sshBastionOnce sync.Once
 var sshBastionHost string
+var sshBastionUser string
 
-// findSSHBastion checks if an ssh-bastion service is deployed in the cluster.
-// On Prow AWS, direct SSH to nodes is blocked by security groups; the bastion
-// pod (deployed via the ssh-bastion step-registry ref) proxies SSH traffic.
+// findSSHBastion checks for an SSH bastion host in order:
+//  1. External bastion from $SHARED_DIR/bastion_public_address
+//     (provisioned by disconnected AWS workflows via ipi-aws-pre-disconnected)
+//  2. In-cluster ssh-bastion Service in test-ssh-bastion namespace
+//     (deployed by the ssh-bastion step-registry ref on connected clusters)
+//
+// The external bastion is checked first because in disconnected environments
+// the in-cluster ssh-bastion pod cannot pull its image (quay.io is unreachable).
 // Returns the bastion hostname, or empty string if not available.
 func findSSHBastion() string {
 	sshBastionOnce.Do(func() {
+		if addr := readSharedDirFile("bastion_public_address"); addr != "" &&
+			!isInvalidHostname(addr) {
+			sshBastionHost = addr
+
+			if user := readSharedDirFile("bastion_ssh_user"); user != "" &&
+				!isInvalidSSHUser(user) {
+				sshBastionUser = user
+			} else {
+				sshBastionUser = defaultBastionUser
+			}
+
+			fmt.Fprintf(os.Stderr,
+				"findSSHBastion: using external bastion %s (user: %s)\n",
+				sshBastionHost, sshBastionUser)
+
+			return
+		}
+
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
@@ -253,17 +337,32 @@ func findSSHBastion() string {
 			"-o", "jsonpath={.status.loadBalancer.ingress[0].hostname}").Output()
 		if err == nil && len(out) > 0 {
 			sshBastionHost = strings.TrimSpace(string(out))
-			fmt.Fprintf(os.Stderr, "findSSHBastion: using bastion %s\n", sshBastionHost)
+			sshBastionUser = defaultBastionUser
+
+			fmt.Fprintf(os.Stderr, "findSSHBastion: using in-cluster bastion %s\n", sshBastionHost)
 		}
 	})
 
 	return sshBastionHost
 }
 
+// findSSHBastionUser returns the SSH user for the bastion host.
+// Internally calls findSSHBastion() (guarded by sync.Once) to ensure
+// both host and user are resolved from the same source.
+func findSSHBastionUser() string {
+	findSSHBastion()
+
+	if sshBastionUser == "" {
+		return defaultBastionUser
+	}
+
+	return sshBastionUser
+}
+
 // runSSH executes a command on a node via SSH to the core user.
 // Unlike oc debug, SSH works even when kubelet is stopped because
 // sshd runs independently of kubelet.
-// On Prow AWS, SSH is proxied through the ssh-bastion service (ProxyJump).
+// On Prow AWS, SSH is proxied through an SSH bastion (ProxyCommand).
 func runSSH(
 	ctx context.Context, nodeIP string, timeout time.Duration, cmd string,
 ) (string, error) {
@@ -286,12 +385,19 @@ func runSSH(
 	args = append(args, "-i", keyPath)
 
 	// On Prow AWS, direct SSH is blocked by security groups.
-	// Proxy through the ssh-bastion if available.
+	// Proxy through an SSH bastion if available (external or in-cluster).
+	// ProxyCommand (not ProxyJump) is used so we can pass -i and
+	// host-key options to the bastion hop explicitly.
 	if bastion := findSSHBastion(); bastion != "" {
-		args = append(args, "-o", fmt.Sprintf("ProxyCommand=ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -W %%h:%%p core@%s", keyPath, bastion))
+		bastionUser := findSSHBastionUser()
+		proxyCmd := fmt.Sprintf(
+			"ProxyCommand=ssh -i %s -o StrictHostKeyChecking=no "+
+				"-o UserKnownHostsFile=/dev/null -W %%h:%%p %s@%s",
+			keyPath, bastionUser, bastion)
+		args = append(args, "-o", proxyCmd)
 	}
 
-	args = append(args, fmt.Sprintf("core@%s", nodeIP), cmd)
+	args = append(args, fmt.Sprintf("%s@%s", defaultNodeUser, nodeIP), cmd)
 
 	command := exec.CommandContext(childCtx, "ssh", args...)
 
@@ -302,8 +408,8 @@ func runSSH(
 
 	if err := command.Run(); err != nil {
 		return "", fmt.Errorf(
-			"SSH to core@%s failed: %w (stderr: %s)",
-			nodeIP, err, stderr.String(),
+			"SSH to %s@%s failed: %w (stderr: %s)",
+			defaultNodeUser, nodeIP, err, stderr.String(),
 		)
 	}
 
