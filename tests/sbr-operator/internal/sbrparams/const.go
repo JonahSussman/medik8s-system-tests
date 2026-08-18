@@ -97,8 +97,20 @@ const (
 	SBRAgentDaemonSetPrefix = "sbr-agent-"
 
 	// SBRCReadyTimeout is the time allowed for the SBRC's agent DaemonSet to have all scheduled
-	// pods reach Ready before a functional test begins.
-	SBRCReadyTimeout = 7 * time.Minute
+	// pods reach Ready before a functional test begins. The first SBRC created in a suite pays a
+	// one-time cold-start cost (first CephFS PVC bind plus SBD device-init Job on a freshly
+	// provisioned ODF cluster); later SBRCs reuse the warmed CSI path and become ready in ~90s.
+	// The ceiling is sized for that worst-case cold start - a ready DaemonSet returns immediately,
+	// so healthy runs never wait this long.
+	SBRCReadyTimeout = 10 * time.Minute
+
+	// SBRCReadyDiagMaxEvents caps how many recent Warning events are included in the on-timeout
+	// readiness diagnostics dumped by waitForSBRCReady, to keep the failure message readable.
+	SBRCReadyDiagMaxEvents = 15
+
+	// SBRCReadyDiagTimeout bounds the API calls made while collecting on-timeout readiness
+	// diagnostics, so a slow or wedged apiserver cannot hang the already-failed test.
+	SBRCReadyDiagTimeout = 30 * time.Second
 
 	// WatchdogProbeLogTimeout is the deadline for reading a completed watchdog probe pod's logs
 	// via the in-cluster API.
