@@ -67,7 +67,7 @@ var _ = Describe(
 				mdrtInvalidNs := buildMDRT(mdrparams.MDRTNegativeTestName)
 				mdrtInvalidNs.SetNamespace(mdrparams.MDRTInvalidTestNamespace)
 
-				err := APIClient.Create(context.TODO(), mdrtInvalidNs)
+				err := APIClient.Create(context.Background(), mdrtInvalidNs)
 				if err == nil {
 					DeferCleanup(func() {
 						By("Cleaning up unexpectedly created MDRT in non-existent namespace")
@@ -90,7 +90,7 @@ var _ = Describe(
 
 				mdrtInvalidName := buildMDRT(mdrparams.MDRTInvalidTestName)
 
-				err = APIClient.Create(context.TODO(), mdrtInvalidName)
+				err = APIClient.Create(context.Background(), mdrtInvalidName)
 				if err == nil {
 					DeferCleanup(func() { cleanupMDRT(mdrtInvalidName.GetName()) })
 
