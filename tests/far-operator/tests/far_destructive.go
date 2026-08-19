@@ -293,10 +293,12 @@ var _ = Describe("FAR Destructive Tests",
 
 				workerCount, err := helpers.CountReadyWorkerNodes(ctx, APIClient)
 				Expect(err).ToNot(HaveOccurred())
-				Expect(workerCount).To(
-					BeNumerically(">=", farparams.MinWorkersForDestructiveTests),
-					"Worker destructive tests require at least %d Ready worker nodes",
-					farparams.MinWorkersForDestructiveTests)
+
+				if workerCount < farparams.MinWorkersForDestructiveTests {
+					Skip(fmt.Sprintf(
+						"Standalone destructive tests require at least %d Ready worker nodes, found %d",
+						farparams.MinWorkersForDestructiveTests, workerCount))
+				}
 
 				By("Verifying FAR controller is Ready before test")
 
@@ -694,7 +696,7 @@ var _ = Describe("FAR Destructive Tests",
 						By("Verifying etcd ClusterOperator is healthy before remediation")
 
 						Expect(farutils.WaitForClusterOperatorHealthy(
-							ctx, APIClient, "etcd", farparams.EtcdRejoinTimeout,
+							ctx, APIClient, "etcd", medik8sparams.DefaultTimeout,
 							GinkgoWriter.Printf)).To(Succeed(),
 							"etcd ClusterOperator not healthy before test")
 
@@ -714,6 +716,10 @@ var _ = Describe("FAR Destructive Tests",
 						oldBootID, err := farutils.GetNodeBootIDFromAPI(ctx, APIClient, targetNode.Name)
 						Expect(err).ToNot(HaveOccurred())
 
+						By("Creating a test workload pod pinned to CP node " + targetNode.Name)
+
+						workloadPod := createWorkloadPod(ctx, APIClient, targetNode.Name)
+
 						By("Creating FAR CR targeting CP node " + targetNode.Name)
 
 						farCR := buildFARUnstructured(targetNode.Name, fenceAgent, sharedParams, nodeParams)
@@ -723,6 +729,18 @@ var _ = Describe("FAR Destructive Tests",
 
 						waitForRemediationWithTimeouts(ctx, APIClient, targetNode.Name, oldBootID,
 							farparams.CPRebootTimeout, farparams.CPNodeReadyTimeout)
+
+						By("Verifying workload pod was evicted from fenced CP node")
+
+						Eventually(func() bool {
+							pod := &corev1.Pod{}
+							getErr := APIClient.Get(ctx, client.ObjectKey{
+								Name: workloadPod.Name, Namespace: workloadPod.Namespace,
+							}, pod)
+
+							return k8serrors.IsNotFound(getErr) || pod.DeletionTimestamp != nil
+						}, farparams.WorkloadEvictionTimeout, farparams.DefaultPollInterval).Should(BeTrue(),
+							"Workload pod was not evicted from CP node after remediation")
 
 						By("Verifying etcd ClusterOperator recovered after CP node rejoin")
 
@@ -904,6 +922,18 @@ var _ = Describe("FAR Destructive Tests",
 
 						workloadPod := createWorkloadPod(ctx, APIClient, targetNode.Name)
 
+						By("Recording pre-reboot lease holder for failover verification")
+
+						preRebootLease := &coordinationv1.Lease{}
+						Expect(APIClient.Get(ctx, client.ObjectKey{
+							Name:      farparams.ControllerLeaseName,
+							Namespace: medik8sparams.OperatorNs,
+						}, preRebootLease)).To(Succeed())
+						Expect(preRebootLease.Spec.HolderIdentity).ToNot(BeNil(),
+							"Lease has no holder before fencing the leader")
+						oldLeaderHolder := *preRebootLease.Spec.HolderIdentity
+						GinkgoWriter.Printf("Pre-reboot lease holder: %s\n", oldLeaderHolder)
+
 						By("Creating FAR CR targeting leader node " + targetNode.Name)
 
 						farCR := buildFARUnstructured(targetNode.Name, fenceAgent, sharedParams, nodeParams)
@@ -911,20 +941,62 @@ var _ = Describe("FAR Destructive Tests",
 
 						currentFARName = targetNode.Name
 
-						By("Verifying at least 1 FAR replica remains Running during degraded capacity")
-
-						Eventually(func() int32 {
+						// ReadyReplicas is the deployment-level signal that the leader pod became
+						// NotReady. It is more reliable than the node Ready condition, which flips
+						// to NotReady before the pod on that node stops counting as Ready. A
+						// transient Pull error returns ExpectedReplicas (full capacity) so it
+						// neither false-detects a drop below nor fails the survival check.
+						readyReplicas := func() int32 {
 							dep, depErr := deployment.Pull(
 								APIClient, farparams.OperatorDeploymentName,
 								medik8sparams.OperatorNs)
 							if depErr != nil {
-								return 0
+								return farparams.ExpectedReplicas
 							}
 
 							return dep.Object.Status.ReadyReplicas
-						}, medik8sparams.DefaultTimeout, farparams.DefaultPollInterval).Should(
+						}
+
+						By("Waiting for FAR to reflect reduced capacity (leader replica no longer Ready)")
+
+						// Gate the survival check on the leader replica actually dropping, so it
+						// runs during genuine degraded capacity instead of passing on the first
+						// poll while both replicas are still Ready. The drop is durably observable
+						// because on this 2-worker topology anti-affinity keeps the replacement
+						// replica Pending, so ReadyReplicas stays at 1 for the reboot window.
+						Eventually(readyReplicas, medik8sparams.DefaultTimeout, farparams.DefaultPollInterval).Should(
+							BeNumerically("<", farparams.ExpectedReplicas),
+							"FAR ReadyReplicas never dropped below %d after fencing the leader node",
+							farparams.ExpectedReplicas)
+
+						By("Verifying at least 1 FAR replica stays Running throughout degraded capacity")
+
+						Consistently(readyReplicas, farparams.ControllerHandoverTimeout, farparams.DefaultPollInterval).Should(
 							BeNumerically(">=", 1),
-							"FAR should have at least 1 Ready replica during degraded capacity")
+							"FAR dropped below 1 Ready replica during degraded capacity")
+
+						By("Verifying controller lease transferred to the survivor during degraded capacity")
+
+						// Assert leadership moved off the fenced leader WHILE it is still down:
+						// the fenced node is the only other controller host, so a changed holder
+						// here must be the survivor. This mirrors OCP-70638's HolderIdentity check
+						// but runs during the degraded window, so it proves transfer TO the survivor
+						// rather than only that the old pod identity is gone after the node recovers.
+						Eventually(func(assertion Gomega) {
+							lease := &coordinationv1.Lease{}
+							assertion.Expect(APIClient.Get(ctx, client.ObjectKey{
+								Name:      farparams.ControllerLeaseName,
+								Namespace: medik8sparams.OperatorNs,
+							}, lease)).To(Succeed())
+							assertion.Expect(lease.Spec.HolderIdentity).ToNot(BeNil(),
+								"Lease has no holder during degraded capacity")
+
+							if lease.Spec.HolderIdentity != nil {
+								assertion.Expect(*lease.Spec.HolderIdentity).ToNot(Equal(oldLeaderHolder),
+									"Lease is still held by pre-reboot pod %s", oldLeaderHolder)
+							}
+						}, farparams.ControllerHandoverTimeout, farparams.DefaultPollInterval).Should(Succeed(),
+							"Controller lease did not transfer to the survivor during degraded capacity")
 
 						waitForRemediation(ctx, APIClient, targetNode.Name, oldBootID)
 
@@ -940,6 +1012,52 @@ var _ = Describe("FAR Destructive Tests",
 						}, farparams.WorkloadEvictionTimeout, farparams.DefaultPollInterval).Should(BeTrue(),
 							"Workload pod was not evicted after remediation in 2-worker topology")
 
+						By("Verifying FAR CR reached Succeeded after leader failover")
+
+						// Mirrors the standalone (OCP-67015) and CP tests: without the
+						// Succeeded assertion a CR stuck in Processing would pass silently.
+						expectedConditions := map[string]string{
+							farparams.FARConditionProcessing:          string(metav1.ConditionFalse),
+							farparams.FARConditionFenceAgentSucceeded: string(metav1.ConditionTrue),
+							farparams.FARConditionSucceeded:           string(metav1.ConditionTrue),
+						}
+
+						Eventually(func(assertion Gomega) {
+							farObj := &unstructured.Unstructured{}
+							farObj.SetGroupVersionKind(farGVK)
+							assertion.Expect(APIClient.Get(ctx, client.ObjectKey{
+								Name: targetNode.Name, Namespace: medik8sparams.OperatorNs,
+							}, farObj)).To(Succeed())
+
+							conditions, found, condErr := unstructured.NestedSlice(
+								farObj.Object, "status", "conditions")
+							assertion.Expect(condErr).ToNot(HaveOccurred())
+							assertion.Expect(found).To(BeTrue(), "FAR CR has no status.conditions")
+
+							for condType, expectedStatus := range expectedConditions {
+								condFound := false
+
+								for _, c := range conditions {
+									condMap, ok := c.(map[string]interface{})
+									if !ok {
+										continue
+									}
+
+									if condMap["type"] == condType {
+										condFound = true
+
+										assertion.Expect(condMap["status"]).To(Equal(expectedStatus),
+											"Condition %s has unexpected status", condType)
+
+										break
+									}
+								}
+
+								assertion.Expect(condFound).To(BeTrue(),
+									"Condition %s not found in FAR CR status", condType)
+							}
+						}, farparams.FARConditionTimeout, farparams.DefaultPollInterval).Should(Succeed())
+
 						// Restore schedulable capacity so FAR can recover its second replica.
 						// The fenced leader node stays NoSchedule-tainted until its CR is deleted
 						// (in JustAfterEach), so recovery to 2 replicas relies on the uncordoned
@@ -949,6 +1067,9 @@ var _ = Describe("FAR Destructive Tests",
 						if len(cordonedNodes) > 0 {
 							By("Restoring schedulable capacity: uncordoning extra worker(s)")
 							farutils.UncordonNodes(ctx, APIClient, cordonedNodes, GinkgoWriter.Printf)
+							// Clear so the DeferCleanup safety net does not re-uncordon
+							// already-restored nodes (matches the 0-worker test).
+							cordonedNodes = nil
 						}
 
 						By("Verifying FAR recovers to 2 Ready replicas after capacity is restored")
@@ -963,8 +1084,9 @@ var _ = Describe("FAR Destructive Tests",
 
 							return dep.Object.Status.ReadyReplicas
 						}, medik8sparams.DefaultTimeout, farparams.DefaultPollInterval).Should(
-							BeNumerically(">=", 2),
-							"FAR should recover to 2 Ready replicas after capacity is restored")
+							BeNumerically(">=", farparams.ExpectedReplicas),
+							"FAR should recover to %d Ready replicas after capacity is restored",
+							farparams.ExpectedReplicas)
 					})
 			})
 
@@ -983,6 +1105,17 @@ var _ = Describe("FAR Destructive Tests",
 						Expect(farDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(),
 							"FAR deployment is not Ready before 0-worker test")
 
+						By("Verifying at least 1 Ready worker node exists to cordon")
+
+						workerCount, err := helpers.CountReadyWorkerNodes(ctx, APIClient)
+						Expect(err).ToNot(HaveOccurred())
+
+						if workerCount < 1 {
+							Skip(fmt.Sprintf(
+								"0-worker test requires at least 1 Ready worker to cordon, found %d",
+								workerCount))
+						}
+
 						By("Cordoning all Ready worker nodes to simulate 0-worker topology")
 
 						cordonedNodes, err := farutils.CordonExtraWorkers(ctx, APIClient, nil)
@@ -994,8 +1127,16 @@ var _ = Describe("FAR Destructive Tests",
 							}
 						})
 						Expect(err).ToNot(HaveOccurred())
-						Expect(cordonedNodes).ToNot(BeEmpty(),
-							"No worker nodes were cordoned")
+
+						// Skip (do not fail) if nothing was cordoned: the upfront count
+						// found workers, so an empty result here means the topology changed
+						// during setup (a worker went NotReady between the count and the
+						// cordon). Failing on that race is the hard-fail this replaced.
+						if len(cordonedNodes) == 0 {
+							Skip("0-worker test found no Ready workers to cordon " +
+								"(topology changed during setup)")
+						}
+
 						GinkgoWriter.Printf("Cordoned all %d workers: %v\n",
 							len(cordonedNodes), cordonedNodes)
 
@@ -1044,8 +1185,9 @@ var _ = Describe("FAR Destructive Tests",
 
 							return dep.Object.Status.ReadyReplicas
 						}, medik8sparams.DefaultTimeout, farparams.DefaultPollInterval).Should(
-							BeNumerically(">=", 2),
-							"FAR deployment should recover to 2 Ready replicas after workers are uncordoned")
+							BeNumerically(">=", farparams.ExpectedReplicas),
+							"FAR deployment should recover to %d Ready replicas after workers are uncordoned",
+							farparams.ExpectedReplicas)
 					})
 			})
 	})
@@ -1113,6 +1255,8 @@ func waitForRemediation(
 	ctx context.Context, k8sClient client.Client,
 	nodeName, oldBootID string,
 ) {
+	GinkgoHelper()
+
 	waitForRemediationWithTimeouts(ctx, k8sClient, nodeName, oldBootID,
 		farparams.NodeRebootTimeout, farparams.NodeReadyTimeout)
 }
@@ -1122,16 +1266,22 @@ func waitForRemediationWithTimeouts(
 	nodeName, oldBootID string,
 	rebootTimeout, readyTimeout time.Duration,
 ) {
+	// GinkgoHelper() attributes any failure below to the calling It block,
+	// correctly whether this is invoked directly (CP test) or through the
+	// waitForRemediation wrapper (which adds a stack frame). It composes
+	// across nesting depth, unlike a fixed ExpectWithOffset.
+	GinkgoHelper()
+
 	By("Waiting for node to reboot")
 
-	ExpectWithOffset(1, farutils.WaitForNodeReboot(
+	Expect(farutils.WaitForNodeReboot(
 		ctx, k8sClient, nodeName, oldBootID,
 		rebootTimeout, GinkgoWriter.Printf)).To(Succeed(),
 		"Node %s did not reboot", nodeName)
 
 	By("Waiting for node to become Ready")
 
-	ExpectWithOffset(1, farutils.WaitForNodeReady(
+	Expect(farutils.WaitForNodeReady(
 		ctx, k8sClient, nodeName,
 		readyTimeout, GinkgoWriter.Printf)).To(Succeed(),
 		"Node %s did not become Ready after reboot", nodeName)
