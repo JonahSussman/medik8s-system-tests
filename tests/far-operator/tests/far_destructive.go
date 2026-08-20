@@ -756,7 +756,7 @@ var _ = Describe("FAR Destructive Tests",
 						// transient FenceAgentSucceeded Kubernetes Event. That event is
 						// emitted the instant fencing triggers the control-plane reboot,
 						// exactly when the target node's apiserver/etcd is disrupted, so
-						// best-effort event delivery can drop it (see the event step below).
+						// best-effort event delivery can drop it (see the note below).
 						// Status conditions are persisted on the CR and updated with retry,
 						// so they survive the disruption.
 						expectedConditions := map[string]string{
@@ -801,45 +801,24 @@ var _ = Describe("FAR Destructive Tests",
 							}
 						}, farparams.FARConditionTimeout, farparams.DefaultPollInterval).Should(Succeed())
 
-						By("Verifying FAR lifecycle events on CR")
-
-						// FenceAgentSucceeded is intentionally NOT asserted as an event on a
-						// control-plane target: it is emitted during the apiserver/etcd
-						// disruption the CP reboot causes and can be lost (Kubernetes events
-						// are best-effort). It is verified via the durable
-						// FenceAgentActionSucceeded condition above. RemediationStarted
-						// (before the reboot) and RemediationFinished (after the node rejoins)
-						// are emitted outside the disruption window and remain reliable.
-						Expect(helpers.WaitForEvents(ctx, APIClient.K8sClient,
-							helpers.InvolvedObjectRef{
-								Kind:      "FenceAgentsRemediation",
-								Name:      targetNode.Name,
-								Namespace: medik8sparams.OperatorNs,
-								UID:       string(farCR.GetUID()),
-							},
-							[]helpers.EventExpectation{
-								{Reason: farparams.FAREventRemediationStarted, Type: corev1.EventTypeNormal},
-								{Reason: farparams.FAREventRemediationFinished, Type: corev1.EventTypeNormal},
-							},
-							farparams.EventVerifyTimeout, farparams.EventVerifyInterval,
-						)).To(Succeed(), "FAR lifecycle events not found on CR %s", targetNode.Name)
-
-						By("Verifying remediation completion event on Node")
-
-						node := &corev1.Node{}
-						Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetNode.Name}, node)).To(Succeed())
-
-						Expect(helpers.WaitForEvents(ctx, APIClient.K8sClient,
-							helpers.InvolvedObjectRef{
-								Kind: "Node",
-								Name: targetNode.Name,
-								UID:  string(node.GetUID()),
-							},
-							[]helpers.EventExpectation{
-								{Reason: farparams.FAREventNodeRemediationCompleted, Type: corev1.EventTypeNormal},
-							},
-							farparams.EventVerifyTimeout, farparams.EventVerifyInterval,
-						)).To(Succeed(), "NodeRemediationCompleted event not found on node %s", targetNode.Name)
+						// FAR lifecycle Events are intentionally NOT asserted on a
+						// control-plane target. Kubernetes Events are best-effort:
+						// client-go's broadcaster drops them when its queue is full and
+						// the sink drops them after a bounded retry limit, so delivery is
+						// never guaranteed. Fencing a control-plane node reboots it and
+						// briefly disrupts apiserver/etcd (quorum drops to 2/3 with a short
+						// write stall), so ANY Event emitted across that window can be lost
+						// even when the remediation fully succeeds - including
+						// RemediationFinished (emitted as the node rejoins) and the Node's
+						// NodeRemediationCompleted. This spec previously flaked
+						// non-deterministically on whichever Event happened to be dropped
+						// (FenceAgentSucceeded, then RemediationFinished on later runs). The
+						// remediation outcome is instead proven above by the DURABLE FAR CR
+						// status conditions (Processing=False, FenceAgentActionSucceeded=True,
+						// Succeeded=True) plus observable cluster state (boot-ID change, node
+						// Ready, workload eviction, etcd ClusterOperator recovery). The full
+						// Event bundle is still asserted on the worker specs, where fencing
+						// does not disrupt the control plane and Events are reliable.
 					})
 			})
 

@@ -202,7 +202,7 @@ Validates the full customer upgrade path: install GA FAR from redhat-operators o
 
 ### 17. Remediate a Control Plane Node and Verify etcd Quorum Preservation ([OCP-90217](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-90217))
 
-Fences any control plane node via fence_aws and verifies etcd quorum is preserved. Checks etcd ClusterOperator health before and after remediation. Creates a test workload pod pinned to the CP target node, then verifies it is evicted after fencing. Confirms the fenced CP node reboots (boot ID change), returns to Ready, the etcd ClusterOperator recovers (Available=True, Degraded=False), the FAR CR reaches Succeeded status, and FAR lifecycle events (RemediationStarted, RemediationFinished) appear on the CR.
+Fences any control plane node via fence_aws and verifies etcd quorum is preserved. Checks etcd ClusterOperator health before and after remediation. Creates a test workload pod pinned to the CP target node, then verifies it is evicted after fencing. Confirms the fenced CP node reboots (boot ID change), returns to Ready, the etcd ClusterOperator recovers (Available=True, Degraded=False), and the FAR CR reaches its terminal status conditions (Processing=False, FenceAgentActionSucceeded=True, Succeeded=True). FAR lifecycle Events are deliberately not asserted on a control-plane target: Kubernetes Events are best-effort and can be dropped during the apiserver/etcd disruption the CP reboot causes, so the durable CR status conditions prove the outcome instead (the full Event bundle is still asserted on the worker specs).
 
 - **Operators**: FAR
 - **Cluster**: AWS IPI, 3 control plane nodes (etcd quorum requires majority)
@@ -211,7 +211,7 @@ Fences any control plane node via fence_aws and verifies etcd quorum is preserve
 - **Labels**: `tier:acceptance`, `disruption:destructive`, `platform:aws`, `frequency:weekly`, `component:remediation`, `topology:control-plane`
 - **Env vars (required)**: AWS credentials provisioned by the `medik8s-aws-credentials` CI step
 - **Standalone**: `ginkgo --label-filter="far && topology:control-plane" ./tests/far-operator/...`
-- **Pass criteria**: etcd ClusterOperator healthy before and after remediation, CP node rebooted (boot ID change), CP node returns to Ready, workload pod evicted from CP node, FAR CR Succeeded=True, RemediationStarted and RemediationFinished events on FAR CR, NodeRemediationCompleted event on Node
+- **Pass criteria**: etcd ClusterOperator healthy before and after remediation, CP node rebooted (boot ID change), CP node returns to Ready, workload pod evicted from CP node, FAR CR status conditions Processing=False, FenceAgentActionSucceeded=True, Succeeded=True (FAR lifecycle Events are not asserted on a control-plane target - they are best-effort and can be dropped during the CP reboot's apiserver/etcd disruption)
 
 ### 18. Fence Leader and Complete FAR Remediation with Only 2 Schedulable Workers ([OCP-90218](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-90218))
 
