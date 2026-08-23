@@ -270,11 +270,18 @@ const (
 	// MustGatherContextTimeout is the outer Go context timeout, strictly greater than MustGatherOCTimeout.
 	MustGatherContextTimeout = 16 * time.Minute
 
-	// MustGatherImageRepo is the registry path for the RHWA must-gather image (without tag).
-	MustGatherImageRepo = "registry.redhat.io/workload-availability/node-healthcheck-must-gather-rhel9"
+	// MustGatherImageEnvVar overrides the must-gather image (e.g. a mirrored ref on disconnected clusters).
+	MustGatherImageEnvVar = "MUST_GATHER_IMAGE"
 
-	// MustGatherDefaultTag is the fallback image tag when dynamic resolution fails.
-	MustGatherDefaultTag = "v0.9.0"
+	// DefaultMustGatherImage is the upstream medik8s must-gather image, matching the FAR suite.
+	// The :latest tag is intentional so the test exercises the must-gather build a user would actually
+	// pull; the resolved image digest is logged on every run (see runMustGather) so a failure is
+	// reproducible against the exact build, and MustGatherImageEnvVar overrides it when a specific ref
+	// is needed.
+	DefaultMustGatherImage = "quay.io/medik8s/must-gather:latest"
+
+	// MustGatherImageInfoTimeout bounds the best-effort `oc image info` digest lookup.
+	MustGatherImageInfoTimeout = 1 * time.Minute
 
 	// MustGatherCleanupTimeout is the deadline for best-effort cleanup of leftover must-gather namespaces.
 	MustGatherCleanupTimeout = 2 * time.Minute

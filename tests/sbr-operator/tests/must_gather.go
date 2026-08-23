@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -13,10 +14,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	oplmV1alpha1 "github.com/rh-ecosystem-edge/eco-goinfra/pkg/schemes/olm/operators/v1alpha1"
-
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/deployment"
-	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/olm"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/reportxml"
 
 	"github.com/medik8s/system-tests/tests/internal/labels"
@@ -120,37 +118,16 @@ var _ = Describe(
 	})
 
 func resolveMustGatherImage() string {
-	if envImg := os.Getenv("MUST_GATHER_IMAGE"); envImg != "" {
-		GinkgoWriter.Printf("must-gather image resolved from MUST_GATHER_IMAGE env var\n")
+	if envImg := os.Getenv(sbrparams.MustGatherImageEnvVar); envImg != "" {
+		GinkgoWriter.Printf("must-gather image resolved from %s env var: %s\n",
+			sbrparams.MustGatherImageEnvVar, envImg)
 
 		return envImg
 	}
 
-	nhcCSVs, err := olm.ListClusterServiceVersionWithNamePattern(
-		APIClient, "node-healthcheck", medik8sparams.OperatorNs)
-	if err != nil {
-		GinkgoWriter.Printf("Warning: failed to list NHC CSVs for must-gather image resolution: %v\n", err)
-	} else {
-		for _, csv := range nhcCSVs {
-			phase, phaseErr := csv.GetPhase()
-			if phaseErr != nil || phase != oplmV1alpha1.CSVPhaseSucceeded {
-				continue
-			}
+	GinkgoWriter.Printf("must-gather image using default: %s\n", sbrparams.DefaultMustGatherImage)
 
-			version := csv.Object.Spec.Version.String()
-			if version != "" {
-				image := fmt.Sprintf("%s:v%s", sbrparams.MustGatherImageRepo, version)
-				GinkgoWriter.Printf("must-gather image resolved from NHC CSV version: %s\n", image)
-
-				return image
-			}
-		}
-	}
-
-	GinkgoWriter.Printf("WARNING: must-gather image using hardcoded fallback tag %s\n",
-		sbrparams.MustGatherDefaultTag)
-
-	return fmt.Sprintf("%s:%s", sbrparams.MustGatherImageRepo, sbrparams.MustGatherDefaultTag)
+	return sbrparams.DefaultMustGatherImage
 }
 
 func createMustGatherDestDir() string {
@@ -166,6 +143,14 @@ func createMustGatherDestDir() string {
 }
 
 func runMustGather(ctx context.Context, image, destDir string) {
+	// The default image uses a mutable :latest tag, so log the resolved digest on every run
+	// (best-effort) to keep a floating-tag failure reproducible against the exact build pulled.
+	if digest, digestErr := resolveImageDigest(ctx, image); digestErr != nil {
+		GinkgoWriter.Printf("WARNING: could not resolve must-gather image digest for %q: %v\n", image, digestErr)
+	} else {
+		GinkgoWriter.Printf("Using must-gather image %s (digest %s)\n", image, digest)
+	}
+
 	ocTimeout := fmt.Sprintf("%ds", int(sbrparams.MustGatherOCTimeout.Seconds()))
 
 	cmd := exec.CommandContext(ctx, "oc", "adm", "must-gather",
@@ -193,10 +178,37 @@ func runMustGather(ctx context.Context, image, destDir string) {
 
 	if ctx.Err() != nil {
 		Fail(fmt.Sprintf("must-gather timed out after %s:\n%s",
-			sbrparams.MustGatherContextTimeout, string(output)))
+			sbrparams.MustGatherContextTimeout, string(output)), 1)
 	}
 
 	ExpectWithOffset(1, err).ToNot(HaveOccurred(), "must-gather failed:\n%s", string(output))
+}
+
+// resolveImageDigest returns the manifest digest a mutable image reference currently resolves to,
+// so a run using a floating tag (e.g. :latest) can be reproduced against the exact build that was
+// pulled. Best-effort: callers log the error and continue rather than failing the test.
+func resolveImageDigest(ctx context.Context, image string) (string, error) {
+	infoCtx, cancel := context.WithTimeout(ctx, sbrparams.MustGatherImageInfoTimeout)
+	defer cancel()
+
+	out, err := exec.CommandContext(infoCtx, "oc", "image", "info", image,
+		"--filter-by-os=linux/amd64", "-o", "json").Output()
+	if err != nil {
+		return "", fmt.Errorf("oc image info %s: %w", image, err)
+	}
+
+	var info struct {
+		Digest string `json:"digest"`
+	}
+	if err := json.Unmarshal(out, &info); err != nil {
+		return "", fmt.Errorf("parsing oc image info output: %w", err)
+	}
+
+	if info.Digest == "" {
+		return "", fmt.Errorf("oc image info returned no digest for %s", image)
+	}
+
+	return info.Digest, nil
 }
 
 func collectRelativePaths(root string) ([]string, error) {
