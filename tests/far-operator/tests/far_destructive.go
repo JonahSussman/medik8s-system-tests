@@ -1270,6 +1270,12 @@ func createFARCR(
 	ctx context.Context, k8sClient client.Client,
 	farCR *unstructured.Unstructured,
 ) {
+	// GinkgoHelper() attributes any failure below (including the Eventually
+	// creation poll) to the calling It block rather than to this helper,
+	// composing across nesting depth like the sibling waitForRemediation
+	// helpers, unlike a fixed EventuallyWithOffset.
+	GinkgoHelper()
+
 	deleteRemediationCR(ctx, k8sClient, farCR.GroupVersionKind(),
 		farCR.GetName())
 
