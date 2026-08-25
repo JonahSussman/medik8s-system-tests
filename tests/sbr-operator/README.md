@@ -135,3 +135,19 @@ independently using a short-lived privileged hostPID pod per node.
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="sbr" --focus="Verify watchdog device" ./tests/sbr-operator/...`
 - **Pass criteria**: All hardware watchdog devices are character devices; nodes without hardware watchdog have softdog.ko present in the kernel module tree
+
+### 9. Verify SBR Must-Gather Collects Diagnostic Data ([OCP-88733](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-88733))
+
+Validates that `oc adm must-gather` with the medik8s must-gather image collects
+SBR-related diagnostic data: node manifests, CRD definitions, and
+MachineHealthCheck resources.
+
+- **Operators**: SBR v0.3.0
+- **Cluster**: Any topology
+- **Storage**: None
+- **Environment**: Connected by default; the image defaults to the upstream
+  `quay.io/medik8s/must-gather:latest` (matching the FAR suite), and its resolved
+  digest is logged on every run. Disconnected clusters can set `MUST_GATHER_IMAGE`
+  to an accessible mirrored image
+- **Standalone**: `ginkgo --label-filter="sbr" --focus="must-gather" ./tests/sbr-operator/...`
+- **Pass criteria**: SBR deployment is Ready; must-gather completes successfully; output contains node YAMLs for all cluster nodes, all 3 SBR CRD definition files, and MachineHealthCheck data

@@ -97,8 +97,20 @@ const (
 	SBRAgentDaemonSetPrefix = "sbr-agent-"
 
 	// SBRCReadyTimeout is the time allowed for the SBRC's agent DaemonSet to have all scheduled
-	// pods reach Ready before a functional test begins.
-	SBRCReadyTimeout = 7 * time.Minute
+	// pods reach Ready before a functional test begins. The first SBRC created in a suite pays a
+	// one-time cold-start cost (first CephFS PVC bind plus SBD device-init Job on a freshly
+	// provisioned ODF cluster); later SBRCs reuse the warmed CSI path and become ready in ~90s.
+	// The ceiling is sized for that worst-case cold start - a ready DaemonSet returns immediately,
+	// so healthy runs never wait this long.
+	SBRCReadyTimeout = 10 * time.Minute
+
+	// SBRCReadyDiagMaxEvents caps how many recent Warning events are included in the on-timeout
+	// readiness diagnostics dumped by waitForSBRCReady, to keep the failure message readable.
+	SBRCReadyDiagMaxEvents = 15
+
+	// SBRCReadyDiagTimeout bounds the API calls made while collecting on-timeout readiness
+	// diagnostics, so a slow or wedged apiserver cannot hang the already-failed test.
+	SBRCReadyDiagTimeout = 30 * time.Second
 
 	// WatchdogProbeLogTimeout is the deadline for reading a completed watchdog probe pod's logs
 	// via the in-cluster API.
@@ -251,6 +263,28 @@ const (
 	// AgentMetricsPort is the port on which SBR agent pods expose custom Prometheus metrics.
 	// Port 8080 is controller-runtime's built-in metrics; port 8082 is the SBR agent's own metrics.
 	AgentMetricsPort = "8082"
+
+	// MustGatherOCTimeout is the --timeout flag passed to oc adm must-gather so it cleans up gracefully.
+	MustGatherOCTimeout = 14 * time.Minute
+
+	// MustGatherContextTimeout is the outer Go context timeout, strictly greater than MustGatherOCTimeout.
+	MustGatherContextTimeout = 16 * time.Minute
+
+	// MustGatherImageEnvVar overrides the must-gather image (e.g. a mirrored ref on disconnected clusters).
+	MustGatherImageEnvVar = "MUST_GATHER_IMAGE"
+
+	// DefaultMustGatherImage is the upstream medik8s must-gather image, matching the FAR suite.
+	// The :latest tag is intentional so the test exercises the must-gather build a user would actually
+	// pull; the resolved image digest is logged on every run (see runMustGather) so a failure is
+	// reproducible against the exact build, and MustGatherImageEnvVar overrides it when a specific ref
+	// is needed.
+	DefaultMustGatherImage = "quay.io/medik8s/must-gather:latest"
+
+	// MustGatherImageInfoTimeout bounds the best-effort `oc image info` digest lookup.
+	MustGatherImageInfoTimeout = 1 * time.Minute
+
+	// MustGatherCleanupTimeout is the deadline for best-effort cleanup of leftover must-gather namespaces.
+	MustGatherCleanupTimeout = 2 * time.Minute
 )
 
 // AgentExpectedMetricNames lists the Prometheus metric names that must be present in the agent output.
