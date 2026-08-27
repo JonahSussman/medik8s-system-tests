@@ -274,9 +274,13 @@ func upgradeOCP(ctx context.Context, targetImage string) {
 // controller, agent image, and DaemonSet-management chain all function at
 // this point in the upgrade sequence.
 func runSBRCFunctionCheck(phase string) {
-	By(fmt.Sprintf("[%s] Creating SBRC %s", phase, sbrparams.UpgradeSBRCName))
+	storageClass := discoverRWXStorageClass()
 
-	sbrc := buildSBRC(sbrparams.UpgradeSBRCName, map[string]interface{}{})
+	By(fmt.Sprintf("[%s] Creating SBRC %s (storageClass=%s)", phase, sbrparams.UpgradeSBRCName, storageClass))
+
+	sbrc := buildSBRC(sbrparams.UpgradeSBRCName, map[string]interface{}{
+		"sharedStorageClass": storageClass,
+	})
 	Expect(APIClient.Create(context.TODO(), sbrc)).To(Succeed(),
 		"[%s] Failed to create SBRC %s", phase, sbrparams.UpgradeSBRCName)
 
