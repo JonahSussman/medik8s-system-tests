@@ -56,7 +56,9 @@ func GetNMOControllerImage(apiClient *clients.Settings) (string, error) {
 	)
 }
 
-// CleanupUpgradeResources removes the Subscription created during the upgrade test.
+// CleanupUpgradeResources removes the Subscription, CSV, and InstallPlan
+// created during the upgrade test.
 func CleanupUpgradeResources(apiClient *clients.Settings, logf func(string, ...interface{})) {
-	helpers.DeleteSubscription(apiClient, nmoparams.UpgradeSubName, medik8sparams.OperatorNs, logf)
+	helpers.CleanupSubscriptionAndCSV(
+		apiClient, nmoparams.UpgradeSubName, medik8sparams.OperatorPackage, medik8sparams.OperatorNs, logf)
 }
