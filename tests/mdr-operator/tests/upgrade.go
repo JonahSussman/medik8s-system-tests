@@ -49,8 +49,13 @@ var _ = Describe("MDR Operator Upgrade",
 		BeforeAll(func() {
 			ctx = context.Background()
 
-			Expect(medik8sparams.TargetOCPImage).NotTo(BeEmpty(),
-				"OPENSHIFT_UPGRADE_RELEASE_IMAGE_OVERRIDE or RELEASE_IMAGE_LATEST must be set")
+			if medik8sparams.SkipOCPUpgrade {
+				GinkgoWriter.Println(
+					"MEDIK8S_SKIP_OCP_UPGRADE=true: OCP upgrade step will be skipped")
+			} else {
+				Expect(medik8sparams.TargetOCPImage).NotTo(BeEmpty(),
+					"OPENSHIFT_UPGRADE_RELEASE_IMAGE_OVERRIDE or RELEASE_IMAGE_LATEST must be set")
+			}
 
 			By("Checking NHC CRD is installed")
 
@@ -163,9 +168,13 @@ var _ = Describe("MDR Operator Upgrade",
 				GinkgoWriter.Printf("GA operator image: %s\n", preUpgradeImage)
 				GinkgoWriter.Printf("GA MDR CSV: %s\n", previousCSV.Object.Name)
 
-				By("Step 4: Upgrade OCP from N-1 to N")
+				if medik8sparams.SkipOCPUpgrade {
+					By("Step 4: Skipped (MEDIK8S_SKIP_OCP_UPGRADE=true) - OCP upgrade not performed")
+				} else {
+					By("Step 4: Upgrade OCP from N-1 to N")
 
-				upgradeOCP(ctx, medik8sparams.TargetOCPImage)
+					upgradeOCP(ctx, medik8sparams.TargetOCPImage)
+				}
 
 				By("Step 5: Verify MDR operator survived OCP upgrade")
 
