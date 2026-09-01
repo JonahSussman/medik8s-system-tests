@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"time"
 )
 
 const (
@@ -13,6 +14,12 @@ const (
 	NHCUpgradeTestName = "nhc-operator-upgrade"
 	// NHCUpgradeTemplateName is the fixed name of the test-owned remediation template.
 	NHCUpgradeTemplateName = "nhc-operator-upgrade-template"
+	// ClusterUpgradeSubName is the Subscription used by the full OCP-and-operator upgrade test.
+	ClusterUpgradeSubName = "nhc-upgrade-sub"
+	// ClusterUpgradeTestName is the NodeHealthCheck used by the full OCP-and-operator upgrade test.
+	ClusterUpgradeTestName = "nhc-upgrade-test"
+	// UpgradeRemediationCompletionTimeout bounds each destructive remediation checkpoint.
+	UpgradeRemediationCompletionTimeout = 20 * time.Minute
 )
 
 // UpgradeInputs make the exact input artifacts visible to both local and CI

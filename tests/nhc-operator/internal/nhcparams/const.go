@@ -66,6 +66,14 @@ const (
 	// UnhealthyConditionDuration is the standard NHC detection duration.
 	UnhealthyConditionDuration = "30s"
 
+	// OCDebugKubeletStopTimeout is the maximum time to wait for the "oc debug"
+	// kubelet-stop command used
+	OCDebugKubeletStopTimeout = 5 * time.Minute
+
+	// LeaderAcquisitionTimeout is the maximum time to wait for the NHC
+	// controller's leader-election Lease to point at a pod that exists.
+	LeaderAcquisitionTimeout = 1 * time.Minute
+
 	// NodeNotReadyTimeout is the maximum time to wait for NHC to detect an
 	// unhealthy node and enter Remediating. Includes SSH timeout (30s)
 	// + NHC unhealthy condition duration (60s) + detection lag.
