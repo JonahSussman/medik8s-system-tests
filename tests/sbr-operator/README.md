@@ -152,17 +152,30 @@ MachineHealthCheck resources.
 - **Standalone**: `ginkgo --label-filter="sbr" --focus="must-gather" ./tests/sbr-operator/...`
 - **Pass criteria**: SBR deployment is Ready; must-gather completes successfully; output contains node YAMLs for all cluster nodes, all 3 SBR CRD definition files, and MachineHealthCheck data
 
-### 10. Verify SBR Operator Survives OCP and Operator Upgrade ([OCP-89720](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-89720))
+### 10. Verify SBR Operator Survives Operator/Catalog Upgrade ([OCP-89720](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-89720))
 
-Validates the full customer upgrade path: install GA SBR from redhat-operators on OCP N-1, upgrade OCP to N, verify the GA operator still functions on the upgraded cluster, switch Subscription to Konflux FBC catalog (pre-GA), and verify the upgraded operator functions. SBR's full remediation path needs ODF/CephFS storage, watchdog devices, and NHC-triggered fault injection (see #6); exercising that whole chain inside an already-long upgrade test would make it both slower and more infra-fragile than necessary. Instead this test uses the simplest real proof the operator is functioning end to end: creating a StorageBasedRemediationConfig and confirming its agent DaemonSet reaches Ready, then tearing it down.
+Validates the operator-upgrade half of the customer upgrade path: install GA SBR from redhat-operators, verify the operator functions with a baseline agent DaemonSet check, apply the deferred IDMS from `SHARED_DIR`, switch Subscription to the Konflux FBC catalog (pre-GA), and verify the upgraded operator functions. Fully self-contained (does not depend on #11 having run) -- does not touch the OCP cluster version at all. SBR's full remediation path needs ODF/CephFS storage, watchdog devices, and NHC-triggered fault injection (see #6); exercising that whole chain inside an upgrade test would make it both slower and more infra-fragile than necessary. Instead this test uses the simplest real proof the operator is functioning end to end: creating a StorageBasedRemediationConfig and confirming its agent DaemonSet reaches Ready, then tearing it down.
 
 - **Operators**: SBR GA (from redhat-operators) + SBR pre-GA (from Konflux FBC)
+- **Cluster**: Any topology
+- **Storage**: A CephFS-backed StorageClass must be available (auto-discovered, or set via `SBR_STORAGE_CLASS`)
+- **Environment**: Connected
+- **Labels**: `tier:upgrade-operator`, `disruption:destructive`, `platform:any`, `frequency:weekly`, `component:olm`
+- **CI prerequisite**: `medik8s-catalogsource` step must run before the test (creates the `medik8s-catalog` CatalogSource)
+- **Env vars (optional, have defaults)**: `MEDIK8S_OPERATOR_PACKAGE` (default: `storage-based-remediation`), `MEDIK8S_TARGET_CHANNEL` (default: `stable`)
+- **Standalone**: `ginkgo --label-filter="sbr && tier:upgrade-operator" ./tests/sbr-operator/...`
+- **Pass criteria**: SBR deployment Ready, SBR CSV in Succeeded phase after catalog switch (new CSV if Konflux version is higher than GA, same CSV if versions match), controller image changes after operator upgrade (skipped on version parity), SBRC agent DaemonSet reaches Ready both before and after the catalog switch
+
+### 11. Verify SBR Operator Survives OCP Cluster Upgrade ([OCP-89720](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-89720))
+
+Validates the OCP-upgrade half of the customer upgrade path: install GA SBR from redhat-operators on OCP N-1, verify the operator functions with a baseline agent DaemonSet check, upgrade OCP to N, and verify the operator still functions on the upgraded cluster. Fully self-contained (does not depend on #10 having run) -- does not touch the operator Subscription/catalog at all.
+
+- **Operators**: SBR GA (from redhat-operators)
 - **Cluster**: Any topology, OCP N-1 at start (upgraded to N during test)
 - **Storage**: A CephFS-backed StorageClass must be available (auto-discovered, or set via `SBR_STORAGE_CLASS`)
 - **Environment**: Connected
-- **Labels**: `tier:upgrade`, `disruption:destructive`, `platform:any`, `frequency:weekly`, `component:olm`
-- **Env vars (required)**: `OPENSHIFT_UPGRADE_RELEASE_IMAGE_OVERRIDE` (falls back to `RELEASE_IMAGE_LATEST` if unset)
-- **CI prerequisite**: `medik8s-catalogsource` step must run before the test (creates the `medik8s-catalog` CatalogSource)
-- **Env vars (optional, have defaults)**: `MEDIK8S_OPERATOR_PACKAGE` (default: `storage-based-remediation`), `MEDIK8S_TARGET_CHANNEL` (default: `stable`)
-- **Standalone**: `ginkgo --label-filter="sbr && tier:upgrade" ./tests/sbr-operator/...`
-- **Pass criteria**: SBR deployment Ready on OCP N-1, OCP upgrade completes (Progressing=False, Available=True, Failing=False), SBR deployment Ready after OCP upgrade, SBR CSV in Succeeded phase after catalog switch (new CSV if Konflux version is higher than GA, same CSV if versions match), controller image changes after operator upgrade (skipped on version parity), SBRC agent DaemonSet reaches Ready after OCP upgrade and after catalog switch
+- **Labels**: `tier:upgrade-cluster`, `disruption:destructive`, `platform:any`, `frequency:weekly`, `component:olm`
+- **Env vars (required)**: `OPENSHIFT_UPGRADE_RELEASE_IMAGE_OVERRIDE` (falls back to `RELEASE_IMAGE_LATEST` if unset) -- if `MEDIK8S_SKIP_OCP_UPGRADE=true`, this spec is skipped entirely instead
+- **Env vars (optional, have defaults)**: `MEDIK8S_OPERATOR_PACKAGE` (default: `storage-based-remediation`)
+- **Standalone**: `ginkgo --label-filter="sbr && tier:upgrade-cluster" ./tests/sbr-operator/...`
+- **Pass criteria**: SBR deployment Ready on OCP N-1, OCP upgrade completes (Progressing=False, Available=True, Failing=False), SBR deployment Ready after OCP upgrade, SBRC agent DaemonSet reaches Ready both before and after the OCP upgrade
