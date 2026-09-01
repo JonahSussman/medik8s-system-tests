@@ -5,9 +5,22 @@ import (
 	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	nmov1beta1 "github.com/medik8s/node-maintenance-operator/api/v1beta1"
 
 	. "github.com/medik8s/system-tests/tests/internal/medik8sinittools"
 )
+
+// registerNMOScheme attaches the NodeMaintenance v1beta1 scheme to APIClient.
+// nmo_collision.go/nmo_lifecycle.go normally do this in their own BeforeEach,
+// but an upgrade spec must not depend on those specs having run in the same
+// process -- each upgrade spec is meant to be fully self-contained. Safe to
+// call more than once (AddToScheme registration is idempotent).
+func registerNMOScheme() {
+	Expect(APIClient.AttachScheme(nmov1beta1.AddToScheme)).To(Succeed(),
+		"Failed to register NodeMaintenance scheme")
+}
 
 // nmoUpgradeSafetyNet is used as an upgrade spec's JustAfterEach: cleans up
 // any NodeMaintenance CR left over from a maintenance cycle that didn't

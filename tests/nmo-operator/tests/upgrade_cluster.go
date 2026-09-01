@@ -41,6 +41,7 @@ var _ = Describe("NMO Cluster Upgrade",
 
 		BeforeAll(func() {
 			ctx = context.Background()
+			registerNMOScheme()
 
 			if medik8sparams.SkipOCPUpgrade {
 				Skip("MEDIK8S_SKIP_OCP_UPGRADE=true: nothing to test in the cluster-upgrade-only spec")

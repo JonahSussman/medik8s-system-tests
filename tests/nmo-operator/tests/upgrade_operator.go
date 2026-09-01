@@ -45,6 +45,7 @@ var _ = Describe("NMO Operator Upgrade",
 
 		BeforeAll(func() {
 			ctx = context.Background()
+			registerNMOScheme()
 		})
 
 		AfterAll(func() {
