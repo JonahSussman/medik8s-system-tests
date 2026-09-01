@@ -49,8 +49,13 @@ var _ = Describe("SBR Operator Upgrade",
 		BeforeAll(func() {
 			ctx = context.Background()
 
-			Expect(medik8sparams.TargetOCPImage).NotTo(BeEmpty(),
-				"OPENSHIFT_UPGRADE_RELEASE_IMAGE_OVERRIDE or RELEASE_IMAGE_LATEST must be set")
+			if medik8sparams.SkipOCPUpgrade {
+				GinkgoWriter.Println(
+					"MEDIK8S_SKIP_OCP_UPGRADE=true: OCP upgrade step will be skipped")
+			} else {
+				Expect(medik8sparams.TargetOCPImage).NotTo(BeEmpty(),
+					"OPENSHIFT_UPGRADE_RELEASE_IMAGE_OVERRIDE or RELEASE_IMAGE_LATEST must be set")
+			}
 		})
 
 		AfterAll(func() {
@@ -107,9 +112,13 @@ var _ = Describe("SBR Operator Upgrade",
 
 				runSBRCFunctionCheck("pre-ocp-upgrade")
 
-				By("Step 5: Upgrade OCP from N-1 to N")
+				if medik8sparams.SkipOCPUpgrade {
+					By("Step 5: Skipped (MEDIK8S_SKIP_OCP_UPGRADE=true) - OCP upgrade not performed")
+				} else {
+					By("Step 5: Upgrade OCP from N-1 to N")
 
-				upgradeOCP(ctx, medik8sparams.TargetOCPImage)
+					upgradeOCP(ctx, medik8sparams.TargetOCPImage)
+				}
 
 				By("Step 6: Verify SBR operator survived OCP upgrade")
 
