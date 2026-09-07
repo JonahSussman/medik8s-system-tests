@@ -481,8 +481,12 @@ func StartKubeletSSH(
 // Callers MUST register a DeferCleanup with EnableKubeletSSH.
 func DisableKubeletSSH(
 	ctx context.Context, k8sClient client.Client,
-	nodeName string, timeout time.Duration,
+	nodeName string, timeout time.Duration, logf func(string, ...interface{}),
 ) error {
+	if logf == nil {
+		logf = func(string, ...interface{}) {}
+	}
+
 	nodeIP, err := GetNodeInternalIP(ctx, k8sClient, nodeName)
 	if err != nil {
 		return err
@@ -497,9 +501,8 @@ func DisableKubeletSSH(
 			strings.Contains(errMsg, "lost connection") ||
 			strings.Contains(errMsg, "closed by remote host") ||
 			strings.Contains(errMsg, "transport is closing") {
-			fmt.Fprintf(os.Stderr,
-				"DisableKubeletSSH(%s): suppressed expected connection-loss "+
-					"error (kubelet likely disabled): %v\n", nodeName, err)
+			logf("DisableKubeletSSH(%s): suppressed expected connection-loss "+
+				"error (kubelet likely disabled): %v\n", nodeName, err)
 
 			return nil
 		}
@@ -519,6 +522,10 @@ func EnableKubeletSSH(
 	nodeName string, retryTimeout time.Duration,
 	logf func(string, ...interface{}),
 ) error {
+	if logf == nil {
+		logf = func(string, ...interface{}) {}
+	}
+
 	nodeIP, err := GetNodeInternalIP(ctx, k8sClient, nodeName)
 	if err != nil {
 		return err

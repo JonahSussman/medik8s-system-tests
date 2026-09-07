@@ -151,7 +151,9 @@ var _ = Describe("NHC Escalation -- Functional E2E",
 			if CurrentSpecReport().Failed() {
 				logNHCControllerState()
 			}
+		})
 
+		AfterEach(func() {
 			cleanupTestRemediationCR(ctx, targetWorkerName)
 			cleanupSNRCR(ctx, targetWorkerName)
 		})
@@ -177,11 +179,10 @@ var _ = Describe("NHC Escalation -- Functional E2E",
 				Expect(APIClient.Create(ctx, nhc)).To(Succeed(), "Failed to create NHC with escalation")
 				DeferCleanup(func() { cleanupNHCCR(ctx, nhcName) })
 
-				By(fmt.Sprintf("Disabling kubelet on %s (persistent across reboot)", targetWorkerName))
+				By(fmt.Sprintf("Stopping kubelet on %s (recoverable after reboot)", targetWorkerName))
 
-				deferEscalationNodeRecovery(targetWorkerName)
-				Expect(helpers.DisableKubeletSSH(ctx, APIClient, targetWorkerName,
-					nhcparams.SSHTimeout)).To(Succeed())
+				deferKubeletStartRecovery(targetWorkerName)
+				Expect(stopKubeletForRemediation(ctx, targetWorkerName)).To(Succeed())
 
 				By("Waiting for NHC to enter Remediating phase")
 
@@ -226,16 +227,10 @@ var _ = Describe("NHC Escalation -- Functional E2E",
 				Expect(trExists).To(BeTrue(),
 					"TestRemediation CR should still exist alongside SNR CR")
 
-				By("Verifying node was rebooted by SNR (boot ID changed)")
+				By("Waiting for SNR to reboot the node (boot ID changes)")
 
-				By(fmt.Sprintf("Re-enabling kubelet on %s and waiting for node recovery", targetWorkerName))
-
-				Expect(recoverEscalationNode(ctx, targetWorkerName)).To(Succeed(),
-					"Failed to recover node %s", targetWorkerName)
-
-				currentBootID, bootErr := helpers.GetNodeBootIDFromAPI(ctx, APIClient, targetWorkerName)
-				Expect(bootErr).ToNot(HaveOccurred())
-				Expect(currentBootID).ToNot(Equal(oldBootID), "Boot ID should change after SNR reboots the node")
+				Expect(waitForSNRRemediationComplete(ctx, targetWorkerName, oldBootID)).To(Succeed(),
+					"SNR should reboot the node")
 
 				By("Waiting for NHC to return to Enabled and clean up both CRs")
 
@@ -277,8 +272,8 @@ var _ = Describe("NHC Escalation -- Functional E2E",
 
 				By(fmt.Sprintf("Stopping kubelet on %s (recoverable after reboot)", targetWorkerName))
 
-				Expect(stopKubeletForRemediation(ctx, targetWorkerName)).To(Succeed())
 				deferKubeletStartRecovery(targetWorkerName)
+				Expect(stopKubeletForRemediation(ctx, targetWorkerName)).To(Succeed())
 
 				By("Waiting for NHC to enter Remediating phase")
 
@@ -338,7 +333,7 @@ var _ = Describe("NHC Escalation -- Functional E2E",
 
 				deferEscalationNodeRecovery(targetWorkerName)
 				Expect(helpers.DisableKubeletSSH(ctx, APIClient, targetWorkerName,
-					nhcparams.SSHTimeout)).To(Succeed())
+					nhcparams.SSHTimeout, GinkgoWriter.Printf)).To(Succeed())
 
 				By("Waiting for NHC to enter Remediating phase")
 
