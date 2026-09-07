@@ -527,8 +527,7 @@ var _ = Describe("NHC Negative -- Zero Healthy Nodes",
 
 				By("Waiting for SNR remediation to complete (node reboot)")
 
-				Expect(waitForSNRRemediationComplete(ctx, targetWorkerName, oldBootID,
-					nhcparams.RemediationCompletionTimeout)).To(Succeed(),
+				Expect(waitForSNRRemediationComplete(ctx, targetWorkerName, oldBootID)).To(Succeed(),
 					"SNR remediation should complete for node %s", targetWorkerName)
 
 				By("Waiting for NHC to return to Enabled after recovery")

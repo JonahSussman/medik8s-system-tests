@@ -483,12 +483,12 @@ func DisableKubeletSSH(
 	ctx context.Context, k8sClient client.Client,
 	nodeName string, timeout time.Duration,
 ) error {
-	ip, err := GetNodeInternalIP(ctx, k8sClient, nodeName)
+	nodeIP, err := GetNodeInternalIP(ctx, k8sClient, nodeName)
 	if err != nil {
 		return err
 	}
 
-	err = runSSH(ctx, ip, timeout, "sudo systemctl disable kubelet --now")
+	err = runSSH(ctx, nodeIP, timeout, "sudo systemctl disable kubelet --now")
 	if err != nil {
 		errMsg := err.Error()
 		if strings.Contains(errMsg, "connection reset") ||
@@ -519,7 +519,7 @@ func EnableKubeletSSH(
 	nodeName string, retryTimeout time.Duration,
 	logf func(string, ...interface{}),
 ) error {
-	ip, err := GetNodeInternalIP(ctx, k8sClient, nodeName)
+	nodeIP, err := GetNodeInternalIP(ctx, k8sClient, nodeName)
 	if err != nil {
 		return err
 	}
@@ -531,20 +531,20 @@ func EnableKubeletSSH(
 
 	return wait.PollUntilContextTimeout(ctx, sshRetryInterval, retryTimeout, true,
 		func(ctx context.Context) (bool, error) {
-			if sshErr := runSSH(ctx, ip, sshAttemptTimeout, "sudo systemctl enable kubelet"); sshErr != nil {
+			if sshErr := runSSH(ctx, nodeIP, sshAttemptTimeout, "sudo systemctl enable kubelet"); sshErr != nil {
 				logf("EnableKubeletSSH(%s): enable attempt failed (may be mid-reboot): %v\n",
 					nodeName, sshErr)
 
 				return false, nil
 			}
 
-			if sshErr := runSSH(ctx, ip, sshAttemptTimeout, "sudo systemctl daemon-reload"); sshErr != nil {
+			if sshErr := runSSH(ctx, nodeIP, sshAttemptTimeout, "sudo systemctl daemon-reload"); sshErr != nil {
 				logf("EnableKubeletSSH(%s): daemon-reload failed: %v\n", nodeName, sshErr)
 
 				return false, nil
 			}
 
-			if sshErr := runSSH(ctx, ip, sshAttemptTimeout, "sudo systemctl start kubelet"); sshErr != nil {
+			if sshErr := runSSH(ctx, nodeIP, sshAttemptTimeout, "sudo systemctl start kubelet"); sshErr != nil {
 				logf("EnableKubeletSSH(%s): start attempt failed: %v\n", nodeName, sshErr)
 
 				return false, nil

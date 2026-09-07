@@ -165,8 +165,7 @@ var _ = Describe("NHC Status Field Tracking",
 
 				By("Waiting for SNR remediation to complete (node reboot)")
 
-				Expect(waitForSNRRemediationComplete(ctx, targetWorkerName, oldBootID,
-					nhcparams.RemediationCompletionTimeout)).To(Succeed(),
+				Expect(waitForSNRRemediationComplete(ctx, targetWorkerName, oldBootID)).To(Succeed(),
 					"SNR remediation should complete for node %s", targetWorkerName)
 
 				By("Verifying post-recovery status: phase=Enabled, reason back to 'no ongoing remediation'")

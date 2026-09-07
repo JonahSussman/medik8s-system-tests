@@ -317,12 +317,12 @@ func waitForNHCPhase(ctx context.Context, name, expectedPhase string, timeout ti
 // waitForSNRRemediationComplete polls until the SNR remediation cycle finishes
 // for the given node: SNR CR deleted + boot ID changed.
 func waitForSNRRemediationComplete(
-	ctx context.Context, nodeName, previousBootID string, timeout time.Duration,
+	ctx context.Context, nodeName, previousBootID string,
 ) error {
 	var snrSeen bool
 
 	return wait.PollUntilContextTimeout(
-		ctx, nhcparams.DestructivePollInterval, timeout, true,
+		ctx, nhcparams.DestructivePollInterval, nhcparams.RemediationCompletionTimeout, true,
 		func(ctx context.Context) (bool, error) {
 			obj := &unstructured.Unstructured{}
 			obj.SetGroupVersionKind(snrGVK)

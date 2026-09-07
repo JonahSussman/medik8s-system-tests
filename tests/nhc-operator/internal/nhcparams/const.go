@@ -252,8 +252,10 @@ const (
 	// escalating remediations while remediation is in progress.
 	EscalationWebhookOngoingRemediation = "prohibited due to running remediation"
 
-	// Escalation E2E test constants (RHWA-1245).
-	NHCEscalationTestName    = "nhc-test-escalation"
+	// NHCEscalationTestName is the base name for NHC CRs in escalation E2E tests (RHWA-1245).
+	NHCEscalationTestName = "nhc-test-escalation"
+	// EscalationSNRStepTimeout is the SNR step timeout used in escalation E2E tests.
 	EscalationSNRStepTimeout = "180s"
-	EscalationWaitTimeout    = 5 * time.Minute
+	// EscalationWaitTimeout is the maximum wait for escalation to occur in E2E tests.
+	EscalationWaitTimeout = 5 * time.Minute
 )

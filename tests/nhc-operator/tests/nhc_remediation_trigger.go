@@ -234,7 +234,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 				By("Waiting for SNR remediation to complete")
 
 				Expect(waitForSNRRemediationComplete(
-					ctx, targetWorkerName, oldBootID, nhcparams.RemediationCompletionTimeout,
+					ctx, targetWorkerName, oldBootID,
 				)).To(Succeed(),
 					"SNR remediation did not complete for %s", targetWorkerName)
 

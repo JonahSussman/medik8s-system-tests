@@ -289,8 +289,7 @@ var _ = Describe("NHC Escalation -- Functional E2E",
 				By("Waiting for SNR to reboot the node (boot ID changes)")
 
 				Expect(waitForSNRRemediationComplete(
-					ctx, targetWorkerName, oldBootID,
-					nhcparams.RemediationCompletionTimeout)).To(Succeed(),
+					ctx, targetWorkerName, oldBootID)).To(Succeed(),
 					"SNR should reboot the node")
 
 				By("Waiting for node to become Ready (kubelet restarts on boot)")
