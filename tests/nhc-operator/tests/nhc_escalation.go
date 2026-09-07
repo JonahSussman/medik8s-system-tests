@@ -35,18 +35,20 @@ func recoverEscalationNode(ctx context.Context, nodeName string) error {
 		GinkgoWriter.Printf)
 }
 
-func deferEscalationNodeRecovery(ctx context.Context, nodeName string) {
+func deferEscalationNodeRecovery(nodeName string) {
 	DeferCleanup(func() {
+		cleanupCtx := context.Background()
+
 		GinkgoWriter.Printf("Safety-net cleanup: re-enabling kubelet on %s\n", nodeName)
 
-		if err := helpers.EnableKubeletSSH(ctx, APIClient, nodeName,
+		if err := helpers.EnableKubeletSSH(cleanupCtx, APIClient, nodeName,
 			escalationEnableTimeout, GinkgoWriter.Printf); err != nil {
 			GinkgoWriter.Printf("WARNING: EnableKubeletSSH failed for %s: %v\n", nodeName, err)
 			AddReportEntry("escalation-cleanup-failed",
 				fmt.Sprintf("node %s: %v", nodeName, err))
 		}
 
-		if err := helpers.WaitForNodeReady(ctx, APIClient, nodeName,
+		if err := helpers.WaitForNodeReady(cleanupCtx, APIClient, nodeName,
 			nhcparams.DestructivePollInterval, nhcparams.NodeReadyTimeout, GinkgoWriter.Printf); err != nil {
 			GinkgoWriter.Printf("WARNING: WaitForNodeReady failed for %s: %v\n", nodeName, err)
 			AddReportEntry("escalation-cleanup-failed",
@@ -55,15 +57,16 @@ func deferEscalationNodeRecovery(ctx context.Context, nodeName string) {
 	})
 }
 
-func deferKubeletStartRecovery(ctx context.Context, nodeName string) {
+func deferKubeletStartRecovery(nodeName string) {
 	DeferCleanup(func() {
-		if err := startKubeletForRemediation(ctx, nodeName); err != nil {
+		cleanupCtx := context.Background()
+		if err := startKubeletForRemediation(cleanupCtx, nodeName); err != nil {
 			GinkgoWriter.Printf("WARNING: startKubelet failed for %s: %v\n", nodeName, err)
 			AddReportEntry("escalation-cleanup-failed",
 				fmt.Sprintf("node %s: %v", nodeName, err))
 		}
 
-		if err := helpers.WaitForNodeReady(ctx, APIClient, nodeName,
+		if err := helpers.WaitForNodeReady(cleanupCtx, APIClient, nodeName,
 			nhcparams.DestructivePollInterval, nhcparams.NodeReadyTimeout, GinkgoWriter.Printf); err != nil {
 			GinkgoWriter.Printf("WARNING: WaitForNodeReady failed for %s: %v\n", nodeName, err)
 			AddReportEntry("escalation-cleanup-failed",
@@ -149,7 +152,7 @@ var _ = Describe("NHC Escalation -- Functional E2E",
 				logNHCControllerState()
 			}
 
-			cleanupTestRemediationCR(targetWorkerName)
+			cleanupTestRemediationCR(ctx, targetWorkerName)
 			cleanupSNRCR(ctx, targetWorkerName)
 		})
 
@@ -176,9 +179,9 @@ var _ = Describe("NHC Escalation -- Functional E2E",
 
 				By(fmt.Sprintf("Disabling kubelet on %s (persistent across reboot)", targetWorkerName))
 
+				deferEscalationNodeRecovery(targetWorkerName)
 				Expect(helpers.DisableKubeletSSH(ctx, APIClient, targetWorkerName,
 					nhcparams.SSHTimeout)).To(Succeed())
-				deferEscalationNodeRecovery(ctx, targetWorkerName)
 
 				By("Waiting for NHC to enter Remediating phase")
 
@@ -225,18 +228,14 @@ var _ = Describe("NHC Escalation -- Functional E2E",
 
 				By("Verifying node was rebooted by SNR (boot ID changed)")
 
-				Eventually(func(assertion Gomega) {
-					currentBootID, bootErr := helpers.GetNodeBootIDFromAPI(ctx, APIClient, targetWorkerName)
-					assertion.Expect(bootErr).ToNot(HaveOccurred())
-					assertion.Expect(currentBootID).ToNot(Equal(oldBootID),
-						"Boot ID should change after SNR reboots the node")
-				}).WithPolling(nhcparams.DestructivePollInterval).
-					WithTimeout(nhcparams.RemediationCompletionTimeout).Should(Succeed())
-
 				By(fmt.Sprintf("Re-enabling kubelet on %s and waiting for node recovery", targetWorkerName))
 
 				Expect(recoverEscalationNode(ctx, targetWorkerName)).To(Succeed(),
 					"Failed to recover node %s", targetWorkerName)
+
+				currentBootID, bootErr := helpers.GetNodeBootIDFromAPI(ctx, APIClient, targetWorkerName)
+				Expect(bootErr).ToNot(HaveOccurred())
+				Expect(currentBootID).ToNot(Equal(oldBootID), "Boot ID should change after SNR reboots the node")
 
 				By("Waiting for NHC to return to Enabled and clean up both CRs")
 
@@ -279,7 +278,7 @@ var _ = Describe("NHC Escalation -- Functional E2E",
 				By(fmt.Sprintf("Stopping kubelet on %s (recoverable after reboot)", targetWorkerName))
 
 				Expect(stopKubeletForRemediation(ctx, targetWorkerName)).To(Succeed())
-				deferKubeletStartRecovery(ctx, targetWorkerName)
+				deferKubeletStartRecovery(targetWorkerName)
 
 				By("Waiting for NHC to enter Remediating phase")
 
@@ -337,9 +336,9 @@ var _ = Describe("NHC Escalation -- Functional E2E",
 				oldBootID, err := helpers.GetNodeBootIDFromAPI(ctx, APIClient, targetWorkerName)
 				Expect(err).ToNot(HaveOccurred(), "Failed to get boot ID for %s", targetWorkerName)
 
+				deferEscalationNodeRecovery(targetWorkerName)
 				Expect(helpers.DisableKubeletSSH(ctx, APIClient, targetWorkerName,
 					nhcparams.SSHTimeout)).To(Succeed())
-				deferEscalationNodeRecovery(ctx, targetWorkerName)
 
 				By("Waiting for NHC to enter Remediating phase")
 
@@ -369,16 +368,6 @@ var _ = Describe("NHC Escalation -- Functional E2E",
 					WithTimeout(nhcparams.RemediationCompletionTimeout).Should(Succeed(),
 					"TestRemediation CR should be created after SNR timeout")
 
-				By("Verifying SNR rebooted the node before escalation")
-
-				Eventually(func(assertion Gomega) {
-					currentBootID, bootErr := helpers.GetNodeBootIDFromAPI(ctx, APIClient, targetWorkerName)
-					assertion.Expect(bootErr).ToNot(HaveOccurred())
-					assertion.Expect(currentBootID).ToNot(Equal(oldBootID))
-				}).WithPolling(nhcparams.DestructivePollInterval).
-					WithTimeout(nhcparams.RemediationCompletionTimeout).Should(Succeed(),
-					"SNR should reboot the node before escalation")
-
 				By("Verifying both SNR and TestRemediation CRs coexist")
 
 				snrStillExists, snrErr := snrCRExists(ctx, targetWorkerName)
@@ -389,6 +378,12 @@ var _ = Describe("NHC Escalation -- Functional E2E",
 
 				Expect(recoverEscalationNode(ctx, targetWorkerName)).To(Succeed(),
 					"Failed to recover node %s", targetWorkerName)
+
+				By("Verifying SNR rebooted the node")
+
+				currentBootID, bootErr := helpers.GetNodeBootIDFromAPI(ctx, APIClient, targetWorkerName)
+				Expect(bootErr).ToNot(HaveOccurred())
+				Expect(currentBootID).ToNot(Equal(oldBootID), "SNR should reboot the node before escalation")
 
 				By("Waiting for NHC to clean up both remediation CRs")
 
