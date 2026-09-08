@@ -225,10 +225,14 @@ var _ = Describe(
 				}
 
 				listOpts := metav1.ListOptions{}
+
 				if agentDS.Spec.Selector != nil {
-					if sel, selErr := metav1.LabelSelectorAsSelector(agentDS.Spec.Selector); selErr == nil {
-						listOpts.LabelSelector = sel.String()
+					sel, selErr := metav1.LabelSelectorAsSelector(agentDS.Spec.Selector)
+					if selErr != nil {
+						return fmt.Errorf("converting DaemonSet selector: %w", selErr)
 					}
+
+					listOpts.LabelSelector = sel.String()
 				}
 
 				podList, podErr := APIClient.CoreV1Interface.Pods(medik8sparams.OperatorNs).List(
@@ -238,14 +242,42 @@ var _ = Describe(
 				}
 
 				var running int
+
 				for i := range podList.Items {
-					if podList.Items[i].Status.Phase == corev1.PodRunning {
-						running++
+					pod := &podList.Items[i]
+
+					if !metav1.IsControlledBy(pod, agentDS) {
+						continue
 					}
+
+					if pod.DeletionTimestamp != nil {
+						continue
+					}
+
+					if pod.Status.Phase != corev1.PodRunning {
+						continue
+					}
+
+					hasRunningContainer := false
+
+					for j := range pod.Status.ContainerStatuses {
+						if pod.Status.ContainerStatuses[j].State.Running != nil {
+							hasRunningContainer = true
+
+							break
+						}
+					}
+
+					if !hasRunningContainer {
+						return fmt.Errorf("pod %s is Running phase but no container has Running state (crash-looping?)",
+							pod.Name)
+					}
+
+					running++
 				}
 
 				if running < int(agentDS.Status.DesiredNumberScheduled) {
-					return fmt.Errorf("DaemonSet %s: %d/%d pods Running",
+					return fmt.Errorf("DaemonSet %s: %d/%d pods with running containers",
 						dsName, running, agentDS.Status.DesiredNumberScheduled)
 				}
 
