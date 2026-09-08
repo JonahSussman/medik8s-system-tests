@@ -143,14 +143,14 @@ SBR-related diagnostic data: node manifests, CRD definitions, and
 MachineHealthCheck resources.
 
 - **Operators**: SBR v0.3.0
-- **Cluster**: Any topology
+- **Cluster**: Non-HyperShift topologies only (IPI, SNO, etc.). **Skipped on HyperShift** due to architectural limitations: node collection via `oc adm inspect nodes` fails (0 nodes collected), and MachineHealthCheck is only accessible on the management cluster
 - **Storage**: None
 - **Environment**: Connected by default; the image defaults to the upstream
   `quay.io/medik8s/must-gather:latest` (matching the FAR suite), and its resolved
   digest is logged on every run. Disconnected clusters can set `MUST_GATHER_IMAGE`
   to an accessible mirrored image
 - **Standalone**: `ginkgo --label-filter="sbr" --focus="must-gather" ./tests/sbr-operator/...`
-- **Pass criteria**: SBR deployment is Ready; must-gather completes successfully; output contains node YAMLs for all cluster nodes, all 3 SBR CRD definition files, and MachineHealthCheck data
+- **Pass criteria**: SBR deployment is Ready; must-gather completes successfully; output contains node YAMLs for all cluster nodes, all 3 SBR CRD definition files, and MachineHealthCheck data. On HyperShift, the test skips with an explanatory message
 
 ### 10. Verify Controller Availability With One Worker (Controller Resilience)
 

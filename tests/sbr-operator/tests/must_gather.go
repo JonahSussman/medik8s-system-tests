@@ -49,16 +49,24 @@ var _ = Describe(
 				Expect(sbrDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(),
 					"SBR deployment is not Ready")
 
+				By("Detecting cluster topology")
+
+				infraConfig, infraErr := infrastructure.Pull(APIClient)
+				Expect(infraErr).ToNot(HaveOccurred(), "Failed to pull infrastructure configuration")
+
+				if infraConfig.Object.Status.ControlPlaneTopology == configv1.ExternalTopologyMode {
+					Skip("Must-gather test not supported on HyperShift clusters. " +
+						"Node collection via 'oc adm inspect nodes' fails due to HyperShift API limitations (0 nodes collected), " +
+						"and Machine API resources (MachineHealthCheck) exist only on the management cluster. " +
+						"See: https://github.com/openshift/release/pull/83913")
+				}
+
 				By("Resolving the RHWA must-gather image")
 
 				mustGatherImage := resolveMustGatherImage()
 				Expect(mustGatherImage).To(ContainSubstring(":"),
 					"must-gather image %q should contain a tag separator", mustGatherImage)
 				GinkgoWriter.Printf("Using must-gather image: %s\n", mustGatherImage)
-
-				// EXPERIMENT: Also test with OpenShift default image for comparison
-				ocpDefaultImage := "quay.io/openshift/origin-must-gather:4.22"
-				GinkgoWriter.Printf("=== EXPERIMENT: Will also test OCP default image: %s ===\n", ocpDefaultImage)
 
 				By("Creating artifact directory for must-gather output")
 
@@ -102,75 +110,14 @@ var _ = Describe(
 					GinkgoWriter.Printf("Warning: failed to write collected-paths.txt: %v\n", writeErr)
 				}
 
-				// DEBUG: Print first 50 collected files to diagnose path structure
-				GinkgoWriter.Printf("=== DEBUG: First 50 collected files ===\n")
-
-				for i, f := range collectedFiles {
-					if i >= 50 {
-						break
-					}
-
-					GinkgoWriter.Printf("  [%d] %s\n", i, f)
-				}
-
-				GinkgoWriter.Printf("=== DEBUG: Total collected files: %d ===\n", len(collectedFiles))
-
-				// DEBUG: Check for any node-related paths
-				GinkgoWriter.Printf("=== DEBUG: Node-related paths ===\n")
-
-				for _, f := range collectedFiles {
-					if strings.Contains(strings.ToLower(f), "node") {
-						GinkgoWriter.Printf("  %s\n", f)
-					}
-				}
-
-				By("Detecting cluster topology for node YAML validation")
-
-				infraConfig, infraErr := infrastructure.Pull(APIClient)
-				Expect(infraErr).ToNot(HaveOccurred(), "Failed to pull infrastructure configuration")
-
-				isHypershift := infraConfig.Object.Status.ControlPlaneTopology == configv1.ExternalTopologyMode
-				GinkgoWriter.Printf("=== DEBUG: isHypershift=%v, ControlPlaneTopology=%v ===\n",
-					isHypershift, infraConfig.Object.Status.ControlPlaneTopology)
-
-				By("Validating node YAMLs for cluster nodes")
-
-				var missingNodes []string
+				By("Validating node YAMLs for all cluster nodes")
 
 				for _, nodeName := range nodeNames {
-					// Try multiple path patterns
-					patterns := []string{
-						"/nodes/" + nodeName + ".yaml",
-						"nodes/" + nodeName + ".yaml",
-						"cluster-scoped-resources/core/nodes/" + nodeName + ".yaml",
-						nodeName + ".yaml",
-					}
-
-					found := false
-
-					for _, pattern := range patterns {
-						if hasMatchingFile(collectedFiles, pattern) {
-							GinkgoWriter.Printf("DEBUG: Found node %s using pattern: %s\n", nodeName, pattern)
-
-							found = true
-
-							break
-						}
-					}
-
-					if !found {
-						missingNodes = append(missingNodes, nodeName)
-						GinkgoWriter.Printf("WARNING: node %s not collected (tried %d patterns)\n",
-							nodeName, len(patterns))
-					}
+					Expect(hasMatchingFile(collectedFiles, "nodes/"+nodeName+".yaml")).To(BeTrue(),
+						"must-gather should contain YAML for node %s", nodeName)
 				}
 
-				collectedCount := len(nodeNames) - len(missingNodes)
-				GinkgoWriter.Printf("Node YAMLs collected: %d/%d (hypershift=%v)\n",
-					collectedCount, len(nodeNames), isHypershift)
-
-				Expect(missingNodes).To(BeEmpty(),
-					"must-gather should contain YAML for all nodes; missing: %v", missingNodes)
+				GinkgoWriter.Printf("Node YAMLs collected: %d/%d\n", len(nodeNames), len(nodeNames))
 
 				By("Validating SBR CRD definitions are present")
 
