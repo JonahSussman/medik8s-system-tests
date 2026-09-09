@@ -37,6 +37,43 @@ type UpgradeInputs struct {
 	SNRBundle, SNRVersion, SNRPackage, Package, Namespace, OperatorSDK string
 }
 
+// CandidateInputs identify a PR-built candidate used after a real OpenShift upgrade.
+type CandidateInputs struct {
+	Bundle, Version, Image, Commit, TestRevision, Package, Namespace, OperatorSDK string
+}
+
+// LoadCandidateInputs reads the PR-built artifacts required by the cluster-to-candidate scenario.
+func LoadCandidateInputs() (CandidateInputs, error) {
+	inputs := CandidateInputs{
+		Bundle: os.Getenv("NHC_UPGRADE_CANDIDATE_BUNDLE"), Version: os.Getenv("NHC_UPGRADE_CANDIDATE_VERSION"),
+		Image: os.Getenv("NHC_UPGRADE_CANDIDATE_IMAGE"), Commit: os.Getenv("NHC_UPGRADE_CANDIDATE_COMMIT"),
+		TestRevision: os.Getenv("NHC_UPGRADE_TEST_REVISION"), Package: os.Getenv("NHC_UPGRADE_PACKAGE"),
+		Namespace: os.Getenv("NHC_UPGRADE_NAMESPACE"), OperatorSDK: os.Getenv("NHC_UPGRADE_OPERATOR_SDK"),
+	}
+
+	for key, value := range map[string]string{
+		"NHC_UPGRADE_CANDIDATE_BUNDLE": inputs.Bundle, "NHC_UPGRADE_CANDIDATE_VERSION": inputs.Version,
+		"NHC_UPGRADE_CANDIDATE_IMAGE": inputs.Image, "NHC_UPGRADE_CANDIDATE_COMMIT": inputs.Commit,
+		"NHC_UPGRADE_TEST_REVISION": inputs.TestRevision, "NHC_UPGRADE_PACKAGE": inputs.Package,
+		"NHC_UPGRADE_NAMESPACE": inputs.Namespace, "NHC_UPGRADE_OPERATOR_SDK": inputs.OperatorSDK,
+	} {
+		if value == "" {
+			return CandidateInputs{}, fmt.Errorf("%s must be set for the NHC candidate cluster-upgrade scenario", key)
+		}
+	}
+
+	if inputs.Package != "node-healthcheck-operator" {
+		return CandidateInputs{}, fmt.Errorf("candidate package must be node-healthcheck-operator")
+	}
+
+	commit := regexp.MustCompile(`^[a-f0-9]{40}$`)
+	if !commit.MatchString(inputs.Commit) || !commit.MatchString(inputs.TestRevision) {
+		return CandidateInputs{}, fmt.Errorf("candidate and test revisions must be full Git commit hashes")
+	}
+
+	return inputs, nil
+}
+
 // LoadUpgradeInputs reads and validates the pinned artifacts for an upgrade run.
 func LoadUpgradeInputs() (UpgradeInputs, error) {
 	inputs := UpgradeInputs{

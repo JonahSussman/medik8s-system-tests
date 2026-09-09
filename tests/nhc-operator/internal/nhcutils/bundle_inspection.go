@@ -49,6 +49,28 @@ type inspectedBundle struct {
 	Pullspec, Package, Version, ManagerImage string
 }
 
+// ResolveAndVerifyCandidateInputs pins and validates the bundle supplied by a PR build.
+func ResolveAndVerifyCandidateInputs(
+	ctx context.Context, inputs nhcparams.CandidateInputs,
+) (nhcparams.CandidateInputs, error) {
+	candidate, err := inspectBundle(ctx, inputs.Bundle)
+	if err != nil {
+		return inputs, fmt.Errorf("inspect candidate bundle: %w", err)
+	}
+
+	if err := verifyBundle(candidate, inputs.Package, inputs.Version); err != nil {
+		return inputs, fmt.Errorf("candidate bundle: %w", err)
+	}
+
+	if err := requireSameImage(ctx, candidate.ManagerImage, inputs.Image); err != nil {
+		return inputs, fmt.Errorf("candidate bundle manager: %w", err)
+	}
+
+	inputs.Bundle, inputs.Image = candidate.Pullspec, candidate.ManagerImage
+
+	return inputs, nil
+}
+
 // ResolveAndVerifyUpgradeInputs performs bundle identity checks inside the Go
 // test so local and Prow runs use the same preparation path.
 func ResolveAndVerifyUpgradeInputs(

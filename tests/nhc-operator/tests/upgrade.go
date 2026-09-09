@@ -43,6 +43,7 @@ var _ = Describe("NHC Operator Upgrade",
 	func() {
 		var (
 			ctx                context.Context
+			candidateInputs    nhcparams.CandidateInputs
 			previousCSV        *olm.ClusterServiceVersionBuilder
 			preUpgradeImage    string
 			preOCPUpgradeCSV   string
@@ -54,6 +55,17 @@ var _ = Describe("NHC Operator Upgrade",
 
 		BeforeAll(func() {
 			ctx = context.Background()
+
+			if medik8sparams.DirectCandidateUpgrade {
+				var err error
+
+				candidateInputs, err = nhcparams.LoadCandidateInputs()
+				Expect(err).NotTo(HaveOccurred())
+				candidateInputs, err = nhcutils.ResolveAndVerifyCandidateInputs(ctx, candidateInputs)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(candidateInputs.Namespace).To(Equal(medik8sparams.OperatorNs))
+				AddReportEntry("nhc-cluster-candidate-inputs", candidateInputs)
+			}
 
 			if medik8sparams.SkipOCPUpgrade {
 				GinkgoWriter.Println(
@@ -122,6 +134,14 @@ var _ = Describe("NHC Operator Upgrade",
 		})
 
 		AfterAll(func() {
+			if medik8sparams.DirectCandidateUpgrade && candidateInputs.OperatorSDK != "" {
+				output, err := nhcutils.CleanupBundle(
+					ctx, candidateInputs.OperatorSDK, candidateInputs.Namespace, candidateInputs.Package)
+				if err != nil {
+					GinkgoWriter.Printf("WARNING: candidate bundle cleanup failed: %v\n%s\n", err, output)
+				}
+			}
+
 			nhcutils.CleanupUpgradeResources(APIClient, GinkgoWriter.Printf)
 
 			if namespaceCreated {
@@ -332,6 +352,35 @@ var _ = Describe("NHC Operator Upgrade",
 					"Post-OCP-upgrade remediation failed with GA operator")
 
 				cleanupPostRemediationNHC(ctx, &currentTargetNode, "post-ocp-upgrade")
+
+				if medik8sparams.DirectCandidateUpgrade {
+					By("Step 7: Upgrade the surviving installation directly to the PR-built bundle")
+
+					output, upgradeErr := nhcutils.UpgradeBundle(ctx, candidateInputs.OperatorSDK,
+						candidateInputs.Namespace, candidateInputs.Bundle)
+					GinkgoWriter.Printf("operator-sdk run bundle-upgrade output:\n%s\n", output)
+					Expect(upgradeErr).NotTo(HaveOccurred(),
+						"the released operator must be upgraded in place, not uninstalled")
+
+					candidateCSV := waitForNHCUpgradeCSV(candidateInputs.Namespace,
+						candidateInputs.Version, candidateInputs.Image, "post-OCP-upgrade candidate")
+					Expect(candidateCSV.Object.Name).NotTo(Equal(previousCSV.Object.Name),
+						"the PR bundle must produce a new CSV")
+
+					By("Step 8: Validate NHC remediation with the PR-built operator")
+
+					currentTargetNode, err = upgradeRunRemediationCycle(ctx, "post-candidate-upgrade")
+					Expect(err).NotTo(HaveOccurred(), "PR-built NHC remediation failed")
+					cleanupPostRemediationNHC(ctx, &currentTargetNode, "post-candidate-upgrade")
+					AddReportEntry("nhc-cluster-candidate-result", map[string]string{
+						"ocpPath": "4.22-to-5.0", "oldCSV": previousCSV.Object.Name,
+						"candidateCSV": candidateCSV.Object.Name, "candidateBundle": candidateInputs.Bundle,
+						"candidateImage":  candidateInputs.Image,
+						"functionalCheck": "remediation completed before and after the PR-bundle upgrade",
+					})
+
+					return
+				}
 
 				if medik8sparams.SkipDownstreamOperatorUpgrade {
 					AddReportEntry("nhc-cluster-upgrade-result", map[string]string{

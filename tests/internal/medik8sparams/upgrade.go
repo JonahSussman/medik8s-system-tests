@@ -46,6 +46,8 @@ var (
 	SkipOCPUpgrade = os.Getenv("MEDIK8S_SKIP_OCP_UPGRADE") == envTrue
 	// SkipDownstreamOperatorUpgrade ends the cluster-survival scenario before the downstream catalog phase.
 	SkipDownstreamOperatorUpgrade = os.Getenv("MEDIK8S_SKIP_DOWNSTREAM_OPERATOR_UPGRADE") == envTrue
+	// DirectCandidateUpgrade upgrades NHC to a supplied PR bundle after the OCP upgrade.
+	DirectCandidateUpgrade = os.Getenv("MEDIK8S_DIRECT_CANDIDATE_UPGRADE") == envTrue
 	// KubeletStopViaOCDebug switches the kubelet-stop remediation trigger from
 	// SSH to "oc debug node/".
 	KubeletStopViaOCDebug = os.Getenv("MEDIK8S_KUBELET_STOP_OCDEBUG") == envTrue

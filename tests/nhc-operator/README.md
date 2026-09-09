@@ -203,6 +203,15 @@ CatalogSource are present; the remaining steps then switch the Subscription,
 require the downstream operator upgrade, and repeat remediation. A source-bundle
 upgrade result and a downstream-catalog result must be reported separately.
 
+For a candidate source PR, set `MEDIK8S_DIRECT_CANDIDATE_UPGRADE=true` instead
+and provide the same digest-pinned `NHC_UPGRADE_CANDIDATE_*`, operator-sdk,
+package, namespace, and revision inputs used by the standalone tests. After the
+real 4.22-to-5.0 update and released-NHC remediation checkpoint, the scenario
+runs `operator-sdk run bundle-upgrade` against that PR bundle, requires the new
+CSV and exact PR-built controller image, and repeats remediation. This proves a
+PR candidate across the OpenShift update without claiming to test the downstream
+Red Hat catalog path.
+
 Automated tests validating the Node Health Check (NHC) operator
 deployment, OLM metadata, and security posture.
 

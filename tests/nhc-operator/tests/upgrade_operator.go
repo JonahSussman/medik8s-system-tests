@@ -110,7 +110,7 @@ var _ = Describe("NHC operator bundle upgrade", Serial, Ordered,
 			GinkgoWriter.Printf("operator-sdk run bundle (old NHC) output:\n%s\n", output)
 			Expect(err).NotTo(HaveOccurred())
 
-			oldCSV = waitForNHCUpgradeCSV(inputs, inputs.OldVersion, inputs.OldImage, "old")
+			oldCSV = waitForNHCUpgradeCSV(inputs.Namespace, inputs.OldVersion, inputs.OldImage, "old")
 			oldImage, err := nhcutils.GetNHCControllerImage(APIClient)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(oldImage).To(Equal(inputs.OldImage))
@@ -129,7 +129,7 @@ var _ = Describe("NHC operator bundle upgrade", Serial, Ordered,
 			Expect(err).NotTo(HaveOccurred(), "the old operator must not be uninstalled before upgrade")
 			By("requiring a new CSV and the candidate version and image")
 
-			newCSV := waitForNHCUpgradeCSV(inputs, inputs.CandidateVersion, inputs.CandidateImage, "candidate")
+			newCSV := waitForNHCUpgradeCSV(inputs.Namespace, inputs.CandidateVersion, inputs.CandidateImage, "candidate")
 			Expect(newCSV.Object.Name).NotTo(Equal(oldCSV.Object.Name), "version parity is not an upgrade")
 
 			candidateImage, err := nhcutils.GetNHCControllerImage(APIClient)
@@ -179,20 +179,20 @@ func waitForSNRTemplate(ctx context.Context, name string) error {
 	})
 }
 
-func waitForNHCUpgradeCSV(inputs nhcparams.UpgradeInputs, expectedVersion, expectedImage, phase string) *olm.ClusterServiceVersionBuilder {
+func waitForNHCUpgradeCSV(namespace, expectedVersion, expectedImage, phase string) *olm.ClusterServiceVersionBuilder {
 	var found *olm.ClusterServiceVersionBuilder
 
 	Eventually(func(assertion Gomega) {
-		csv, err := helpers.FindSucceededCSV(APIClient, nhcparams.CSVNamePattern, inputs.Namespace)
+		csv, err := helpers.FindSucceededCSV(APIClient, nhcparams.CSVNamePattern, namespace)
 		assertion.Expect(err).NotTo(HaveOccurred())
 		assertion.Expect(csv.Object.Spec.Version.String()).To(Equal(expectedVersion))
 
-		controller, err := deployment.Pull(APIClient, nhcparams.OperatorDeploymentName, inputs.Namespace)
+		controller, err := deployment.Pull(APIClient, nhcparams.OperatorDeploymentName, namespace)
 		assertion.Expect(err).NotTo(HaveOccurred())
 		assertion.Expect(controller.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue())
 
 		pods := &corev1.PodList{}
-		assertion.Expect(APIClient.List(context.Background(), pods, client.InNamespace(inputs.Namespace),
+		assertion.Expect(APIClient.List(context.Background(), pods, client.InNamespace(namespace),
 			client.MatchingLabels(controller.Object.Spec.Selector.MatchLabels))).To(Succeed())
 		assertion.Expect(pods.Items).NotTo(BeEmpty())
 

@@ -90,7 +90,7 @@ var _ = Describe("NHC candidate fresh installation", Serial,
 			output, err = nhcutils.InstallBundle(ctx, inputs.OperatorSDK, inputs.Namespace, inputs.CandidateBundle)
 			GinkgoWriter.Printf("operator-sdk run bundle (candidate NHC) output:\n%s\n", output)
 			Expect(err).NotTo(HaveOccurred())
-			waitForNHCUpgradeCSV(inputs, inputs.CandidateVersion, inputs.CandidateImage, "fresh candidate")
+			waitForNHCUpgradeCSV(inputs.Namespace, inputs.CandidateVersion, inputs.CandidateImage, "fresh candidate")
 
 			candidateImage, err := nhcutils.GetNHCControllerImage(APIClient)
 			Expect(err).NotTo(HaveOccurred())
