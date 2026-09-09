@@ -19,6 +19,10 @@ NHC_CLUSTER_JOB = (
     "pull-ci-medik8s-system-tests-main-4.22-to-5.0-"
     "e2e-nhc-upgrade-4-22-to-5-0-aws"
 )
+NHC_DOWNSTREAM_FRESH_JOB = (
+    "pull-ci-medik8s-system-tests-main-5.0-"
+    "e2e-nhc-downstream-fresh-install-aws"
+)
 
 OPERATORS = [
     ("NHC", "medik8s/node-healthcheck-operator", 430, "medik8s/system-tests", 113),
@@ -97,6 +101,7 @@ def generate():
     release_pr = pull_request("openshift/release", 84788)
     prow_status, prow_history = prow_result(NHC_JOB)
     cluster_prow_status, cluster_prow_history = prow_result(NHC_CLUSTER_JOB)
+    downstream_fresh_status, downstream_fresh_history = prow_result(NHC_DOWNSTREAM_FRESH_JOB)
 
     lines = [
         "# RHWA OpenShift 5 operator upgrade status",
@@ -116,7 +121,11 @@ def generate():
         test = pr_cell(test_repo, test_number, prs[(test_repo, test_number)])
         if name == "NHC":
             ci = pr_cell("openshift/release", 84788, release_pr)
-            ci += f"; [candidate Prow]({prow_history}); [cluster-upgrade Prow]({cluster_prow_history})"
+            ci += (
+                f"; [candidate Prow]({prow_history})"
+                f"; [cluster-upgrade Prow]({cluster_prow_history})"
+                f"; [downstream fresh-install Prow]({downstream_fresh_history})"
+            )
             local = "Passed twice on OpenShift 5.0.0-ec.5 (2026-09-09)"
             candidate = prow_status
         else:
@@ -138,9 +147,12 @@ def generate():
     for name, *_ in OPERATORS:
         if name == "NHC":
             fresh_install = "Passed on OpenShift 5.0.0-ec.5 (2026-09-09)"
-            cluster_upgrade = f"Local run in progress; CI: {cluster_prow_status}"
-            downstream_upgrade = "Waiting for the real downstream catalog inputs"
-            downstream_fresh = "Waiting for the real downstream candidate inputs"
+            cluster_upgrade = (
+                "Local 4.22-to-5.0 update and old-operator survival completed; "
+                f"post-upgrade remediation fix pending CI; CI: {cluster_prow_status}"
+            )
+            downstream_upgrade = f"Included in the cluster-upgrade job; CI: {cluster_prow_status}"
+            downstream_fresh = downstream_fresh_status
         else:
             fresh_install = cluster_upgrade = downstream_upgrade = downstream_fresh = "Not run"
 
@@ -159,7 +171,7 @@ def generate():
         "",
         "## Current blocker",
         "",
-        "The representative tests and all three jobs are in open PRs. The local 4.22-to-5.0 run and Prow validation are in progress. The downstream catalog build, downstream catalog upgrade, and downstream fresh installation remain separate because their real candidate inputs are not yet available.",
+        "The representative tests and CI jobs are in open PRs. The full cluster-upgrade job prepares the real RHWA catalog with deferred IDMS, upgrades OpenShift, switches NHC to that catalog, and repeats functional validation. A separate job covers downstream fresh installation. Prow results remain required.",
         "",
     ])
 
