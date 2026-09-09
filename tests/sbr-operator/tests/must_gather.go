@@ -14,7 +14,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	configv1 "github.com/openshift/api/config/v1"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/deployment"
+	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/infrastructure"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/reportxml"
 
 	"github.com/medik8s/system-tests/tests/internal/labels"
@@ -46,6 +48,18 @@ var _ = Describe(
 				Expect(err).ToNot(HaveOccurred(), "Failed to get SBR deployment")
 				Expect(sbrDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(),
 					"SBR deployment is not Ready")
+
+				By("Detecting cluster topology")
+
+				infraConfig, infraErr := infrastructure.Pull(APIClient)
+				Expect(infraErr).ToNot(HaveOccurred(), "Failed to pull infrastructure configuration")
+
+				if infraConfig.Object.Status.ControlPlaneTopology == configv1.ExternalTopologyMode {
+					Skip("Must-gather test not supported on HyperShift clusters. " +
+						"Node collection via 'oc adm inspect nodes' fails due to HyperShift API limitations (0 nodes collected), " +
+						"and Machine API resources (MachineHealthCheck) exist only on the management cluster. " +
+						"See: https://github.com/openshift/release/pull/83913")
+				}
 
 				By("Resolving the RHWA must-gather image")
 
@@ -99,9 +113,11 @@ var _ = Describe(
 				By("Validating node YAMLs for all cluster nodes")
 
 				for _, nodeName := range nodeNames {
-					Expect(hasMatchingFile(collectedFiles, "/nodes/"+nodeName+".yaml")).To(BeTrue(),
+					Expect(hasMatchingFile(collectedFiles, "nodes/"+nodeName+".yaml")).To(BeTrue(),
 						"must-gather should contain YAML for node %s", nodeName)
 				}
+
+				GinkgoWriter.Printf("Node YAMLs collected: %d/%d\n", len(nodeNames), len(nodeNames))
 
 				By("Validating SBR CRD definitions are present")
 
