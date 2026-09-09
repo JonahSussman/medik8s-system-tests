@@ -1,6 +1,8 @@
+//nolint:lll // Long fixture commands are kept intact so their exact shell inputs remain reviewable.
 package nhcutils
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,20 +12,24 @@ import (
 
 func writeScriptFixture(t *testing.T, path, content string, mode os.FileMode) {
 	t.Helper()
+
 	if err := os.WriteFile(path, []byte(content), mode); err != nil {
 		t.Fatal(err)
 	}
 }
 
+//nolint:funlen // One end-to-end fixture verifies extraction, identity, and the complete image inventory.
 func TestBundleInspector(t *testing.T) {
-	yq := os.Getenv("NHC_TEST_YQ")
-	if yq == "" {
+	yqBinary := os.Getenv("NHC_TEST_YQ")
+	if yqBinary == "" {
 		t.Skip("set NHC_TEST_YQ to candidate-pinned yq for registry-free script verification")
 	}
+
 	root, err := filepath.Abs("../../../..")
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	dir := t.TempDir()
 	writeScriptFixture(t, filepath.Join(dir, "csv.yaml"), `metadata:
   name: node-healthcheck-operator.v5.8.0
@@ -78,27 +84,34 @@ else exit 99; fi
 `, 0700)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 	t.Setenv("FIXTURE_DIR", dir)
-	t.Setenv("YQ", yq)
+	t.Setenv("YQ", yqBinary)
+
 	for _, expected := range []string{"built-operator", "wrong-operator"} {
 		reports := filepath.Join(dir, expected)
 		command := exec.Command("bash", filepath.Join(root, "scripts/nhc-upgrade-inspect.sh"), "bundle", expected, "5.8.0", reports)
+
 		output, err := command.CombinedOutput()
 		if expected == "wrong-operator" {
 			if err == nil {
 				t.Fatal("accepted unrelated operator image")
 			}
+
 			continue
 		}
+
 		if err != nil {
 			t.Fatalf("inspection failed: %v\n%s", err, output)
 		}
+
 		images, err := os.ReadFile(filepath.Join(reports, "images.txt"))
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		if string(images) != "candidate-manager\nconsole\nexplicit-related\ninit\nmust-gather\n" {
 			t.Fatalf("incomplete image collection: %s", images)
 		}
+
 		if _, err := os.Stat(filepath.Join(reports, "verified-image.env")); err != nil {
 			t.Fatal(err)
 		}
@@ -110,6 +123,7 @@ func TestRunnerPreservesReportsAndOriginalFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	dir := t.TempDir()
 	ginkgo := filepath.Join(dir, "ginkgo")
 	writeScriptFixture(t, ginkgo, `#!/usr/bin/env bash
@@ -122,21 +136,28 @@ exit 7
 	t.Setenv("ECO_TEST_FEATURES", "nhc-operator")
 	t.Setenv("ECO_TEST_LABELS", "tier:upgrade-operator")
 	t.Setenv("SHARED_DIR", filepath.Join(dir, "missing-copy-destination"))
+
 	for _, ci := range []bool{false, true} {
 		reports := filepath.Join(dir, "local")
 		t.Setenv("ECO_REPORTS_DUMP_DIR", reports)
 		t.Setenv("ARTIFACT_DIR", "")
+
 		if ci {
 			reports = filepath.Join(dir, "artifacts")
 			t.Setenv("ARTIFACT_DIR", reports)
 		}
+
 		command := exec.Command("bash", "scripts/test-runner.sh")
 		command.Dir = root
 		output, err := command.CombinedOutput()
-		exitError, ok := err.(*exec.ExitError)
+
+		exitError := &exec.ExitError{}
+
+		ok := errors.As(err, &exitError)
 		if !ok || exitError.ExitCode() != 7 || !strings.Contains(string(output), "original test failure") {
 			t.Fatalf("lost original failure: %v %s", err, output)
 		}
+
 		if _, err := os.Stat(filepath.Join(reports, "nhc_testrun.xml")); err != nil {
 			t.Fatal("report missing", err)
 		}
@@ -150,15 +171,19 @@ func TestPreparationUsesExactMakeInputs(t *testing.T) {
 	}
 	// The real helper requires a persistent source context. This temporary
 	// fixture lives under this package and is removed when this test finishes.
+	//nolint:usetesting // The helper requires its source path to persist beneath the package working directory.
 	dir, err := os.MkdirTemp(".", "prepare-fixture-")
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+
 	dir, err = filepath.Abs(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	writeScriptFixture(t, filepath.Join(dir, "git"), `#!/usr/bin/env bash
 set -eu
 printf 'git %s\n' "$*" >> "$COMMAND_LOG"
@@ -180,21 +205,25 @@ fi
 	t.Setenv("CONSOLE_PLUGIN_IMAGE", "registry.test/console@sha256:"+strings.Repeat("1", 64))
 	t.Setenv("MUST_GATHER_IMAGE", "registry.test/gather@sha256:"+strings.Repeat("2", 64))
 	t.Setenv("NHC_OPERATOR_IMAGE", "registry.test/operator@sha256:"+strings.Repeat("3", 64))
+
 	for _, stage := range []string{"operator", "bundle"} {
 		output, err := exec.Command("bash", filepath.Join(root, "scripts/nhc-upgrade-prepare.sh"), stage).CombinedOutput()
 		if err != nil {
 			t.Fatalf("stage %s: %v\n%s", stage, err, output)
 		}
 	}
+
 	commands, err := os.ReadFile(filepath.Join(dir, "commands"))
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	for _, required := range []string{"clone --no-hardlinks", "org.opencontainers.image.revision=", "bundle-build-ocp VERSION=5.8.0", "IMG=" + os.Getenv("NHC_OPERATOR_IMAGE"), "BUNDLE_IMG=registry.test/bundle:build", "CONSOLE_PLUGIN_IMAGE=", "MUST_GATHER_IMAGE=", "PREVIOUS_VERSION=0.12.0 SKIP_RANGE_LOWER=0.1.0"} {
 		if !strings.Contains(string(commands), required) {
 			t.Fatalf("missing %q in %s", required, commands)
 		}
 	}
+
 	if strings.Contains(string(commands), "podman push") {
 		t.Fatal("helper unexpectedly publishes images")
 	}

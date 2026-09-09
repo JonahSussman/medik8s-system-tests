@@ -13,22 +13,29 @@ import (
 	"github.com/medik8s/system-tests/tests/nhc-operator/internal/nhcparams"
 )
 
+// RunOperatorSDK runs one bounded operator-sdk command and preserves its combined output.
 func RunOperatorSDK(ctx context.Context, binary string, args ...string) (string, error) {
 	commandCtx, cancel := context.WithTimeout(ctx, 20*time.Minute)
 	defer cancel()
+
 	command := exec.CommandContext(commandCtx, binary, args...)
+
 	var output bytes.Buffer
+
 	command.Stdout, command.Stderr = &output, &output
 	if err := command.Run(); err != nil {
 		return output.String(), fmt.Errorf("%s %v: %w", binary, args, err)
 	}
+
 	return output.String(), nil
 }
 
+// InstallBundle installs a bundle into the scenario's namespace.
 func InstallBundle(ctx context.Context, binary, namespace, bundle string) (string, error) {
 	return RunOperatorSDK(ctx, binary, "run", "bundle", "-n", namespace, bundle)
 }
 
+// UpgradeBundle upgrades the existing bundle installation in place.
 func UpgradeBundle(ctx context.Context, binary, namespace, bundle string) (string, error) {
 	return RunOperatorSDK(ctx, binary, "run", "bundle-upgrade", "-n", namespace, bundle)
 }
@@ -50,6 +57,7 @@ func GetNHCControllerImage(apiClient *clients.Settings) (string, error) {
 // reported failure when the local environment has no oc binary.
 func CollectFailureEvidence(ctx context.Context, namespace string) string {
 	var evidence bytes.Buffer
+
 	for _, args := range [][]string{
 		{"get", "subscriptions,clusterserviceversions,installplans,catalogsources,pods", "-n", namespace, "-o", "yaml"},
 		{"get", "events", "-n", namespace, "--sort-by=.lastTimestamp"},
@@ -59,15 +67,21 @@ func CollectFailureEvidence(ctx context.Context, namespace string) string {
 		output, err := RunCommand(ctx, "oc", args...)
 		fmt.Fprintf(&evidence, "oc %v (error=%v):\n%s\n", args, err, output)
 	}
+
 	return evidence.String()
 }
 
+// RunCommand runs a bounded diagnostic command and returns its combined output.
 func RunCommand(ctx context.Context, binary string, args ...string) (string, error) {
 	commandCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
+
 	command := exec.CommandContext(commandCtx, binary, args...)
+
 	var output bytes.Buffer
+
 	command.Stdout, command.Stderr = &output, &output
 	err := command.Run()
+
 	return output.String(), err
 }
