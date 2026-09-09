@@ -132,19 +132,20 @@ def generate():
     ])
     for name, *_ in OPERATORS:
         status = "Deferred until the representative sample is accepted" if name == "NHC" else "Not run"
-        lines.append(f"| {name} | Not run | {status} | {status} | {status} |")
+        fresh_install = "Passed on OpenShift 5.0.0-ec.5 (2026-09-09)" if name == "NHC" else "Not run"
+        lines.append(f"| {name} | {fresh_install} | {status} | {status} | {status} |")
 
     lines.extend([
         "",
         "## What the NHC test actually does",
         "",
-        "The independently selectable `tier:upgrade-operator` Ginkgo test installs pinned older SNR and NHC bundles, creates a safe NHC configuration, verifies the old controller, upgrades in place to the PR-built candidate bundle, verifies the new version/image/pods, proves the same configuration survived and was reconciled, and cleans up only resources owned by that run.",
+        "The independently selectable `tier:upgrade-operator` Ginkgo test installs pinned older SNR and NHC bundles, creates a safe NHC configuration, verifies the old controller, upgrades in place to the PR-built candidate bundle, verifies the new version/image/pods, proves the same configuration survived and was reconciled, and cleans up only resources owned by that run. The separate `tier:fresh-install` test starts clean, installs the same candidate, and verifies its version, image, pods, configuration reconciliation, and cleanup.",
         "",
         "The local result is from the actual automated test, not a manual simulation. The final CI proof must run the dedicated job on NHC source PR #430 so Prow supplies that PR's temporary operator and bundle images.",
         "",
         "## Current blocker",
         "",
-        "The representative test and job are in draft PRs. The Prow rehearsal is in progress. Downstream builds, catalogs, the 4.22-to-5.0 cluster upgrade, and downstream fresh install are tracked separately and do not require publishing NHC 5.8 to complete this upstream checkpoint.",
+        "The representative tests and jobs are in draft PRs. The upgrade-job Prow rehearsal is in progress. Downstream builds, catalogs, the 4.22-to-5.0 cluster upgrade, and downstream fresh install are tracked separately and do not require publishing NHC 5.8 to complete this upstream checkpoint.",
         "",
     ])
 

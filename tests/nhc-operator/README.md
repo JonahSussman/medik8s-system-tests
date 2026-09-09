@@ -2,10 +2,12 @@
 
 ## Standalone operator-bundle upgrade (OpenShift 5.0)
 
-This single `tier:upgrade-operator` scenario installs its own SNR and upstream
+The `tier:upgrade-operator` scenario installs its own SNR and upstream
 NHC 0.12.0, upgrades to the supplied 5.8.0 candidate, and checks the new CSV,
 manager image, preserved NHC UID/full spec, and a fresh controller response.
-No cluster run has been claimed by local compilation or unit tests.
+The independently selectable `tier:fresh-install` scenario starts clean,
+installs the same SNR prerequisite and candidate NHC bundle, and verifies the
+candidate version, image, pods, configuration response, and cleanup.
 
 Use a disposable OpenShift 5.0 cluster. The namespace
 `openshift-workload-availability` must **not exist**. Preflight also rejects
@@ -135,6 +137,17 @@ export NHC_UPGRADE_TEST_REVISION="$(git rev-parse HEAD)"
 export ECO_REPORTS_DUMP_DIR="$NHC_RUN_REPORT_DIR"
 mkdir -p "$ECO_REPORTS_DUMP_DIR"
 set -o pipefail
+make run-tests 2>&1 | tee "$ECO_REPORTS_DUMP_DIR/run.log"
+```
+
+For the separate fresh-install checkpoint, use a new report directory and
+select only its label; keep the same pinned candidate inputs:
+
+```bash
+export ECO_TEST_LABELS='tier:fresh-install'
+export NHC_RUN_REPORT_DIR=/absolute/path/to/a/new/fresh-install-report-directory
+export ECO_REPORTS_DUMP_DIR="$NHC_RUN_REPORT_DIR"
+mkdir -p "$ECO_REPORTS_DUMP_DIR"
 make run-tests 2>&1 | tee "$ECO_REPORTS_DUMP_DIR/run.log"
 ```
 
