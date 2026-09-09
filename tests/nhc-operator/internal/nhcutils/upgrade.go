@@ -45,3 +45,26 @@ func GetNHCControllerImage(apiClient *clients.Settings) (string, error) {
 	return helpers.GetControllerImage(apiClient, "openshift-workload-availability",
 		nhcparams.OperatorControllerPodLabelSelector, nhcparams.ManagerContainerName)
 }
+
+// CollectFailureEvidence is best-effort so the original assertion remains the
+// reported failure when the local environment has no oc binary.
+func CollectFailureEvidence(ctx context.Context, namespace string) string {
+	output, err := RunCommand(ctx, "oc", "get", "subscriptions,clusterserviceversions,installplans,catalogsources,pods", "-n", namespace, "-o", "yaml")
+	if err != nil {
+		return fmt.Sprintf("OLM object collection failed: %v\n%s", err, output)
+	}
+	events, eventErr := RunCommand(ctx, "oc", "get", "events", "-n", namespace, "--sort-by=.lastTimestamp")
+	if eventErr != nil {
+		return fmt.Sprintf("%s\nevent collection failed: %v\n%s", output, eventErr, events)
+	}
+	return output + "\nEvents:\n" + events
+}
+
+func RunCommand(ctx context.Context, binary string, args ...string) (string, error) {
+	commandCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	command := exec.CommandContext(commandCtx, binary, args...)
+	var output bytes.Buffer
+	command.Stdout, command.Stderr = &output, &output
+	return output.String(), command.Run()
+}

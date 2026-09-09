@@ -67,6 +67,7 @@ var _ = Describe("NHC operator bundle upgrade", Serial, Ordered,
 			if CurrentSpecReport().Failed() {
 				logNHCControllerState()
 				helpers.LogOLMDiagnostics(ctx, APIClient, inputs.Namespace, "", GinkgoWriter.Printf)
+				AddReportEntry("nhc-upgrade-failure-evidence", nhcutils.CollectFailureEvidence(ctx, inputs.Namespace))
 			}
 		})
 
