@@ -49,15 +49,17 @@ func GetNHCControllerImage(apiClient *clients.Settings) (string, error) {
 // CollectFailureEvidence is best-effort so the original assertion remains the
 // reported failure when the local environment has no oc binary.
 func CollectFailureEvidence(ctx context.Context, namespace string) string {
-	output, err := RunCommand(ctx, "oc", "get", "subscriptions,clusterserviceversions,installplans,catalogsources,pods", "-n", namespace, "-o", "yaml")
-	if err != nil {
-		return fmt.Sprintf("OLM object collection failed: %v\n%s", err, output)
+	var evidence bytes.Buffer
+	for _, args := range [][]string{
+		{"get", "subscriptions,clusterserviceversions,installplans,catalogsources,pods", "-n", namespace, "-o", "yaml"},
+		{"get", "events", "-n", namespace, "--sort-by=.lastTimestamp"},
+		{"get", "nodehealthchecks", "-o", "yaml"},
+		{"logs", "deployment/" + nhcparams.OperatorDeploymentName, "-n", namespace, "--all-containers=true", "--tail=500"},
+	} {
+		output, err := RunCommand(ctx, "oc", args...)
+		fmt.Fprintf(&evidence, "oc %v (error=%v):\n%s\n", args, err, output)
 	}
-	events, eventErr := RunCommand(ctx, "oc", "get", "events", "-n", namespace, "--sort-by=.lastTimestamp")
-	if eventErr != nil {
-		return fmt.Sprintf("%s\nevent collection failed: %v\n%s", output, eventErr, events)
-	}
-	return output + "\nEvents:\n" + events
+	return evidence.String()
 }
 
 func RunCommand(ctx context.Context, binary string, args ...string) (string, error) {
@@ -66,5 +68,6 @@ func RunCommand(ctx context.Context, binary string, args ...string) (string, err
 	command := exec.CommandContext(commandCtx, binary, args...)
 	var output bytes.Buffer
 	command.Stdout, command.Stderr = &output, &output
-	return output.String(), command.Run()
+	err := command.Run()
+	return output.String(), err
 }

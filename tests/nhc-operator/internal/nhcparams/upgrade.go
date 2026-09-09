@@ -3,6 +3,7 @@ package nhcparams
 import (
 	"fmt"
 	"os"
+	"regexp"
 )
 
 const (
@@ -42,6 +43,16 @@ func LoadUpgradeInputs() (UpgradeInputs, error) {
 		if value == "" {
 			return UpgradeInputs{}, fmt.Errorf("%s must be set for the NHC operator upgrade scenario", key)
 		}
+	}
+	if inputs.Package != "node-healthcheck-operator" || inputs.SNRPackage != "self-node-remediation" {
+		return UpgradeInputs{}, fmt.Errorf("this sample requires the upstream NHC and SNR packages")
+	}
+	if inputs.OldVersion == inputs.CandidateVersion || inputs.OldImage == inputs.CandidateImage {
+		return UpgradeInputs{}, fmt.Errorf("candidate version and image must differ from the old installation")
+	}
+	commit := regexp.MustCompile(`^[a-f0-9]{40}$`)
+	if !commit.MatchString(inputs.CandidateCommit) || !commit.MatchString(inputs.TestRevision) {
+		return UpgradeInputs{}, fmt.Errorf("candidate and test revisions must be full Git commit hashes")
 	}
 	return inputs, nil
 }

@@ -2,6 +2,8 @@ package tests
 
 import (
 	"context"
+	"crypto/rand"
+	"fmt"
 	"time"
 
 	"github.com/medik8s/system-tests/tests/internal/helpers"
@@ -16,8 +18,9 @@ import (
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/deployment"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/olm"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/reportxml"
-	"k8s.io/apimachinery/pkg/api/errors"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -31,6 +34,7 @@ var _ = Describe("NHC operator bundle upgrade", Serial, Ordered,
 			oldCSV     *olm.ClusterServiceVersionBuilder
 			configUID  string
 			configSpec map[string]interface{}
+			owned      *nhcutils.OwnedRun
 		)
 
 		BeforeAll(func() {
@@ -39,6 +43,10 @@ var _ = Describe("NHC operator bundle upgrade", Serial, Ordered,
 			inputs, err = nhcparams.LoadUpgradeInputs()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(inputs.Namespace).To(Equal(medik8sparams.OperatorNs), "NHC uses its established operator namespace")
+			sdkVersion, err := nhcutils.RunOperatorSDK(ctx, inputs.OperatorSDK, "version")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(sdkVersion).To(ContainSubstring("v1.42.2"))
+			AddReportEntry("nhc-upgrade-sdk", sdkVersion)
 			clusterVersion := &configv1.ClusterVersion{}
 			Expect(APIClient.Get(ctx, client.ObjectKey{Name: "version"}, clusterVersion)).To(Succeed())
 			Expect(clusterVersion.Status.Desired.Version).To(HavePrefix("5.0."), "requires an OpenShift 5.0 cluster")
@@ -50,55 +58,63 @@ var _ = Describe("NHC operator bundle upgrade", Serial, Ordered,
 			})
 		})
 
-		AfterAll(func() {
-			cleanupNHCCR(ctx, nhcparams.NHCUpgradeTestName)
-			cleanupSNRT(ctx, nhcparams.NHCUpgradeTemplateName)
-			for _, packageName := range []string{inputs.Package, inputs.SNRPackage} {
-				if packageName == "" {
-					continue
-				}
-				output, err := nhcutils.CleanupBundle(ctx, inputs.OperatorSDK, inputs.Namespace, packageName)
-				GinkgoWriter.Printf("operator-sdk cleanup %s output:\n%s\n", packageName, output)
-				Expect(err).NotTo(HaveOccurred(), "cleanup must remove test-owned %s resources", packageName)
-			}
-		})
-
 		JustAfterEach(func() {
-			if CurrentSpecReport().Failed() {
-				logNHCControllerState()
-				helpers.LogOLMDiagnostics(ctx, APIClient, inputs.Namespace, "", GinkgoWriter.Printf)
+			if CurrentSpecReport().Failed() && ctx != nil && inputs.Namespace != "" {
 				AddReportEntry("nhc-upgrade-failure-evidence", nhcutils.CollectFailureEvidence(ctx, inputs.Namespace))
 			}
 		})
 
 		It("installs a pinned old bundle and upgrades its preserved configuration", reportxml.ID("REPLACE_WITH_POLARION_ID"), func() {
 			By("rejecting leftover resources owned by this standalone scenario")
-			assertUpgradeScenarioIsClean(ctx, inputs)
+			Expect(nhcutils.CheckClean(ctx, APIClient, inputs.Namespace)).To(Succeed())
+			owned = &nhcutils.OwnedRun{API: APIClient, Namespace: inputs.Namespace,
+				Token: rand.Text(), SDK: inputs.OperatorSDK, CleanupPackage: nhcutils.CleanupBundle}
+			// Register before CREATE/install, including partial failures. A rejected
+			// preflight never registers or invokes package cleanup.
+			DeferCleanup(func() {
+				failed := CurrentSpecReport().Failed()
+				cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+				defer cancel()
+				err := owned.Cleanup(cleanupCtx)
+				if err != nil {
+					AddReportEntry("nhc-upgrade-cleanup-failure", err.Error())
+					AddReportEntry("nhc-upgrade-cleanup-evidence", nhcutils.CollectFailureEvidence(cleanupCtx, inputs.Namespace))
+				}
+				if !failed {
+					Expect(err).NotTo(HaveOccurred(), "test-owned resources must be removed")
+				}
+			})
+			Expect(owned.CreateNamespace(ctx)).To(Succeed())
 			By("installing the pinned SNR prerequisite and its remediation template")
+			owned.Packages = append(owned.Packages, inputs.SNRPackage)
 			output, err := nhcutils.InstallBundle(ctx, inputs.OperatorSDK, inputs.Namespace, inputs.SNRBundle)
 			GinkgoWriter.Printf("operator-sdk run bundle (SNR) output:\n%s\n", output)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(APIClient.Create(ctx, buildSNRT(nhcparams.NHCUpgradeTemplateName))).To(Succeed())
+			Expect(waitForUpgradeAPI(ctx, upgradeTemplate(inputs.Namespace))).To(Succeed())
+			Expect(owned.Create(ctx, buildSNRT(nhcparams.NHCUpgradeTemplateName))).To(Succeed())
 			Expect(waitForSNRTemplate(ctx, nhcparams.NHCUpgradeTemplateName)).To(Succeed())
 			By("installing the explicitly pinned older upstream NHC bundle")
+			owned.Packages = append(owned.Packages, inputs.Package)
 			output, err = nhcutils.InstallBundle(ctx, inputs.OperatorSDK, inputs.Namespace, inputs.OldBundle)
 			GinkgoWriter.Printf("operator-sdk run bundle (old NHC) output:\n%s\n", output)
 			Expect(err).NotTo(HaveOccurred())
-			oldCSV = waitForNHCUpgradeCSV(inputs, inputs.OldVersion, "old")
+			oldCSV = waitForNHCUpgradeCSV(inputs, inputs.OldVersion, inputs.OldImage, "old")
 			oldImage, err := nhcutils.GetNHCControllerImage(APIClient)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(oldImage).To(Equal(inputs.OldImage))
 			By("creating a safe, observable NodeHealthCheck configuration")
-			nhc := buildNHCWithSNRT(nhcparams.NHCUpgradeTestName, nhcparams.NHCUpgradeTemplateName)
-			Expect(APIClient.Create(ctx, nhc)).To(Succeed())
-			Expect(waitForNHCPhase(ctx, nhcparams.NHCUpgradeTestName, nhcparams.NHCPhaseEnabled, medik8sparams.DefaultTimeout)).To(Succeed())
+			Expect(waitForUpgradeAPI(ctx, upgradeNHC())).To(Succeed())
+			nhc := upgradeNHC()
+			nhc.Object["spec"] = nhcutils.SafeSpec(nhcparams.NHCUpgradeTemplateName, inputs.Namespace, owned.Token)
+			Expect(owned.Create(ctx, nhc)).To(Succeed())
+			Expect(waitForPauseResponse(ctx, nhc.GetUID(), owned.Token, nhc.GetResourceVersion())).To(Succeed())
 			configUID, configSpec = captureNHCConfiguration(ctx)
 			By("upgrading in place to the explicitly supplied candidate bundle")
 			output, err = nhcutils.UpgradeBundle(ctx, inputs.OperatorSDK, inputs.Namespace, inputs.CandidateBundle)
 			GinkgoWriter.Printf("operator-sdk run bundle-upgrade output:\n%s\n", output)
 			Expect(err).NotTo(HaveOccurred(), "the old operator must not be uninstalled before upgrade")
 			By("requiring a new CSV and the candidate version and image")
-			newCSV := waitForNHCUpgradeCSV(inputs, inputs.CandidateVersion, "candidate")
+			newCSV := waitForNHCUpgradeCSV(inputs, inputs.CandidateVersion, inputs.CandidateImage, "candidate")
 			Expect(newCSV.Object.Name).NotTo(Equal(oldCSV.Object.Name), "version parity is not an upgrade")
 			candidateImage, err := nhcutils.GetNHCControllerImage(APIClient)
 			Expect(err).NotTo(HaveOccurred())
@@ -107,19 +123,16 @@ var _ = Describe("NHC operator bundle upgrade", Serial, Ordered,
 			uid, spec := captureNHCConfiguration(ctx)
 			Expect(uid).To(Equal(configUID), "upgrade must preserve the existing NodeHealthCheck")
 			Expect(spec).To(Equal(configSpec), "upgrade must preserve the NodeHealthCheck specification")
-			Expect(waitForNHCPhase(ctx, nhcparams.NHCUpgradeTestName, nhcparams.NHCPhaseEnabled, medik8sparams.DefaultTimeout)).To(Succeed())
+			By("requiring a fresh candidate-controller response to a unique pause request")
+			probe := owned.Token + "-candidate"
+			changeUpgradePause(ctx, types.UID(configUID), probe)
+			By("restoring the original configuration and requiring another controller response")
+			changeUpgradePause(ctx, types.UID(configUID), owned.Token)
+			uid, spec = captureNHCConfiguration(ctx)
+			Expect(uid).To(Equal(configUID))
+			Expect(spec).To(Equal(configSpec))
 		})
 	})
-
-func assertUpgradeScenarioIsClean(ctx context.Context, inputs nhcparams.UpgradeInputs) {
-	csvs, err := olm.ListClusterServiceVersionWithNamePattern(APIClient, nhcparams.CSVNamePattern, inputs.Namespace)
-	Expect(err).NotTo(HaveOccurred())
-	Expect(csvs).To(BeEmpty(), "a pre-existing NHC installation is not test-owned and must not be replaced")
-	for _, object := range []*unstructured.Unstructured{upgradeNHC(), upgradeTemplate(inputs.Namespace)} {
-		err := APIClient.Get(ctx, client.ObjectKeyFromObject(object), object)
-		Expect(errors.IsNotFound(err)).To(BeTrue(), "leftover test-owned resource %s: %v", object.GetName(), err)
-	}
-}
 
 func upgradeNHC() *unstructured.Unstructured {
 	object := &unstructured.Unstructured{}
@@ -145,7 +158,7 @@ func waitForSNRTemplate(ctx context.Context, name string) error {
 	})
 }
 
-func waitForNHCUpgradeCSV(inputs nhcparams.UpgradeInputs, expectedVersion, phase string) *olm.ClusterServiceVersionBuilder {
+func waitForNHCUpgradeCSV(inputs nhcparams.UpgradeInputs, expectedVersion, expectedImage, phase string) *olm.ClusterServiceVersionBuilder {
 	var found *olm.ClusterServiceVersionBuilder
 	Eventually(func(g Gomega) {
 		csv, err := helpers.FindSucceededCSV(APIClient, nhcparams.CSVNamePattern, inputs.Namespace)
@@ -154,10 +167,61 @@ func waitForNHCUpgradeCSV(inputs nhcparams.UpgradeInputs, expectedVersion, phase
 		controller, err := deployment.Pull(APIClient, nhcparams.OperatorDeploymentName, inputs.Namespace)
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(controller.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue())
+		pods := &corev1.PodList{}
+		g.Expect(APIClient.List(context.Background(), pods, client.InNamespace(inputs.Namespace),
+			client.MatchingLabels(controller.Object.Spec.Selector.MatchLabels))).To(Succeed())
+		g.Expect(pods.Items).NotTo(BeEmpty())
+		for _, pod := range pods.Items {
+			// Even a terminating old controller must be gone before the probe.
+			g.Expect(pod.DeletionTimestamp).To(BeNil())
+			managerFound := false
+			for _, container := range pod.Spec.Containers {
+				if container.Name == nhcparams.ManagerContainerName {
+					managerFound = true
+					g.Expect(container.Image).To(Equal(expectedImage))
+				}
+			}
+			g.Expect(managerFound).To(BeTrue())
+		}
 		found = csv
 	}, 15*time.Minute, nhcparams.DefaultPollInterval).Should(Succeed(), "%s NHC CSV did not become ready", phase)
 	GinkgoWriter.Printf("%s NHC CSV: %s version=%s\n", phase, found.Object.Name, found.Object.Spec.Version.String())
 	return found
+}
+
+func waitForUpgradeAPI(ctx context.Context, object *unstructured.Unstructured) error {
+	return wait.PollUntilContextTimeout(ctx, nhcparams.DefaultPollInterval, medik8sparams.DefaultTimeout, true, func(ctx context.Context) (bool, error) {
+		list := &unstructured.UnstructuredList{}
+		list.SetGroupVersionKind(object.GroupVersionKind().GroupVersion().WithKind(object.GetKind() + "List"))
+		err := APIClient.List(ctx, list, client.InNamespace(object.GetNamespace()))
+		if nhcutils.MissingAPI(err) {
+			return false, nil
+		}
+		return err == nil, err
+	})
+}
+
+func waitForPauseResponse(ctx context.Context, uid types.UID, token, previousRV string) error {
+	return wait.PollUntilContextTimeout(ctx, nhcparams.DefaultPollInterval, medik8sparams.DefaultTimeout, true, func(ctx context.Context) (bool, error) {
+		object := upgradeNHC()
+		if err := APIClient.Get(ctx, client.ObjectKeyFromObject(object), object); err != nil {
+			return false, err
+		}
+		if object.GetUID() != uid {
+			return false, fmt.Errorf("NHC UID changed during reconciliation probe")
+		}
+		return nhcutils.PauseResponse(object, uid, token, previousRV), nil
+	})
+}
+
+func changeUpgradePause(ctx context.Context, uid types.UID, token string) {
+	object := upgradeNHC()
+	Expect(APIClient.Get(ctx, client.ObjectKeyFromObject(object), object)).To(Succeed())
+	Expect(object.GetUID()).To(Equal(uid))
+	original := object.DeepCopy()
+	Expect(unstructured.SetNestedStringSlice(object.Object, []string{token}, "spec", "pauseRequests")).To(Succeed())
+	Expect(APIClient.Patch(ctx, object, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))).To(Succeed())
+	Expect(waitForPauseResponse(ctx, uid, token, object.GetResourceVersion())).To(Succeed())
 }
 
 func captureNHCConfiguration(ctx context.Context) (string, map[string]interface{}) {
