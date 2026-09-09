@@ -67,7 +67,7 @@ const (
 	UnhealthyConditionDuration = "30s"
 
 	// OCDebugKubeletStopTimeout is the maximum time to wait for the "oc debug"
-	// kubelet-stop command used
+	// kubelet-stop command used.
 	OCDebugKubeletStopTimeout = 5 * time.Minute
 
 	// LeaderAcquisitionTimeout is the maximum time to wait for the NHC

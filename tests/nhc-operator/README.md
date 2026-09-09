@@ -173,6 +173,42 @@ catalog qualification, or remediation test. Related-image tags in the unmodified
 CI candidate are resolved and recorded, but are still mutable references; local
 bundle generation pins console and must-gather explicitly.
 
+## OpenShift 4.22 to 5.0 cluster-upgrade scenario
+
+`tier:upgrade-cluster` is a separate destructive scenario. It installs released
+NHC and SNR from the OpenShift 4.22 `redhat-operators` catalog, records the NHC
+CSV and controller image, performs the real OpenShift update to the supplied 5.0
+release payload, requires the same NHC CSV and image afterward, and completes a
+real NHC/SNR node-remediation cycle. The test owns its setup and does not require
+another Ginkgo spec or a hand-installed SNR prerequisite.
+
+Select only this scenario with:
+
+```bash
+export KUBECONFIG=/absolute/path/to/the/disposable-4.22-cluster-kubeconfig
+export ECO_TEST_FEATURES=nhc-operator
+export ECO_TEST_LABELS='tier:upgrade-cluster'
+export MEDIK8S_OPERATOR_PACKAGE=node-healthcheck-operator
+export OPENSHIFT_UPGRADE_RELEASE_IMAGE_OVERRIDE='the-approved-5.0-release-payload-pullspec'
+export MEDIK8S_SKIP_DOWNSTREAM_OPERATOR_UPGRADE=true
+export ECO_SSH_KEY_PATH=/absolute/path/to/the-cluster-private-key
+make run-tests
+```
+
+This invocation does not simulate the update: the test changes the cluster's
+`ClusterVersion` desired payload and waits for the update to finish healthy. It
+requires a disposable multi-node 4.22 cluster and reboots one worker during the
+functional check. If SSH is unavailable, set
+`MEDIK8S_KUBELET_STOP_OCDEBUG=true`; automatic SNR recovery still performs the
+reboot, but SSH provides the safer failure-recovery path.
+
+`MEDIK8S_SKIP_DOWNSTREAM_OPERATOR_UPGRADE=true` stops only after the complete
+4.22-to-5.0 survival and remediation checkpoint. Omit it only when the real
+downstream catalog, its IDMS files in `SHARED_DIR`, and `medik8s-catalog`
+CatalogSource are present; the remaining steps then switch the Subscription,
+require the downstream operator upgrade, and repeat remediation. A source-bundle
+upgrade result and a downstream-catalog result must be reported separately.
+
 Automated tests validating the Node Health Check (NHC) operator
 deployment, OLM metadata, and security posture.
 
@@ -186,7 +222,7 @@ deployment, OLM metadata, and security posture.
 ## Running
 
 ```bash
-ginkgo --label-filter="nhc && !tier:upgrade-operator" ./tests/nhc-operator/...
+ginkgo --label-filter="nhc && !tier:upgrade-operator && !tier:fresh-install && !tier:upgrade-cluster" ./tests/nhc-operator/...
 ```
 
 Or via the test runner:
@@ -194,7 +230,7 @@ Or via the test runner:
 ```bash
 export KUBECONFIG=/path/to/kubeconfig
 export ECO_TEST_FEATURES="nhc-operator"
-export ECO_TEST_LABELS='!tier:upgrade-operator'
+export ECO_TEST_LABELS='!tier:upgrade-operator && !tier:fresh-install && !tier:upgrade-cluster'
 make run-tests
 ```
 

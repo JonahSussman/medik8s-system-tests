@@ -23,6 +23,19 @@ func InstallGAOperator(apiClient *clients.Settings) (*olm.SubscriptionBuilder, e
 	)
 }
 
+// InstallGASNR installs the released SNR prerequisite from the same built-in catalog.
+func InstallGASNR(apiClient *clients.Settings) (*olm.SubscriptionBuilder, error) {
+	return helpers.InstallGAOperatorSubscription(
+		apiClient,
+		nhcparams.ClusterUpgradeSNRSubName,
+		medik8sparams.OperatorNs,
+		medik8sparams.GAOperatorCatalog,
+		medik8sparams.GACatalogNamespace,
+		nhcparams.ClusterUpgradeSNRPackage,
+		medik8sparams.GAChannel,
+	)
+}
+
 // SwitchSubscriptionCatalog updates the upgrade-test Subscription to point to the
 // given CatalogSource name and target channel.
 func SwitchSubscriptionCatalog(
@@ -37,20 +50,12 @@ func SwitchSubscriptionCatalog(
 	)
 }
 
-// GetNHCControllerImage returns the manager container image of the first running
-// NHC controller pod.
-func GetNHCControllerImage(apiClient *clients.Settings) (string, error) {
-	return helpers.GetControllerImage(
-		apiClient,
-		medik8sparams.OperatorNs,
-		nhcparams.OperatorControllerPodLabelSelector,
-		nhcparams.ManagerContainerName,
-	)
-}
-
 // CleanupUpgradeResources removes the Subscription created during the upgrade test.
 func CleanupUpgradeResources(apiClient *clients.Settings, logf func(string, ...interface{})) {
 	helpers.DeleteSubscription(apiClient, nhcparams.ClusterUpgradeSubName, medik8sparams.OperatorNs, logf)
 	helpers.DeleteStaleCSVsAndInstallPlans(
 		apiClient, nhcparams.CSVNamePattern, medik8sparams.OperatorNs, logf)
+	helpers.DeleteSubscription(apiClient, nhcparams.ClusterUpgradeSNRSubName, medik8sparams.OperatorNs, logf)
+	helpers.DeleteStaleCSVsAndInstallPlans(
+		apiClient, nhcparams.ClusterUpgradeSNRCSVPattern, medik8sparams.OperatorNs, logf)
 }

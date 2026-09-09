@@ -18,6 +18,12 @@ const (
 	ClusterUpgradeSubName = "nhc-upgrade-sub"
 	// ClusterUpgradeTestName is the NodeHealthCheck used by the full OCP-and-operator upgrade test.
 	ClusterUpgradeTestName = "nhc-upgrade-test"
+	// ClusterUpgradeSNRSubName is the test-owned SNR prerequisite Subscription.
+	ClusterUpgradeSNRSubName = "nhc-upgrade-snr"
+	// ClusterUpgradeSNRPackage is the released SNR package installed as the remediator.
+	ClusterUpgradeSNRPackage = "self-node-remediation"
+	// ClusterUpgradeSNRCSVPattern identifies the released SNR CSV.
+	ClusterUpgradeSNRCSVPattern = "self-node-remediation"
 	// UpgradeRemediationCompletionTimeout bounds each destructive remediation checkpoint.
 	UpgradeRemediationCompletionTimeout = 20 * time.Minute
 )

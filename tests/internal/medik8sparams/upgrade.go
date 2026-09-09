@@ -6,6 +6,8 @@ import (
 )
 
 const (
+	envTrue = "true"
+
 	// OperatorUpgradeTimeout is the time for a CSV to reach Succeeded after an operator upgrade.
 	OperatorUpgradeTimeout = 15 * time.Minute
 	// OCPUpgradeTimeout is the time for an OCP cluster upgrade to complete.
@@ -40,11 +42,13 @@ var (
 	// TargetOCPImage is the OCP release payload for the upgrade target version.
 	TargetOCPImage = envOrDefault("OPENSHIFT_UPGRADE_RELEASE_IMAGE_OVERRIDE",
 		os.Getenv("RELEASE_IMAGE_LATEST"))
-	// SkipOCPUpgrade opts out of the OCP ClusterVersion upgrade step
-	SkipOCPUpgrade = os.Getenv("MEDIK8S_SKIP_OCP_UPGRADE") == "true"
+	// SkipOCPUpgrade opts out of the OCP ClusterVersion upgrade step.
+	SkipOCPUpgrade = os.Getenv("MEDIK8S_SKIP_OCP_UPGRADE") == envTrue
+	// SkipDownstreamOperatorUpgrade ends the cluster-survival scenario before the downstream catalog phase.
+	SkipDownstreamOperatorUpgrade = os.Getenv("MEDIK8S_SKIP_DOWNSTREAM_OPERATOR_UPGRADE") == envTrue
 	// KubeletStopViaOCDebug switches the kubelet-stop remediation trigger from
-	// SSH to "oc debug node/"
-	KubeletStopViaOCDebug = os.Getenv("MEDIK8S_KUBELET_STOP_OCDEBUG") == "true"
+	// SSH to "oc debug node/".
+	KubeletStopViaOCDebug = os.Getenv("MEDIK8S_KUBELET_STOP_OCDEBUG") == envTrue
 )
 
 func envOrDefault(key, fallback string) string {

@@ -26,6 +26,8 @@ const (
 	TierUpgrade = "tier:upgrade"
 	// TierUpgradeOperator marks standalone operator-only upgrade tests.
 	TierUpgradeOperator = "tier:upgrade-operator"
+	// TierUpgradeCluster marks standalone OpenShift-and-operator upgrade tests.
+	TierUpgradeCluster = "tier:upgrade-cluster"
 	// TierFreshInstall marks standalone candidate fresh-install tests.
 	TierFreshInstall = "tier:fresh-install"
 	// TierResiliency marks resiliency tests.

@@ -27,23 +27,25 @@ import (
 )
 
 // NHC works with any operator providing a remediation template CRD. This test
-// uses SNR as the remediator (co-installed in the Prow CI job) because it
+// installs and uses SNR as the remediator because it
 // self-remediates via kubelet stop -> reboot, requiring no fence agents or
 // cloud credentials. This keeps the upgrade test platform-agnostic, unlike
 // the FAR upgrade test which requires AWS for fence agent remediation.
 var _ = Describe("NHC Operator Upgrade",
 	Serial, Ordered,
 	Label(labels.OperatorNHC, nhcparams.Label,
-		labels.TierUpgrade, labels.DisruptionDestructive,
+		labels.TierUpgrade, labels.TierUpgradeCluster, labels.DisruptionDestructive,
 		labels.PlatformAny, labels.FrequencyWeekly,
 		labels.ComponentOLM),
 	func() {
 		var (
-			ctx               context.Context
-			previousCSV       *olm.ClusterServiceVersionBuilder
-			preUpgradeImage   string
-			currentTargetNode string
-			operatorUpgraded  bool
+			ctx                context.Context
+			previousCSV        *olm.ClusterServiceVersionBuilder
+			preUpgradeImage    string
+			preOCPUpgradeCSV   string
+			preOCPUpgradeImage string
+			currentTargetNode  string
+			operatorUpgraded   bool
 		)
 
 		BeforeAll(func() {
@@ -55,6 +57,16 @@ var _ = Describe("NHC Operator Upgrade",
 			} else {
 				Expect(medik8sparams.TargetOCPImage).NotTo(BeEmpty(),
 					"OPENSHIFT_UPGRADE_RELEASE_IMAGE_OVERRIDE or RELEASE_IMAGE_LATEST must be set")
+
+				clusterVersion := &configv1.ClusterVersion{}
+				Expect(APIClient.Get(ctx, client.ObjectKey{Name: "version"}, clusterVersion)).To(Succeed())
+				Expect(clusterVersion.Status.Desired.Version).To(HavePrefix("4.22."),
+					"full cluster-upgrade test must begin on OpenShift 4.22")
+				AddReportEntry("nhc-cluster-upgrade-start", map[string]string{
+					"version":     clusterVersion.Status.Desired.Version,
+					"image":       clusterVersion.Status.Desired.Image,
+					"targetImage": medik8sparams.TargetOCPImage,
+				})
 			}
 
 			By("Checking a kubelet-stop trigger mechanism is available")
@@ -66,12 +78,6 @@ var _ = Describe("NHC Operator Upgrade",
 			} else if !isSSHAvailable() {
 				Skip("SSH not available -- NHC upgrade test requires SSH access to worker nodes " +
 					"unless MEDIK8S_KUBELET_STOP_OCDEBUG=true is set")
-			}
-
-			By("Checking SNR CRD is installed (used as remediator in this test)")
-
-			if !isSNRCRDInstalled(ctx) {
-				Skip("SelfNodeRemediation CRD not found; SNR operator not installed -- skipping NHC upgrade test")
 			}
 
 			By("Verifying at least 2 Ready worker nodes")
@@ -175,6 +181,29 @@ var _ = Describe("NHC Operator Upgrade",
 
 				Expect(previousCSV).NotTo(BeNil(), "No NHC CSV in Succeeded phase")
 				GinkgoWriter.Printf("GA NHC CSV: %s\n", previousCSV.Object.Name)
+				preOCPUpgradeCSV = previousCSV.Object.Name
+				preOCPUpgradeImage = preUpgradeImage
+
+				By("Step 3b: Install the released SNR prerequisite from redhat-operators")
+
+				snrSub, snrErr := nhcutils.InstallGASNR(APIClient)
+				Expect(snrErr).NotTo(HaveOccurred(), "Failed to install the SNR prerequisite")
+				GinkgoWriter.Printf("SNR Subscription created: %s (catalog: %s, channel: %s, package: %s)\n",
+					snrSub.Object.Name,
+					snrSub.Object.Spec.CatalogSource,
+					snrSub.Object.Spec.Channel,
+					snrSub.Object.Spec.Package)
+
+				Eventually(func() error {
+					_, csvErr := helpers.FindSucceededCSV(APIClient,
+						nhcparams.ClusterUpgradeSNRCSVPattern, medik8sparams.OperatorNs)
+
+					return csvErr
+				}, medik8sparams.OperatorUpgradeTimeout, nhcparams.DefaultPollInterval).
+					Should(Succeed(), "SNR prerequisite CSV did not become ready")
+				Eventually(func() bool { return isSNRCRDInstalled(ctx) },
+					medik8sparams.OperatorUpgradeTimeout, nhcparams.DefaultPollInterval).
+					Should(BeTrue(), "SNR prerequisite CRD was not established")
 
 				if medik8sparams.SkipOCPUpgrade {
 					By("Step 4: Skipped (MEDIK8S_SKIP_OCP_UPGRADE=true) - OCP upgrade not performed")
@@ -216,17 +245,32 @@ var _ = Describe("NHC Operator Upgrade",
 						medik8sparams.PostUpgradeRecoveryTimeout, nhcparams.DefaultPollInterval,
 					)).To(Succeed(), "Cluster is Failing after OCP upgrade")
 
+					Expect(APIClient.Get(ctx, client.ObjectKey{Name: "version"}, clusterVersion)).To(Succeed())
+					Expect(clusterVersion.Status.Desired.Version).To(HavePrefix("5.0."),
+						"cluster upgrade must finish on OpenShift 5.0")
+					Expect(clusterVersion.Status.Desired.Image).To(Equal(medik8sparams.TargetOCPImage),
+						"cluster must finish on the requested 5.0 payload")
+					AddReportEntry("nhc-cluster-upgrade-finish", map[string]string{
+						"version": clusterVersion.Status.Desired.Version,
+						"image":   clusterVersion.Status.Desired.Image,
+					})
+
 					GinkgoWriter.Println("OCP upgrade completed and cluster is healthy")
 				}
 
 				By("Step 5: Verify NHC operator pod survived OCP upgrade and CSV is Succeeded")
 
-				previousCSV = verifyNHCOperatorReady(
+				postOCPUpgradeCSV := verifyNHCOperatorReady(
 					medik8sparams.PostUpgradeRecoveryTimeout,
 					medik8sparams.PostUpgradeRecoveryTimeout, "after OCP upgrade")
+				Expect(postOCPUpgradeCSV.Object.Name).To(Equal(preOCPUpgradeCSV),
+					"NHC must not silently change versions before the explicit catalog switch")
+				previousCSV = postOCPUpgradeCSV
 
 				preUpgradeImage, err = nhcutils.GetNHCControllerImage(APIClient)
 				Expect(err).NotTo(HaveOccurred())
+				Expect(preUpgradeImage).To(Equal(preOCPUpgradeImage),
+					"NHC image must remain unchanged across the OpenShift upgrade")
 				GinkgoWriter.Printf("Post-OCP-upgrade baseline for FBC upgrade: CSV=%s image=%s\n",
 					previousCSV.Object.Name, preUpgradeImage)
 
@@ -237,6 +281,18 @@ var _ = Describe("NHC Operator Upgrade",
 					"Post-OCP-upgrade remediation failed with GA operator")
 
 				cleanupPostRemediationNHC(ctx, &currentTargetNode, "post-ocp-upgrade")
+
+				if medik8sparams.SkipDownstreamOperatorUpgrade {
+					AddReportEntry("nhc-cluster-upgrade-result", map[string]string{
+						"ocpPath":                "4.22-to-5.0",
+						"nhcCSV":                 previousCSV.Object.Name,
+						"nhcImage":               preUpgradeImage,
+						"functionalCheck":        "NHC and SNR remediation completed after the OpenShift upgrade",
+						"downstreamCatalogPhase": "deferred by MEDIK8S_SKIP_DOWNSTREAM_OPERATOR_UPGRADE=true",
+					})
+
+					return
+				}
 
 				By("Step 7: Apply deferred IDMS for Konflux catalog images")
 
@@ -559,6 +615,9 @@ func upgradeRunRemediationCycle(ctx context.Context, phase string) (string, erro
 
 // verifyNHCOperatorReady polls OLM Subscription/CSV/InstallPlan state until the
 // NHC CSV reaches Succeeded, then verifies the controller Deployment is Ready.
+// The branching intentionally records detailed OLM failure states while it polls.
+//
+//nolint:gocognit
 func verifyNHCOperatorReady(
 	csvTimeout, readyTimeout time.Duration, contextMsg string,
 ) *olm.ClusterServiceVersionBuilder {

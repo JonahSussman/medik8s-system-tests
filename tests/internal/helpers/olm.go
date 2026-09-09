@@ -114,6 +114,7 @@ func SwitchSubscriptionCatalog(
 	return sub, nil
 }
 
+// DeleteStaleCSVsAndInstallPlans removes unowned OLM artifacts left by interrupted test runs.
 func DeleteStaleCSVsAndInstallPlans(
 	apiClient *clients.Settings, namePrefix, namespace string,
 	logf func(string, ...interface{}),
@@ -150,6 +151,7 @@ func DeleteStaleCSVsAndInstallPlans(
 		if installPlan.Object.Namespace != namespace {
 			continue
 		}
+
 		for _, csvName := range installPlan.Object.Spec.ClusterServiceVersionNames {
 			if !strings.HasPrefix(csvName, namePrefix) {
 				continue
