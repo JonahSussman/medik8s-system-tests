@@ -1,5 +1,44 @@
 # NHC Operator Post-Deployment Tests
 
+## Standalone operator-bundle upgrade (OpenShift 5.0)
+
+`tier:upgrade-operator` independently installs a pinned SNR prerequisite and
+older upstream NHC bundle, creates an observable `NodeHealthCheck`, upgrades
+to a supplied candidate bundle, and requires a new CSV, expected version and
+manager image, preserved CR UID/specification, and successful reconciliation.
+Version parity is explicitly a failure. The test owns only
+`nhc-operator-upgrade` and `nhc-operator-upgrade-template`; cleanup calls
+`operator-sdk cleanup` for its NHC and SNR packages and never deletes CRDs.
+
+Use an OpenShift 5.0 cluster with image-pull access. Every artifact and
+revision is required; no floating image default is used. The established NHC
+suite namespace is currently the required value.
+
+```bash
+export ECO_TEST_FEATURES=nhc-operator ECO_TEST_LABELS='tier:upgrade-operator'
+export WORKLOAD_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal@sha256:<digest>
+export NHC_UPGRADE_OPERATOR_SDK=/absolute/path/to/operator-sdk
+export NHC_UPGRADE_NAMESPACE=openshift-workload-availability NHC_UPGRADE_PACKAGE=node-healthcheck-operator
+export NHC_UPGRADE_SNR_PACKAGE=self-node-remediation
+export NHC_UPGRADE_SNR_BUNDLE=quay.io/medik8s/self-node-remediation-operator-bundle:<pinned-tag-or-digest>
+export NHC_UPGRADE_OLD_BUNDLE=quay.io/medik8s/node-healthcheck-operator-bundle:v0.12.0
+export NHC_UPGRADE_OLD_VERSION=0.12.0 NHC_UPGRADE_OLD_IMAGE=quay.io/medik8s/node-healthcheck-operator:<pinned-tag-or-digest>
+export NHC_UPGRADE_CANDIDATE_BUNDLE=registry.example/nhc-bundle@sha256:<digest>
+export NHC_UPGRADE_CANDIDATE_VERSION=5.8.0 NHC_UPGRADE_CANDIDATE_IMAGE=registry.example/nhc-operator@sha256:<digest>
+export NHC_UPGRADE_CANDIDATE_COMMIT=36c6c7cf31898acbc0be1beb927606af1de2a8f5
+export NHC_UPGRADE_TEST_REVISION=$(git rev-parse HEAD)
+make run-tests
+```
+
+First confirm the supplied SDK's `run --help` lists `bundle-upgrade`, then
+validate and inspect the generated candidate bundle (package, CSV version,
+skip/replaces metadata, manager and related images). NHC PR #430's checked-in
+`0.0.1` YAML is a placeholder: CI builds with `make bundle-ocp-ci`, and its
+`replaces` target runs only when `VERSION != DEFAULT_VERSION`. The proposed
+Prow job derives the real candidate manager image from its CI-built
+`OO_BUNDLE`; a rehearsal of the target branch does not automatically test
+NHC PR #430.
+
 Automated tests validating the Node Health Check (NHC) operator
 deployment, OLM metadata, and security posture.
 
