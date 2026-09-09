@@ -331,7 +331,48 @@ SNR reboots the node for automatic recovery.
 - **Standalone**: `ginkgo --label-filter="nhc && disruption:destructive" --focus="non-remediating NHC" ./tests/nhc-operator/...`
 - **Pass criteria**: Second NHC phase is not Remediating, Delete() succeeds (asserted), first NHC returns to Enabled after SNR remediation, node recovers
 
-### 17. Escalation Order Field Validation ([OCP-60863](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-60863))
+## Destructive Tests -- Escalation Functional E2E
+
+Tests that verify NHC escalatingRemediations behavior end-to-end: escalation when first remediator times out, no escalation when first remediator succeeds, and escalation after SNR timeout. Uses SSH to disable kubelet persistently (survives reboot) or stop kubelet (recoverable after reboot).
+
+### Prerequisites (Escalation E2E)
+
+- NHC and SNR operators installed
+- At least 2 Ready worker nodes
+- SSH access to worker nodes
+- `KUBECONFIG` set with cluster-admin access
+
+### 19. Escalation from TestRemediation to SNR ([OCP-60857](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-60857))
+
+Creates NHC with two-step escalation: TestRemediation (order=0, timeout=60s) then SNR (order=1, timeout=180s). Stops kubelet via SSH. Verifies TestRemediation CR appears first, SNR CR does not exist yet, then after TestRemediation timeout SNR CR appears (both coexist). SNR reboots the node and kubelet auto-starts, after which NHC returns to Enabled and cleans up both CRs.
+
+- **Operators**: NHC v0.12.0+, SNR
+- **Cluster**: Multi-node (2+ workers), SSH access to worker nodes
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="nhc && disruption:destructive" --focus="Escalates from TestRemediation to SNR" ./tests/nhc-operator/...`
+- **Pass criteria**: TestRemediation CR created first, SNR CR created after timeout, both CRs coexist, node rebooted, kubelet re-enabled, NHC returns to Enabled, both CRs cleaned up
+
+### 20. No Escalation When First Remediator Restores Health ([OCP-60858](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-60858))
+
+Creates NHC with SNR first and TestRemediation second. Stops kubelet, verifies SNR reboots the node and kubelet auto-restarts, and verifies TestRemediation CR is never created.
+
+- **Operators**: NHC v0.12.0+, SNR
+- **Cluster**: Multi-node (2+ workers), SSH access to worker nodes
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="nhc && disruption:destructive" --focus="Does not escalate" ./tests/nhc-operator/...`
+- **Pass criteria**: SNR reboots the node, node becomes Ready, TestRemediation CR never created, NHC returns to Enabled
+
+### 21. Escalation After SNR Timeout ([OCP-66806](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-66806))
+
+Creates NHC with SNR first and TestRemediation second. Disables kubelet persistently via SSH, verifies SNR reboots the node but it remains unhealthy, and verifies NHC escalates to TestRemediation after the SNR timeout.
+
+- **Operators**: NHC v0.12.0+, SNR
+- **Cluster**: Multi-node (2+ workers), SSH access to worker nodes
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="nhc && disruption:destructive" --focus="Escalates after SNR timeout" ./tests/nhc-operator/...`
+- **Pass criteria**: SNR CR and TestRemediation CR coexist after escalation, kubelet re-enabled, NHC returns to Enabled, both CRs cleaned up
+
+### 22. Escalation Order Field Validation ([OCP-60863](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-60863))
 
 Exercises webhook validation of the `order` field in escalatingRemediations.
 Rejection cases: creating NHC CRs with a missing order field and with
@@ -346,7 +387,7 @@ CR is created.
 - **Standalone**: `ginkgo --label-filter="nhc && disruption:nondestructive" --focus="order field validation" ./tests/nhc-operator/...`
 - **Pass criteria**: API returns error containing "order" for missing order and "duplicate order" for duplicate values, with the CR not created in either rejection case; NHC creation with very large order values succeeds and the CR is persisted
 
-### 18. Escalation Timeout Field Required and Minimum Value ([OCP-60862](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-60862))
+### 23. Escalation Timeout Field Required and Minimum Value ([OCP-60862](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-60862))
 
 Attempts to create NHC CRs with escalatingRemediations that have a missing
 timeout field and a timeout below the 60s minimum. Verifies the webhook
@@ -358,7 +399,7 @@ rejects both.
 - **Standalone**: `ginkgo --label-filter="nhc && disruption:nondestructive" --focus="timeout field is required" ./tests/nhc-operator/...`
 - **Pass criteria**: API returns error containing "timeout" for missing timeout, "at least" for below-minimum timeout, CR not created in either case
 
-### 19. Duplicate Remediator Kind Forbidden ([OCP-66838](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-66838))
+### 24. Duplicate Remediator Kind Forbidden ([OCP-66838](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-66838))
 
 Attempts to create an NHC CR with two escalation steps using the same
 remediator Kind (two TestRemediation templates). Uses TestRemediation
@@ -372,7 +413,7 @@ the duplicate for remediators that do not support this feature.
 - **Standalone**: `ginkgo --label-filter="nhc && disruption:nondestructive" --focus="duplicate remediator kind" ./tests/nhc-operator/...`
 - **Pass criteria**: API returns error containing "same kind", CR not created
 
-### 20. Multiple Same-Kind Templates Accepted ([OCP-74932](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-74932))
+### 25. Multiple Same-Kind Templates Accepted ([OCP-74932](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-74932))
 
 Companion to the negative case above: creates two `TestRemediationTemplate` CRs
 of the same Kind that both carry the `multiple-templates-support` annotation, then
@@ -386,7 +427,7 @@ Kind supports the feature.
 - **Standalone**: `ginkgo --label-filter="nhc && disruption:nondestructive" --focus="accepted when templates support multiple" ./tests/nhc-operator/...`
 - **Pass criteria**: NHC CR is created and persisted
 
-### 21. Escalation Order Change Rejected During Active Remediation ([OCP-60865](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-60865))
+### 26. Escalation Order Change Rejected During Active Remediation ([OCP-60865](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-60865))
 
 Creates an NHC with escalating remediations (TestRemediation then SNR),
 stops kubelet on a worker to trigger remediation, waits for the

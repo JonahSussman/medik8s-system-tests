@@ -317,12 +317,12 @@ func waitForNHCPhase(ctx context.Context, name, expectedPhase string, timeout ti
 // waitForSNRRemediationComplete polls until the SNR remediation cycle finishes
 // for the given node: SNR CR deleted + boot ID changed.
 func waitForSNRRemediationComplete(
-	ctx context.Context, nodeName, previousBootID string, timeout time.Duration,
+	ctx context.Context, nodeName, previousBootID string,
 ) error {
 	var snrSeen bool
 
 	return wait.PollUntilContextTimeout(
-		ctx, nhcparams.DestructivePollInterval, timeout, true,
+		ctx, nhcparams.DestructivePollInterval, nhcparams.RemediationCompletionTimeout, true,
 		func(ctx context.Context) (bool, error) {
 			obj := &unstructured.Unstructured{}
 			obj.SetGroupVersionKind(snrGVK)
@@ -949,6 +949,14 @@ func deleteMultiTemplate(ctx context.Context, name string) {
 	if err := APIClient.Delete(ctx, tmpl); err != nil && !k8serrors.IsNotFound(err) {
 		GinkgoWriter.Printf("WARNING: failed to delete MultiTemplateRemediationTemplate %q: %v\n", name, err)
 	}
+}
+
+// cleanupTestRemediationCR safely deletes a TestRemediation CR by name.
+func cleanupTestRemediationCR(ctx context.Context, name string) {
+	helpers.DeleteRemediationCR(
+		ctx, APIClient, testRemediationGVK, name, "",
+		nhcparams.DefaultPollInterval, nhcparams.RemediationCRDeletionTimeout,
+		GinkgoWriter.Printf)
 }
 
 // testRemediationCRExists checks if a TestRemediation CR exists for the given node.

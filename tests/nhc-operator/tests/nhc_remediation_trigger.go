@@ -234,7 +234,7 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 				By("Waiting for SNR remediation to complete")
 
 				Expect(waitForSNRRemediationComplete(
-					ctx, targetWorkerName, oldBootID, nhcparams.RemediationCompletionTimeout,
+					ctx, targetWorkerName, oldBootID,
 				)).To(Succeed(),
 					"SNR remediation did not complete for %s", targetWorkerName)
 
@@ -385,10 +385,10 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 				nhcSNR := buildNHCForWorkers(nhcparams.NHCTestName)
 				nhcSpec(nhcSNR)["unhealthyConditions"] = []interface{}{
 					map[string]interface{}{
-						"type": "Ready", "status": "False", "duration": "30s",
+						"type": "Ready", "status": "False", "duration": nhcparams.UnhealthyConditionDuration,
 					},
 					map[string]interface{}{
-						"type": "Ready", "status": "Unknown", "duration": "30s",
+						"type": "Ready", "status": "Unknown", "duration": nhcparams.UnhealthyConditionDuration,
 					},
 				}
 
