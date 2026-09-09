@@ -2,6 +2,7 @@
 package nhcutils
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -18,18 +19,7 @@ func writeScriptFixture(t *testing.T, path, content string, mode os.FileMode) {
 	}
 }
 
-//nolint:funlen // One end-to-end fixture verifies extraction, identity, and the complete image inventory.
 func TestBundleInspector(t *testing.T) {
-	yqBinary := os.Getenv("NHC_TEST_YQ")
-	if yqBinary == "" {
-		t.Skip("set NHC_TEST_YQ to candidate-pinned yq for registry-free script verification")
-	}
-
-	root, err := filepath.Abs("../../../..")
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	dir := t.TempDir()
 	writeScriptFixture(t, filepath.Join(dir, "csv.yaml"), `metadata:
   name: node-healthcheck-operator.v5.8.0
@@ -68,8 +58,8 @@ if [[ $2 == extract ]]; then
   while [[ $# -gt 0 ]]; do
     if [[ $1 == --path ]]; then
       case $2 in
-        /manifests:*) cp "$FIXTURE_DIR/csv.yaml" "${2#*:}/nhc.clusterserviceversion.yaml" ;;
-        /metadata:*) cp "$FIXTURE_DIR/annotations.yaml" "${2#*:}/annotations.yaml" ;;
+        /manifests/:*) cp "$FIXTURE_DIR/csv.yaml" "${2#*:}/nhc.clusterserviceversion.yaml" ;;
+        /metadata/:*) cp "$FIXTURE_DIR/annotations.yaml" "${2#*:}/annotations.yaml" ;;
       esac
       shift 2
     else shift; fi
@@ -84,37 +74,22 @@ else exit 99; fi
 `, 0700)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 	t.Setenv("FIXTURE_DIR", dir)
-	t.Setenv("YQ", yqBinary)
 
-	for _, expected := range []string{"built-operator", "wrong-operator"} {
-		reports := filepath.Join(dir, expected)
-		command := exec.Command("bash", filepath.Join(root, "scripts/nhc-upgrade-inspect.sh"), "bundle", expected, "5.8.0", reports)
+	bundle, err := inspectBundle(context.Background(), "bundle")
+	if err != nil {
+		t.Fatal(err)
+	}
 
-		output, err := command.CombinedOutput()
-		if expected == "wrong-operator" {
-			if err == nil {
-				t.Fatal("accepted unrelated operator image")
-			}
+	if err := verifyBundle(bundle, "node-healthcheck-operator", "5.8.0"); err != nil {
+		t.Fatal(err)
+	}
 
-			continue
-		}
+	if err := requireSameImage(context.Background(), bundle.ManagerImage, "built-operator"); err != nil {
+		t.Fatal(err)
+	}
 
-		if err != nil {
-			t.Fatalf("inspection failed: %v\n%s", err, output)
-		}
-
-		images, err := os.ReadFile(filepath.Join(reports, "images.txt"))
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if string(images) != "candidate-manager\nconsole\nexplicit-related\ninit\nmust-gather\n" {
-			t.Fatalf("incomplete image collection: %s", images)
-		}
-
-		if _, err := os.Stat(filepath.Join(reports, "verified-image.env")); err != nil {
-			t.Fatal(err)
-		}
+	if err := requireSameImage(context.Background(), bundle.ManagerImage, "wrong-operator"); err == nil {
+		t.Fatal("accepted unrelated operator image")
 	}
 }
 

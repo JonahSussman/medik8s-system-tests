@@ -78,8 +78,8 @@ export NHC_UPGRADE_OPERATOR_SDK="$NHC_BUILD_DIR/bin/operator-sdk"
 "$NHC_UPGRADE_OPERATOR_SDK" version
 "$NHC_UPGRADE_OPERATOR_SDK" run --help
 "$NHC_UPGRADE_OPERATOR_SDK" bundle validate "$NHC_UPGRADE_CANDIDATE_BUNDLE"
-bash scripts/nhc-upgrade-inspect.sh "$NHC_UPGRADE_CANDIDATE_BUNDLE" "$NHC_OPERATOR_IMAGE" "$VERSION" "$NHC_BUILD_REPORT_DIR/candidate"
-source "$NHC_BUILD_REPORT_DIR/candidate/verified-image.env"
+export NHC_UPGRADE_CANDIDATE_IMAGE="$NHC_OPERATOR_IMAGE"
+export NHC_UPGRADE_CANDIDATE_VERSION="$VERSION"
 ```
 
 The helper builds the existing Dockerfile, then calls the real
@@ -115,14 +115,8 @@ Set `KUBECONFIG` to the disposable cluster and `NHC_UPGRADE_OLD_BUNDLE` and
 starting tags for lookup are NHC `v0.12.0` and SNR `v0.13.0`; they are not digest
 claims. Set `NHC_UPGRADE_OLD_IMAGE` to the old bundle's exact manager pullspec
 and `NHC_RUN_REPORT_DIR` to a persistent **new** directory for each run.
-Derive the baseline inputs with this read-only registry helper (using the `YQ`
-and build-report directory set above). It verifies both package versions and
-records every referenced image; it does not overwrite candidate inputs:
-
-```bash
-bash scripts/nhc-upgrade-baselines.sh "$NHC_BUILD_REPORT_DIR/baselines"
-source "$NHC_BUILD_REPORT_DIR/baselines/baseline-inputs.env"
-```
+The Go test resolves the supplied bundle tags to digests, extracts their CSVs,
+and verifies package, version, and operator-image identity before installation.
 
 ```bash
 : "${KUBECONFIG:?}" "${NHC_UPGRADE_OLD_BUNDLE:?}" "${NHC_UPGRADE_OLD_IMAGE:?}"

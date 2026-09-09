@@ -45,6 +45,8 @@ var _ = Describe("NHC operator bundle upgrade", Serial, Ordered,
 
 			inputs, err = nhcparams.LoadUpgradeInputs()
 			Expect(err).NotTo(HaveOccurred())
+			inputs, err = nhcutils.ResolveAndVerifyUpgradeInputs(ctx, inputs)
+			Expect(err).NotTo(HaveOccurred())
 			Expect(inputs.Namespace).To(Equal(medik8sparams.OperatorNs), "NHC uses its established operator namespace")
 			sdkVersion, err := nhcutils.RunOperatorSDK(ctx, inputs.OperatorSDK, "version")
 			Expect(err).NotTo(HaveOccurred())

@@ -31,10 +31,10 @@ const (
 // UpgradeInputs make the exact input artifacts visible to both local and CI
 // runs. Required values intentionally have no floating-image defaults.
 type UpgradeInputs struct {
-	OldBundle, OldVersion, OldImage                        string
-	CandidateBundle, CandidateVersion, CandidateImage      string
-	CandidateCommit, TestRevision                          string
-	SNRBundle, SNRPackage, Package, Namespace, OperatorSDK string
+	OldBundle, OldVersion, OldImage                                    string
+	CandidateBundle, CandidateVersion, CandidateImage                  string
+	CandidateCommit, TestRevision                                      string
+	SNRBundle, SNRVersion, SNRPackage, Package, Namespace, OperatorSDK string
 }
 
 // LoadUpgradeInputs reads and validates the pinned artifacts for an upgrade run.
@@ -46,9 +46,14 @@ func LoadUpgradeInputs() (UpgradeInputs, error) {
 		CandidateImage:   os.Getenv("NHC_UPGRADE_CANDIDATE_IMAGE"),
 		CandidateCommit:  os.Getenv("NHC_UPGRADE_CANDIDATE_COMMIT"), TestRevision: os.Getenv("NHC_UPGRADE_TEST_REVISION"),
 		SNRBundle: os.Getenv("NHC_UPGRADE_SNR_BUNDLE"), SNRPackage: os.Getenv("NHC_UPGRADE_SNR_PACKAGE"),
-		Package: os.Getenv("NHC_UPGRADE_PACKAGE"), Namespace: os.Getenv("NHC_UPGRADE_NAMESPACE"),
+		SNRVersion: os.Getenv("NHC_UPGRADE_SNR_VERSION"),
+		Package:    os.Getenv("NHC_UPGRADE_PACKAGE"), Namespace: os.Getenv("NHC_UPGRADE_NAMESPACE"),
 		OperatorSDK: os.Getenv("NHC_UPGRADE_OPERATOR_SDK"),
 	}
+	if inputs.SNRVersion == "" {
+		inputs.SNRVersion = "0.13.0"
+	}
+
 	for key, value := range map[string]string{
 		"NHC_UPGRADE_OLD_BUNDLE": inputs.OldBundle, "NHC_UPGRADE_OLD_VERSION": inputs.OldVersion,
 		"NHC_UPGRADE_OLD_IMAGE": inputs.OldImage, "NHC_UPGRADE_CANDIDATE_BUNDLE": inputs.CandidateBundle,
