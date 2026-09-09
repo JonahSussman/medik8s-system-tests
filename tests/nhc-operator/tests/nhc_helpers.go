@@ -43,6 +43,12 @@ var snrGVK = schema.GroupVersionKind{
 	Kind:    "SelfNodeRemediation",
 }
 
+var snrListGVK = schema.GroupVersionKind{
+	Group:   nhcparams.SNRCRDGroup,
+	Version: nhcparams.SNRCRDVersion,
+	Kind:    "SelfNodeRemediationList",
+}
+
 // snrtGVK is the GroupVersionKind for SelfNodeRemediationTemplate CRs.
 var snrtGVK = schema.GroupVersionKind{
 	Group:   nhcparams.SNRCRDGroup,
@@ -249,10 +255,40 @@ func cleanupNHCCR(ctx context.Context, name string) {
 // cleanupSNRCR safely deletes a SelfNodeRemediation CR by name.
 // SNR CRs are namespaced in the operator namespace.
 func cleanupSNRCR(ctx context.Context, name string) {
-	helpers.DeleteRemediationCR(
-		ctx, APIClient, snrGVK, name, medik8sparams.OperatorNs,
-		nhcparams.DefaultPollInterval, nhcparams.RemediationCRDeletionTimeout,
-		GinkgoWriter.Printf)
+	items, err := listSNRCRsForNode(ctx, name)
+	if err != nil {
+		GinkgoWriter.Printf("cleanupSNRCR: failed to list SNR CRs for %s: %v\n", name, err)
+
+		return
+	}
+
+	for i := range items {
+		helpers.DeleteRemediationCR(
+			ctx, APIClient, snrGVK, items[i].GetName(), medik8sparams.OperatorNs,
+			nhcparams.DefaultPollInterval, nhcparams.RemediationCRDeletionTimeout,
+			GinkgoWriter.Printf)
+	}
+}
+
+func listSNRCRsForNode(ctx context.Context, nodeName string) ([]unstructured.Unstructured, error) {
+	list := &unstructured.UnstructuredList{}
+	list.SetGroupVersionKind(snrListGVK)
+
+	if err := APIClient.List(ctx, list, client.InNamespace(medik8sparams.OperatorNs)); err != nil {
+		return nil, fmt.Errorf("list SNR CRs: %w", err)
+	}
+
+	items := make([]unstructured.Unstructured, 0, 1)
+
+	for i := range list.Items {
+		item := list.Items[i]
+		if item.GetName() == nodeName ||
+			item.GetAnnotations()["remediation.medik8s.io/node-name"] == nodeName {
+			items = append(items, item)
+		}
+	}
+
+	return items, nil
 }
 
 // getNHCPhase returns the current .status.phase of the named NHC CR.
@@ -353,48 +389,42 @@ func waitForSNRRemediationComplete(
 	return wait.PollUntilContextTimeout(
 		ctx, nhcparams.DestructivePollInterval, nhcparams.RemediationCompletionTimeout, true,
 		func(ctx context.Context) (bool, error) {
-			obj := &unstructured.Unstructured{}
-			obj.SetGroupVersionKind(snrGVK)
+			items, err := listSNRCRsForNode(ctx, nodeName)
+			if err != nil {
+				return false, err
+			}
 
-			err := APIClient.Get(ctx, types.NamespacedName{
-				Name:      nodeName,
-				Namespace: medik8sparams.OperatorNs,
-			}, obj)
-
-			switch {
-			case err == nil:
+			if len(items) > 0 {
 				if !snrSeen {
-					GinkgoWriter.Printf("SNR CR %s detected -- remediation in progress\n", nodeName)
+					GinkgoWriter.Printf(
+						"SNR CR %s detected for node %s -- remediation in progress\n",
+						items[0].GetName(), nodeName)
 
 					snrSeen = true
 				}
 
 				return false, nil
+			}
 
-			case k8serrors.IsNotFound(err):
-				// SNR CR gone. Check if boot ID changed (node rebooted).
-				currentBootID, bootErr := helpers.GetNodeBootIDFromAPI(ctx, APIClient, nodeName)
-				if bootErr != nil {
-					return false, nil
-				}
-
-				if currentBootID != previousBootID {
-					if snrSeen {
-						GinkgoWriter.Printf("SNR remediation complete: boot ID changed for %s\n", nodeName)
-					} else {
-						GinkgoWriter.Printf(
-							"SNR CR already gone, boot ID changed -- "+
-								"remediation completed before observation for %s\n", nodeName)
-					}
-
-					return true, nil
-				}
-
-				return false, nil
-
-			default:
+			// SNR CR gone. Check if boot ID changed (node rebooted).
+			currentBootID, bootErr := helpers.GetNodeBootIDFromAPI(ctx, APIClient, nodeName)
+			if bootErr != nil {
 				return false, nil
 			}
+
+			if currentBootID != previousBootID {
+				if snrSeen {
+					GinkgoWriter.Printf("SNR remediation complete: boot ID changed for %s\n", nodeName)
+				} else {
+					GinkgoWriter.Printf(
+						"SNR CR already gone, boot ID changed -- "+
+							"remediation completed before observation for %s\n", nodeName)
+				}
+
+				return true, nil
+			}
+
+			return false, nil
 		},
 	)
 }
