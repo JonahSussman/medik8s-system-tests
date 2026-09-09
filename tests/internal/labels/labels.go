@@ -26,6 +26,8 @@ const (
 	TierUpgrade = "tier:upgrade"
 	// TierUpgradeOperator marks standalone operator-only upgrade tests.
 	TierUpgradeOperator = "tier:upgrade-operator"
+	// TierFreshInstall marks standalone candidate fresh-install tests.
+	TierFreshInstall = "tier:fresh-install"
 	// TierResiliency marks resiliency tests.
 	TierResiliency = "tier:resiliency"
 
