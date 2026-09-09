@@ -10,6 +10,8 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -46,6 +48,7 @@ var _ = Describe("NHC Operator Upgrade",
 			preOCPUpgradeImage string
 			currentTargetNode  string
 			operatorUpgraded   bool
+			namespaceCreated   bool
 		)
 
 		BeforeAll(func() {
@@ -87,6 +90,26 @@ var _ = Describe("NHC Operator Upgrade",
 			Expect(workerCount).To(BeNumerically(">=", 2),
 				"Upgrade test requires at least 2 Ready worker nodes")
 
+			By("Creating the operator namespace when the clean cluster does not have it")
+
+			namespace := &corev1.Namespace{}
+
+			err = APIClient.Get(ctx, client.ObjectKey{Name: medik8sparams.OperatorNs}, namespace)
+			if apierrors.IsNotFound(err) {
+				namespace = &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{
+					Name: medik8sparams.OperatorNs,
+					Labels: map[string]string{
+						"security.openshift.io/scc.podSecurityLabelSync": "false",
+						"pod-security.kubernetes.io/enforce":             "privileged",
+					},
+				}}
+				Expect(APIClient.Create(ctx, namespace)).To(Succeed())
+
+				namespaceCreated = true
+			} else {
+				Expect(err).NotTo(HaveOccurred())
+			}
+
 			By("Clearing any leftover NHC Subscription/CSV/InstallPlan from a prior run")
 
 			// A prior run that was interrupted before AfterAll ran (or an
@@ -99,6 +122,14 @@ var _ = Describe("NHC Operator Upgrade",
 
 		AfterAll(func() {
 			nhcutils.CleanupUpgradeResources(APIClient, GinkgoWriter.Printf)
+
+			if namespaceCreated {
+				namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: medik8sparams.OperatorNs}}
+				if err := APIClient.Delete(ctx, namespace); err != nil && !apierrors.IsNotFound(err) {
+					GinkgoWriter.Printf("WARNING: failed to delete test-created namespace %s: %v\n",
+						medik8sparams.OperatorNs, err)
+				}
+			}
 		})
 
 		JustAfterEach(func() {
