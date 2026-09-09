@@ -9,6 +9,7 @@ import (
 	. "github.com/onsi/gomega"
 	configv1 "github.com/openshift/api/config/v1"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -235,6 +236,25 @@ var _ = Describe("NHC Operator Upgrade",
 				Eventually(func() bool { return isSNRCRDInstalled(ctx) },
 					medik8sparams.OperatorUpgradeTimeout, nhcparams.DefaultPollInterval).
 					Should(BeTrue(), "SNR prerequisite CRD was not established")
+				Eventually(func() error {
+					snrDaemonSet := &appsv1.DaemonSet{}
+					if getErr := APIClient.Get(ctx, client.ObjectKey{
+						Name: nhcparams.SNRDaemonSetName, Namespace: medik8sparams.OperatorNs,
+					}, snrDaemonSet); getErr != nil {
+						return getErr
+					}
+
+					desired := snrDaemonSet.Status.DesiredNumberScheduled
+					if desired == 0 || snrDaemonSet.Status.NumberReady != desired ||
+						snrDaemonSet.Status.UpdatedNumberScheduled != desired {
+						return fmt.Errorf("SNR node agents not ready: desired=%d updated=%d ready=%d",
+							desired, snrDaemonSet.Status.UpdatedNumberScheduled,
+							snrDaemonSet.Status.NumberReady)
+					}
+
+					return nil
+				}, medik8sparams.OperatorUpgradeTimeout, nhcparams.DefaultPollInterval).
+					Should(Succeed(), "SNR node agents were not ready on every scheduled node")
 
 				if medik8sparams.SkipOCPUpgrade {
 					By("Step 4: Skipped (MEDIK8S_SKIP_OCP_UPGRADE=true) - OCP upgrade not performed")

@@ -190,7 +190,32 @@ func isSNRCRDInstalled(ctx context.Context) bool {
 // On Prow AWS, SSH traffic is proxied through the ssh-bastion service.
 func stopKubeletForRemediation(ctx context.Context, nodeName string) error {
 	if medik8sparams.KubeletStopViaOCDebug {
-		return helpers.StopKubelet(ctx, nodeName, nhcparams.OCDebugKubeletStopTimeout, GinkgoWriter.Printf)
+		err := helpers.StopKubelet(
+			ctx, nodeName, nhcparams.OCDebugKubeletStopTimeout, GinkgoWriter.Printf,
+		)
+		if err == nil {
+			return nil
+		}
+
+		// Stopping kubelet also stops the debug pod that ran the command. On
+		// some clusters oc debug remains attached until its timeout even though
+		// kubelet was successfully stopped. Accept that timeout only after the
+		// Kubernetes API confirms that the requested node is actually NotReady.
+		if strings.Contains(err.Error(), "timed out") {
+			if waitErr := helpers.WaitForNodeNotReady(
+				ctx, APIClient, nodeName, nhcparams.DefaultPollInterval,
+				nhcparams.NodeNotReadyTimeout, GinkgoWriter.Printf,
+			); waitErr == nil {
+				GinkgoWriter.Printf(
+					"oc debug timed out after stopping kubelet on %s; node is NotReady, continuing\n",
+					nodeName,
+				)
+
+				return nil
+			}
+		}
+
+		return err
 	}
 
 	return helpers.StopKubeletSSH(ctx, APIClient, nodeName, nhcparams.SSHTimeout)

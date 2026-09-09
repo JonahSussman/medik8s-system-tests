@@ -40,6 +40,8 @@ const (
 
 	// SNRTemplateName is the default SNR template name deployed by the operator.
 	SNRTemplateName = "self-node-remediation-automatic-strategy-template"
+	// SNRDaemonSetName is the node-agent DaemonSet that performs self-remediation.
+	SNRDaemonSetName = "self-node-remediation-ds"
 
 	// NHCTestName is the NHC CR name used in remediation trigger tests.
 	// In multi-CR tests, this is the slower/standard-duration NHC.

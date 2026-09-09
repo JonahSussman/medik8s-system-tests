@@ -12,8 +12,12 @@ import urllib.request
 GITHUB_API = "https://api.github.com"
 PROW_BUCKET = "https://storage.googleapis.com/origin-ci-test/pr-logs/directory"
 NHC_JOB = (
-    "pull-ci-medik8s-node-healthcheck-operator-medik8s-5.0-"
+    "pull-ci-medik8s-node-healthcheck-operator-main-"
     "5.0-e2e-system-tests-nhc-operator-upgrade"
+)
+NHC_CLUSTER_JOB = (
+    "pull-ci-medik8s-system-tests-main-4.22-to-5.0-"
+    "e2e-nhc-upgrade-4-22-to-5-0-aws"
 )
 
 OPERATORS = [
@@ -92,6 +96,7 @@ def generate():
 
     release_pr = pull_request("openshift/release", 84788)
     prow_status, prow_history = prow_result(NHC_JOB)
+    cluster_prow_status, cluster_prow_history = prow_result(NHC_CLUSTER_JOB)
 
     lines = [
         "# RHWA OpenShift 5 operator upgrade status",
@@ -111,7 +116,7 @@ def generate():
         test = pr_cell(test_repo, test_number, prs[(test_repo, test_number)])
         if name == "NHC":
             ci = pr_cell("openshift/release", 84788, release_pr)
-            ci += f"; [Prow history]({prow_history})"
+            ci += f"; [candidate Prow]({prow_history}); [cluster-upgrade Prow]({cluster_prow_history})"
             local = "Passed twice on OpenShift 5.0.0-ec.5 (2026-09-09)"
             candidate = prow_status
         else:
@@ -131,21 +136,30 @@ def generate():
         "| --- | --- | --- | --- | --- |",
     ])
     for name, *_ in OPERATORS:
-        status = "Deferred until the representative sample is accepted" if name == "NHC" else "Not run"
-        fresh_install = "Passed on OpenShift 5.0.0-ec.5 (2026-09-09)" if name == "NHC" else "Not run"
-        lines.append(f"| {name} | {fresh_install} | {status} | {status} | {status} |")
+        if name == "NHC":
+            fresh_install = "Passed on OpenShift 5.0.0-ec.5 (2026-09-09)"
+            cluster_upgrade = f"Local run in progress; CI: {cluster_prow_status}"
+            downstream_upgrade = "Waiting for the real downstream catalog inputs"
+            downstream_fresh = "Waiting for the real downstream candidate inputs"
+        else:
+            fresh_install = cluster_upgrade = downstream_upgrade = downstream_fresh = "Not run"
+
+        lines.append(
+            f"| {name} | {fresh_install} | {cluster_upgrade} | "
+            f"{downstream_upgrade} | {downstream_fresh} |"
+        )
 
     lines.extend([
         "",
         "## What the NHC test actually does",
         "",
-        "The independently selectable `tier:upgrade-operator` Ginkgo test installs pinned older SNR and NHC bundles, creates a safe NHC configuration, verifies the old controller, upgrades in place to the PR-built candidate bundle, verifies the new version/image/pods, proves the same configuration survived and was reconciled, and cleans up only resources owned by that run. The separate `tier:fresh-install` test starts clean, installs the same candidate, and verifies its version, image, pods, configuration reconciliation, and cleanup.",
+        "NHC is the one representative operator. The independently selectable `tier:upgrade-operator` Ginkgo test installs pinned older NHC plus its functional dependency, creates a safe NHC configuration, verifies the old controller, upgrades NHC in place to the PR-built candidate bundle, verifies the new version/image/pods, proves the same configuration survived and was reconciled, and cleans up resources owned by that run. The separate `tier:fresh-install` test starts clean and verifies the same candidate. The destructive `tier:upgrade-cluster` test installs released NHC on OpenShift 4.22, performs the real update to 5.0, proves NHC survived unchanged, and runs a functional remediation check.",
         "",
         "The local result is from the actual automated test, not a manual simulation. The final CI proof must run the dedicated job on NHC source PR #430 so Prow supplies that PR's temporary operator and bundle images.",
         "",
         "## Current blocker",
         "",
-        "The representative tests and jobs are in draft PRs. The upgrade-job Prow rehearsal is in progress. Downstream builds, catalogs, the 4.22-to-5.0 cluster upgrade, and downstream fresh install are tracked separately and do not require publishing NHC 5.8 to complete this upstream checkpoint.",
+        "The representative tests and all three jobs are in open PRs. The local 4.22-to-5.0 run and Prow validation are in progress. The downstream catalog build, downstream catalog upgrade, and downstream fresh installation remain separate because their real candidate inputs are not yet available.",
         "",
     ])
 
