@@ -15,7 +15,7 @@ bundle_digest=$("$YQ" -r '.digest' "$report_dir/bundle-image.json")
 bundle_repo=${bundle%@*}
 if [[ ${bundle_repo##*/} == *:* ]]; then bundle_repo=${bundle_repo%:*}; fi
 bundle="$bundle_repo@$bundle_digest"
-oc image extract "$bundle" --path "/manifests:$report_dir/manifests" --path "/metadata:$report_dir/metadata" --confirm
+oc image extract "$bundle" --path "/manifests/:$report_dir/manifests" --path "/metadata/:$report_dir/metadata" --confirm
 mapfile -t csvs < <(find "$report_dir/manifests" -name '*clusterserviceversion.yaml')
 [[ ${#csvs[@]} == 1 ]] || { echo "Expected exactly one candidate CSV" >&2; exit 1; }
 csv=${csvs[0]}

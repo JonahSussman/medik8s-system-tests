@@ -24,7 +24,7 @@ for baseline in old snr; do
     repository=${lookup%@*}
     if [[ ${repository##*/} == *:* ]]; then repository=${repository%:*}; fi
     bundle="$repository@$digest"
-    oc image extract "$bundle" --path "/manifests:$directory/manifests" --confirm
+    oc image extract "$bundle" --path "/manifests/:$directory/manifests" --confirm
     mapfile -t csvs < <(find "$directory/manifests" -name '*clusterserviceversion.yaml')
     [[ ${#csvs[@]} == 1 ]]
     manager=$("$YQ" -r '.spec.install.spec.deployments[].spec.template.spec.containers[] | select(.name == "manager") | .image' "${csvs[0]}")
