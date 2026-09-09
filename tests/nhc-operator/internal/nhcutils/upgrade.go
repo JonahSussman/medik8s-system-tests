@@ -33,9 +33,11 @@ func UpgradeBundle(ctx context.Context, binary, namespace, bundle string) (strin
 	return RunOperatorSDK(ctx, binary, "run", "bundle-upgrade", "-n", namespace, bundle)
 }
 
-// CleanupBundle intentionally leaves CRDs alone, since they can be shared.
+// CleanupBundle intentionally leaves CRDs and the namespace OperatorGroup
+// alone, since both can be shared by other operators.
 func CleanupBundle(ctx context.Context, binary, namespace, packageName string) (string, error) {
-	return RunOperatorSDK(ctx, binary, "cleanup", packageName, "-n", namespace)
+	return RunOperatorSDK(ctx, binary, "cleanup", packageName, "-n", namespace,
+		"--delete-all=false", "--delete-crds=false", "--delete-operator-groups=false")
 }
 
 // GetNHCControllerImage returns the manager image from a running controller.

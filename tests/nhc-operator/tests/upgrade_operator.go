@@ -59,9 +59,7 @@ var _ = Describe("NHC operator bundle upgrade", Serial, Ordered,
 				}
 				output, err := nhcutils.CleanupBundle(ctx, inputs.OperatorSDK, inputs.Namespace, packageName)
 				GinkgoWriter.Printf("operator-sdk cleanup %s output:\n%s\n", packageName, output)
-				if err != nil {
-					GinkgoWriter.Printf("WARNING: cleanup %s failed: %v\n", packageName, err)
-				}
+				Expect(err).NotTo(HaveOccurred(), "cleanup must remove test-owned %s resources", packageName)
 			}
 		})
 
