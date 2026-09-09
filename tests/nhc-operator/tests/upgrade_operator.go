@@ -79,6 +79,7 @@ var _ = Describe("NHC operator bundle upgrade", Serial, Ordered,
 			output, err := nhcutils.InstallBundle(ctx, inputs.OperatorSDK, inputs.Namespace, inputs.SNRBundle)
 			GinkgoWriter.Printf("operator-sdk run bundle (SNR) output:\n%s\n", output)
 			Expect(err).NotTo(HaveOccurred())
+			Expect(APIClient.Create(ctx, buildSNRT(nhcparams.NHCUpgradeTemplateName))).To(Succeed())
 			Expect(waitForSNRTemplate(ctx, nhcparams.NHCUpgradeTemplateName)).To(Succeed())
 			By("installing the explicitly pinned older upstream NHC bundle")
 			output, err = nhcutils.InstallBundle(ctx, inputs.OperatorSDK, inputs.Namespace, inputs.OldBundle)
