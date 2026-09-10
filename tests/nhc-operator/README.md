@@ -203,7 +203,7 @@ CatalogSource are present; the remaining steps then switch the Subscription,
 require the downstream operator upgrade, and repeat remediation. A source-bundle
 upgrade result and a downstream-catalog result must be reported separately.
 
-For a candidate source PR, set `MEDIK8S_DIRECT_CANDIDATE_UPGRADE=true` instead
+For a candidate source PR, set `MEDIK8S_UPGRADE_TO_PR_BUNDLE=true` instead
 and provide the same digest-pinned `NHC_UPGRADE_CANDIDATE_*`, operator-sdk,
 package, namespace, and revision inputs used by the standalone tests. After the
 real 4.22-to-5.0 update and released-NHC remediation checkpoint, the scenario

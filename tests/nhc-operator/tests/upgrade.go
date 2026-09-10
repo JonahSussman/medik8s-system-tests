@@ -56,7 +56,7 @@ var _ = Describe("NHC Operator Upgrade",
 		BeforeAll(func() {
 			ctx = context.Background()
 
-			if medik8sparams.DirectCandidateUpgrade {
+			if medik8sparams.UpgradeToPRBundle {
 				var err error
 
 				candidateInputs, err = nhcparams.LoadCandidateInputs()
@@ -134,7 +134,7 @@ var _ = Describe("NHC Operator Upgrade",
 		})
 
 		AfterAll(func() {
-			if medik8sparams.DirectCandidateUpgrade && candidateInputs.OperatorSDK != "" {
+			if medik8sparams.UpgradeToPRBundle && candidateInputs.OperatorSDK != "" {
 				output, err := nhcutils.CleanupBundle(
 					ctx, candidateInputs.OperatorSDK, candidateInputs.Namespace, candidateInputs.Package)
 				if err != nil {
@@ -353,7 +353,7 @@ var _ = Describe("NHC Operator Upgrade",
 
 				cleanupPostRemediationNHC(ctx, &currentTargetNode, "post-ocp-upgrade")
 
-				if medik8sparams.DirectCandidateUpgrade {
+				if medik8sparams.UpgradeToPRBundle {
 					By("Step 7: Upgrade the surviving installation directly to the PR-built bundle")
 
 					output, upgradeErr := nhcutils.UpgradeBundle(ctx, candidateInputs.OperatorSDK,
@@ -676,8 +676,7 @@ func upgradeRunRemediationCycle(ctx context.Context, phase string) (string, erro
 
 	By(fmt.Sprintf("[%s] Waiting for SNR remediation to complete on %s", phase, nodeName))
 
-	if waitErr := waitForSNRRemediationComplete(
-		ctx, nodeName, originalBootID, nhcparams.UpgradeRemediationCompletionTimeout); waitErr != nil {
+	if waitErr := waitForSNRRemediationComplete(ctx, nodeName, originalBootID); waitErr != nil {
 		return nodeName, fmt.Errorf(
 			"[%s] SNR remediation did not complete for %s: %w", phase, nodeName, waitErr)
 	}
