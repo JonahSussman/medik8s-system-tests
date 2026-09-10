@@ -56,6 +56,13 @@ var _ = Describe("NHC Operator Upgrade",
 		BeforeAll(func() {
 			ctx = context.Background()
 
+			if medik8sparams.SkipUpgradeIDMS {
+				Expect(medik8sparams.CandidateVersion).NotTo(BeEmpty(),
+					"NHC_UPGRADE_CANDIDATE_VERSION must identify the direct-catalog candidate")
+				Expect(medik8sparams.CandidateImage).NotTo(BeEmpty(),
+					"NHC_UPGRADE_CANDIDATE_IMAGE must identify the direct-catalog candidate")
+			}
+
 			if medik8sparams.UpgradeToPRBundle {
 				var err error
 
@@ -394,33 +401,37 @@ var _ = Describe("NHC Operator Upgrade",
 					return
 				}
 
-				By("Step 7: Apply deferred IDMS for Konflux catalog images")
-
-				Expect(medik8sparams.SharedDir).NotTo(BeEmpty(),
-					"SHARED_DIR must be set (provided by ci-operator)")
-
-				preIDMSGens, genErr := helpers.GetMCPGenerations(ctx)
-				Expect(genErr).NotTo(HaveOccurred(),
-					"Failed to capture MCP generations before IDMS apply")
-
-				idmsChanged, applyErr := helpers.ApplyIDMSFromSharedDir(ctx,
-					medik8sparams.SharedDir, GinkgoWriter.Printf)
-				Expect(applyErr).NotTo(HaveOccurred(),
-					"Failed to apply IDMS from SHARED_DIR")
-
-				if idmsChanged {
-					By("Waiting for MCP rollout after IDMS change")
-
-					Expect(helpers.WaitForMCPRollout(ctx, preIDMSGens,
-						medik8sparams.MCPDetectionTimeout,
-						medik8sparams.MCPRolloutTimeout,
-						10*time.Second, GinkgoWriter.Printf,
-					)).To(Succeed(), "MCP rollout failed after IDMS apply")
+				if medik8sparams.SkipUpgradeIDMS {
+					By("Step 7: Use directly pullable catalog images; no IDMS is required")
 				} else {
-					GinkgoWriter.Println("IDMS unchanged, skipping MCP rollout wait")
+					By("Step 7: Apply deferred IDMS for Konflux catalog images")
+
+					Expect(medik8sparams.SharedDir).NotTo(BeEmpty(),
+						"SHARED_DIR must be set (provided by ci-operator)")
+
+					preIDMSGens, genErr := helpers.GetMCPGenerations(ctx)
+					Expect(genErr).NotTo(HaveOccurred(),
+						"Failed to capture MCP generations before IDMS apply")
+
+					idmsChanged, applyErr := helpers.ApplyIDMSFromSharedDir(ctx,
+						medik8sparams.SharedDir, GinkgoWriter.Printf)
+					Expect(applyErr).NotTo(HaveOccurred(),
+						"Failed to apply IDMS from SHARED_DIR")
+
+					if idmsChanged {
+						By("Waiting for MCP rollout after IDMS change")
+
+						Expect(helpers.WaitForMCPRollout(ctx, preIDMSGens,
+							medik8sparams.MCPDetectionTimeout,
+							medik8sparams.MCPRolloutTimeout,
+							10*time.Second, GinkgoWriter.Printf,
+						)).To(Succeed(), "MCP rollout failed after IDMS apply")
+					} else {
+						GinkgoWriter.Println("IDMS unchanged, skipping MCP rollout wait")
+					}
 				}
 
-				By("Step 8: Switch operator Subscription to Konflux CatalogSource")
+				By("Step 8: Switch operator Subscription to candidate CatalogSource")
 
 				switchTime := time.Now()
 
@@ -525,7 +536,7 @@ var _ = Describe("NHC Operator Upgrade",
 						operatorUpgraded = true
 					} else {
 						GinkgoWriter.Printf(
-							"Version parity: Konflux catalog offers same "+
+							"Version parity: candidate catalog offers same "+
 								"version %s as GA; subscription healthy on "+
 								"new catalog\n", currentCSV)
 					}
@@ -533,6 +544,14 @@ var _ = Describe("NHC Operator Upgrade",
 					return nil
 				}, medik8sparams.OperatorUpgradeTimeout, nhcparams.DefaultPollInterval).Should(Succeed(),
 					"Operator upgrade or catalog switch verification failed")
+
+				if medik8sparams.SkipUpgradeIDMS {
+					candidateCSV := waitForNHCUpgradeCSV(medik8sparams.OperatorNs,
+						medik8sparams.CandidateVersion, medik8sparams.CandidateImage,
+						"post-public-catalog-switch candidate")
+					Expect(candidateCSV.Object.Name).NotTo(Equal(previousCSV.Object.Name),
+						"the public catalog must produce a new candidate CSV")
+				}
 
 				if operatorUpgraded {
 					By("Step 10: Verify NHC controller pods restarted with new image")
@@ -567,6 +586,11 @@ var _ = Describe("NHC Operator Upgrade",
 					"Post-catalog-switch remediation failed")
 
 				cleanupPostRemediationNHC(ctx, &currentTargetNode, "post-catalog-switch")
+				AddReportEntry("nhc-cluster-catalog-result", map[string]string{
+					"ocpPath": "4.22-to-5.0", "oldCSV": previousCSV.Object.Name,
+					"catalog":         medik8sparams.UpgradeCatalogName,
+					"functionalCheck": "remediation completed before and after the catalog switch",
+				})
 			})
 	})
 

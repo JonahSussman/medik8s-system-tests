@@ -203,6 +203,14 @@ CatalogSource are present; the remaining steps then switch the Subscription,
 require the downstream operator upgrade, and repeat remediation. A source-bundle
 upgrade result and a downstream-catalog result must be reported separately.
 
+For a directly pullable public catalog, set
+`MEDIK8S_SKIP_UPGRADE_IDMS=true` and provide the exact
+`NHC_UPGRADE_CANDIDATE_VERSION` and `NHC_UPGRADE_CANDIDATE_IMAGE`. The test
+still switches the existing Subscription to `medik8s-catalog`, requires the
+exact candidate CSV and controller image, and repeats remediation; it only
+skips the IDMS and MachineConfigPool rollout that public image references do
+not need.
+
 For a candidate source PR, set `MEDIK8S_UPGRADE_TO_PR_BUNDLE=true` instead
 and provide the same digest-pinned `NHC_UPGRADE_CANDIDATE_*`, operator-sdk,
 package, namespace, and revision inputs used by the standalone tests. After the
