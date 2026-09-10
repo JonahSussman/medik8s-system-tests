@@ -15,6 +15,14 @@ NHC_JOB = (
     "pull-ci-medik8s-node-healthcheck-operator-main-"
     "5.0-e2e-system-tests-nhc-operator-upgrade"
 )
+NHC_FRESH_JOB = (
+    "pull-ci-medik8s-node-healthcheck-operator-main-"
+    "5.0-e2e-system-tests-nhc-fresh-install"
+)
+NHC_PR_CLUSTER_JOB = (
+    "pull-ci-medik8s-node-healthcheck-operator-main-"
+    "5.0-e2e-system-tests-nhc-4-22-to-5-0-pr-bundle"
+)
 NHC_CLUSTER_JOB = (
     "pull-ci-medik8s-system-tests-main-4.22-to-5.0-"
     "e2e-nhc-upgrade-4-22-to-5-0-aws"
@@ -100,6 +108,8 @@ def generate():
 
     release_pr = pull_request("openshift/release", 84788)
     prow_status, prow_history = prow_result(NHC_JOB)
+    fresh_prow_status, fresh_prow_history = prow_result(NHC_FRESH_JOB)
+    pr_cluster_status, pr_cluster_history = prow_result(NHC_PR_CLUSTER_JOB)
     cluster_prow_status, cluster_prow_history = prow_result(NHC_CLUSTER_JOB)
     downstream_fresh_status, downstream_fresh_history = prow_result(NHC_DOWNSTREAM_FRESH_JOB)
 
@@ -123,6 +133,8 @@ def generate():
             ci = pr_cell("openshift/release", 84788, release_pr)
             ci += (
                 f"; [candidate Prow]({prow_history})"
+                f"; [fresh-install Prow]({fresh_prow_history})"
+                f"; [PR-bundle cluster-upgrade Prow]({pr_cluster_history})"
                 f"; [cluster-upgrade Prow]({cluster_prow_history})"
                 f"; [downstream fresh-install Prow]({downstream_fresh_history})"
             )
@@ -141,37 +153,41 @@ def generate():
         "",
         "These checks stay separate so upstream evidence cannot be mistaken for downstream release qualification.",
         "",
-        "| Operator | Fresh source install on OpenShift 5 | Released 4.22 operator survives 4.22 → 5.0 | Red Hat catalog upgrade on 5.0 | Fresh downstream install on 5.0 |",
-        "| --- | --- | --- | --- | --- |",
+        "| Operator | Fresh source install on OpenShift 5 | Released 4.22 operator survives 4.22 → 5.0 | Public candidate catalog upgrade | Red Hat catalog upgrade | Fresh downstream install on 5.0 |",
+        "| --- | --- | --- | --- | --- | --- |",
     ])
     for name, *_ in OPERATORS:
         if name == "NHC":
-            fresh_install = "Passed on OpenShift 5.0.0-ec.5 (2026-09-09)"
-            cluster_upgrade = (
-                "Local 4.22-to-5.0 update and old-operator survival completed; "
-                f"post-upgrade remediation fix pending CI; CI: {cluster_prow_status}"
+            fresh_install = (
+                "Passed locally on OpenShift 5.0.0-ec.5 (2026-09-09); "
+                f"CI: {fresh_prow_status}"
             )
-            downstream_upgrade = f"Included in the cluster-upgrade job; CI: {cluster_prow_status}"
+            cluster_upgrade = (
+                "Local old-operator survival observed; complete PR-bundle run active; "
+                f"PR-bundle CI: {pr_cluster_status}"
+            )
+            public_upgrade = f"Implemented with public Quay catalog; CI: {cluster_prow_status}"
+            downstream_upgrade = "Not run; normal Dragonfly/Konflux catalog follows later"
             downstream_fresh = downstream_fresh_status
         else:
-            fresh_install = cluster_upgrade = downstream_upgrade = downstream_fresh = "Not run"
+            fresh_install = cluster_upgrade = public_upgrade = downstream_upgrade = downstream_fresh = "Not run"
 
         lines.append(
             f"| {name} | {fresh_install} | {cluster_upgrade} | "
-            f"{downstream_upgrade} | {downstream_fresh} |"
+            f"{public_upgrade} | {downstream_upgrade} | {downstream_fresh} |"
         )
 
     lines.extend([
         "",
         "## What the NHC test actually does",
         "",
-        "NHC is the one representative operator. The independently selectable `tier:upgrade-operator` Ginkgo test installs pinned older NHC plus its functional dependency, creates a safe NHC configuration, verifies the old controller, upgrades NHC in place to the PR-built candidate bundle, verifies the new version/image/pods, proves the same configuration survived and was reconciled, and cleans up resources owned by that run. The separate `tier:fresh-install` test starts clean and verifies the same candidate. The destructive `tier:upgrade-cluster` test installs released NHC on OpenShift 4.22, performs the real update to 5.0, proves NHC survived unchanged, and runs a functional remediation check.",
+        "NHC is the one representative operator. SNR is installed only as NHC's remediation dependency. The independently selectable `tier:upgrade-operator` Ginkgo test installs pinned older NHC, upgrades it in place to the PR-built candidate bundle, verifies the new version/image/pods and preserved configuration, and cleans up its resources. The separate `tier:fresh-install` test starts clean and verifies the same candidate. The destructive `tier:upgrade-cluster` test installs released NHC on OpenShift 4.22, performs the real update to 5.0, proves NHC survived unchanged, runs remediation, then either upgrades through the PR bundle or switches to a supplied catalog and runs remediation again.",
         "",
         "The local result is from the actual automated test, not a manual simulation. The final CI proof must run the dedicated job on NHC source PR #430 so Prow supplies that PR's temporary operator and bundle images.",
         "",
         "## Current blocker",
         "",
-        "The representative tests and CI jobs are in open PRs. The full cluster-upgrade job prepares the real RHWA catalog with deferred IDMS, upgrades OpenShift, switches NHC to that catalog, and repeats functional validation. A separate job covers downstream fresh installation. Prow results remain required.",
+        "The representative tests and CI jobs are in open PRs. For the current pre-merge test, the full cluster-upgrade job uses Jonah's public Quay catalog, which needs no IDMS. The catalog contains NHC 5.8.0 with an explicit 0.12.1 replacement and skip range. Local catalog-backed and Prow results are still required. The normal Dragonfly/Konflux and Red Hat RHWA catalog path follows later and must be reported separately.",
         "",
     ])
 
