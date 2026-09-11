@@ -203,22 +203,21 @@ func stopKubeletForRemediation(ctx context.Context, nodeName string) error {
 			return nil
 		}
 
-		// Stopping kubelet also stops the debug pod that ran the command. On
-		// some clusters oc debug remains attached until its timeout even though
-		// kubelet was successfully stopped. Accept that timeout only after the
-		// Kubernetes API confirms that the requested node is actually NotReady.
-		if strings.Contains(err.Error(), "timed out") {
-			if waitErr := helpers.WaitForNodeNotReady(
-				ctx, APIClient, nodeName, nhcparams.DefaultPollInterval,
-				nhcparams.NodeNotReadyTimeout, GinkgoWriter.Printf,
-			); waitErr == nil {
-				GinkgoWriter.Printf(
-					"oc debug timed out after stopping kubelet on %s; node is NotReady, continuing\n",
-					nodeName,
-				)
+		// Stopping kubelet kills the debug pod that ran the command, so oc debug
+		// routinely reports failure even when the stop succeeded.
+		// Only propagate the original error when the node
+		// is still Ready, which means the kubelet did not actually stop.
+		if waitErr := helpers.WaitForNodeNotReady(
+			ctx, APIClient, nodeName, nhcparams.DefaultPollInterval,
+			nhcparams.NodeNotReadyTimeout, GinkgoWriter.Printf,
+		); waitErr == nil {
+			GinkgoWriter.Printf(
+				"oc debug reported an error on %s but the node is NotReady, "+
+					"continuing (oc debug error: %v)\n",
+				nodeName, err,
+			)
 
-				return nil
-			}
+			return nil
 		}
 
 		return err
