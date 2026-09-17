@@ -3,7 +3,7 @@ name: Update operator upgrade wiki
 on:
   workflow_dispatch:
   schedule:
-    - cron: "17,47 * * * *"
+    - cron: "17,47 3 * * *"
 
 permissions:
   contents: read
@@ -43,5 +43,5 @@ jobs:
           fi
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git commit -m "Refresh RHWA operator upgrade status"
+          git commit -s -m "Refresh RHWA operator upgrade status"
           git push origin master
