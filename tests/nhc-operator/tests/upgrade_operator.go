@@ -56,25 +56,10 @@ var _ = Describe("NHC Upgrade Operator", Serial, Ordered,
 			clusterVersion := &configv1.ClusterVersion{}
 			Expect(APIClient.Get(ctx, client.ObjectKey{Name: "version"}, clusterVersion)).To(Succeed())
 			Expect(clusterVersion.Status.Desired.Version).To(HavePrefix("5.0."), "requires an OpenShift 5.0 cluster")
-			AddReportEntry("nhc-upgrade-operator-inputs", map[string]string{
-				"baselineNHCBundle": inputs.BaselineNHC.Bundle, "baselineNHCImage": inputs.BaselineNHC.Image,
-				"baselineNHCVersion": inputs.BaselineNHC.Version, "baselineSNRBundle": inputs.BaselineSNR.Bundle,
-				"baselineSNRImage": inputs.BaselineSNR.Image, "baselineSNRVersion": inputs.BaselineSNR.Version,
-				"candidateNHCBundle": inputs.CandidateNHC.Bundle, "candidateNHCImage": inputs.CandidateNHC.Image,
-				"candidateNHCVersion": inputs.CandidateNHC.Version, "candidateSNRBundle": inputs.CandidateSNR.Bundle,
-				"candidateSNRImage": inputs.CandidateSNR.Image, "candidateSNRVersion": inputs.CandidateSNR.Version,
-				"namespace": inputs.Namespace, "package": inputs.Package, "sdk": inputs.OperatorSDK,
-				"systemTestsRevision": inputs.TestRevision,
-			})
+			AddReportEntry("nhc-upgrade-operator-inputs", inputs)
 		})
 
-		JustAfterEach(func() {
-			if CurrentSpecReport().Failed() && ctx != nil && inputs.Namespace != "" {
-				AddReportEntry("nhc-upgrade-failure-evidence", nhcutils.CollectFailureEvidence(ctx, inputs.Namespace))
-			}
-		})
-
-		It("installs a baseline bundle and upgrades its preserved configuration", reportxml.ID("REPLACE_WITH_POLARION_ID"), func() {
+		BeforeEach(func() {
 			By("rejecting leftover resources owned by this standalone scenario")
 			Expect(nhcutils.CheckClean(ctx, APIClient, inputs.Namespace)).To(Succeed())
 			owned = &nhcutils.OwnedRun{API: APIClient, Namespace: inputs.Namespace,
@@ -102,7 +87,15 @@ var _ = Describe("NHC Upgrade Operator", Serial, Ordered,
 					}
 				})
 			}
+		})
 
+		JustAfterEach(func() {
+			if CurrentSpecReport().Failed() && ctx != nil && inputs.Namespace != "" {
+				AddReportEntry("nhc-upgrade-failure-evidence", nhcutils.CollectFailureEvidence(ctx, inputs.Namespace))
+			}
+		})
+
+		It("installs a baseline bundle and upgrades its preserved configuration", reportxml.ID("REPLACE_WITH_POLARION_ID"), func() {
 			Expect(owned.CreateNamespace(ctx)).To(Succeed())
 			By("installing the pinned SNR prerequisite and its remediation template")
 

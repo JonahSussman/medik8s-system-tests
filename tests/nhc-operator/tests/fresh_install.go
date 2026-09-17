@@ -24,6 +24,7 @@ var _ = Describe("NHC Fresh Install", Serial,
 		var (
 			ctx    context.Context
 			inputs nhcparams.FreshInstallInputs
+			owned  *nhcutils.OwnedRun
 		)
 
 		BeforeEach(func() {
@@ -33,34 +34,25 @@ var _ = Describe("NHC Fresh Install", Serial,
 
 			inputs, err = nhcparams.LoadFreshInstallInputs()
 			Expect(err).NotTo(HaveOccurred())
+
 			inputs, err = nhcutils.ResolveAndVerifyFreshInstallInputs(ctx, inputs)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(inputs.Namespace).To(Equal(medik8sparams.OperatorNs))
-			AddReportEntry("nhc-fresh-install-inputs", map[string]string{
-				"candidateNHCBundle": inputs.CandidateNHC.Bundle, "candidateNHCImage": inputs.CandidateNHC.Image,
-				"candidateNHCVersion": inputs.CandidateNHC.Version, "candidateSNRBundle": inputs.CandidateSNR.Bundle,
-				"candidateSNRImage": inputs.CandidateSNR.Image, "candidateSNRVersion": inputs.CandidateSNR.Version,
-				"namespace": inputs.Namespace, "package": inputs.Package, "sdk": inputs.OperatorSDK,
-				"systemTestsRevision": inputs.TestRevision,
-			})
+
+			AddReportEntry("nhc-fresh-install-inputs", inputs)
 
 			clusterVersion := &configv1.ClusterVersion{}
 			Expect(APIClient.Get(ctx, client.ObjectKey{Name: "version"}, clusterVersion)).To(Succeed())
 			Expect(clusterVersion.Status.Desired.Version).To(HavePrefix("5.0."), "requires an OpenShift 5.0 cluster")
-		})
 
-		JustAfterEach(func() {
-			if CurrentSpecReport().Failed() && inputs.Namespace != "" {
-				AddReportEntry("nhc-fresh-install-failure-evidence", nhcutils.CollectFailureEvidence(ctx, inputs.Namespace))
-			}
-		})
-
-		It("installs and reconciles the pinned candidate on a clean cluster", reportxml.ID("REPLACE_WITH_POLARION_ID"), func() {
 			Expect(nhcutils.CheckClean(ctx, APIClient, inputs.Namespace)).To(Succeed())
 
-			owned := &nhcutils.OwnedRun{
-				API: APIClient, Namespace: inputs.Namespace, Token: rand.Text(),
-				SDK: inputs.OperatorSDK, CleanupPackage: nhcutils.CleanupBundle,
+			owned = &nhcutils.OwnedRun{
+				API:            APIClient,
+				Namespace:      inputs.Namespace,
+				Token:          rand.Text(),
+				SDK:            inputs.OperatorSDK,
+				CleanupPackage: nhcutils.CleanupBundle,
 			}
 
 			if inputs.SkipCleanup {
@@ -83,7 +75,15 @@ var _ = Describe("NHC Fresh Install", Serial,
 					}
 				})
 			}
+		})
 
+		JustAfterEach(func() {
+			if CurrentSpecReport().Failed() && inputs.Namespace != "" {
+				AddReportEntry("nhc-fresh-install-failure-evidence", nhcutils.CollectFailureEvidence(ctx, inputs.Namespace))
+			}
+		})
+
+		It("installs and reconciles the pinned candidate on a clean cluster", reportxml.ID("REPLACE_WITH_POLARION_ID"), func() {
 			Expect(owned.CreateNamespace(ctx)).To(Succeed())
 
 			By("installing the pinned SNR prerequisite")

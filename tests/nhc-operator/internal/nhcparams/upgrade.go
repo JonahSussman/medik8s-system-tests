@@ -43,27 +43,44 @@ const (
 
 // OperatorArtifact identifies one bundle and the operator version and image it contains.
 type OperatorArtifact struct {
-	Bundle, Version, Image string
+	Bundle  string `json:"bundle"`
+	Version string `json:"version"`
+	Image   string `json:"image"`
 }
 
 // UpgradeOperatorInputs are the artifacts used by tier:upgrade-operator.
 type UpgradeOperatorInputs struct {
-	BaselineNHC, CandidateNHC, BaselineSNR, CandidateSNR      OperatorArtifact
-	TestRevision, Package, SNRPackage, Namespace, OperatorSDK string
-	SkipCleanup                                               bool
+	BaselineNHC  OperatorArtifact `json:"baselineNHC"`
+	CandidateNHC OperatorArtifact `json:"candidateNHC"`
+	BaselineSNR  OperatorArtifact `json:"baselineSNR"`
+	CandidateSNR OperatorArtifact `json:"candidateSNR"`
+	TestRevision string           `json:"testRevision"`
+	Package      string           `json:"package"`
+	SNRPackage   string           `json:"snrPackage"`
+	Namespace    string           `json:"namespace"`
+	OperatorSDK  string           `json:"operatorSDK"`
+	SkipCleanup  bool             `json:"skipCleanup"`
 }
 
 // FreshInstallInputs are the artifacts used by tier:fresh-install.
 type FreshInstallInputs struct {
-	CandidateNHC, CandidateSNR                                OperatorArtifact
-	TestRevision, Package, SNRPackage, Namespace, OperatorSDK string
-	SkipCleanup                                               bool
+	CandidateNHC OperatorArtifact `json:"candidateNHC"`
+	CandidateSNR OperatorArtifact `json:"candidateSNR"`
+	TestRevision string           `json:"testRevision"`
+	Package      string           `json:"package"`
+	SNRPackage   string           `json:"snrPackage"`
+	Namespace    string           `json:"namespace"`
+	OperatorSDK  string           `json:"operatorSDK"`
+	SkipCleanup  bool             `json:"skipCleanup"`
 }
 
 // UpgradeClusterInputs are the PR-built artifacts used by tier:upgrade-cluster.
 type UpgradeClusterInputs struct {
-	CandidateNHC                                  OperatorArtifact
-	TestRevision, Package, Namespace, OperatorSDK string
+	CandidateNHC OperatorArtifact `json:"candidateNHC"`
+	TestRevision string           `json:"testRevision"`
+	Package      string           `json:"package"`
+	Namespace    string           `json:"namespace"`
+	OperatorSDK  string           `json:"operatorSDK"`
 }
 
 // LoadUpgradeOperatorInputs reads candidate inputs and optional baseline/SNR overrides.
