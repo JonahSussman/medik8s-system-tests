@@ -192,7 +192,7 @@ var _ = Describe(
 				platform, _, platformErr = helpers.DetectPlatform(context.Background(), APIClient)
 				Expect(platformErr).ToNot(HaveOccurred(), "Failed to detect cluster platform")
 
-				switch platform {
+				switch platform { //nolint:exhaustive // only BareMetal and None lack a CP owner; default skips the rest.
 				case configv1.BareMetalPlatformType, configv1.NonePlatformType:
 					GinkgoWriter.Printf("Platform %s: control-plane nodes have no controller owner\n", platform)
 				default:
