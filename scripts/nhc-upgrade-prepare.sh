@@ -4,6 +4,7 @@ set -euo pipefail
 [[ $# == 1 && ( $1 == operator || $1 == bundle ) ]] || {
     echo "usage: $0 operator|bundle (see tests/nhc-operator/README.md)" >&2; exit 2;
 }
+
 : "${NHC_SOURCE_REPOSITORY:?Set the local NHC repository path}"
 : "${NHC_BUILD_DIR:?Set a new persistent standalone clone path}"
 : "${NHC_BUILD_REPORT_DIR:?Set a persistent build evidence directory}"
@@ -13,6 +14,7 @@ set -euo pipefail
 : "${BUNDLE_BUILD_IMAGE:?Set your approved writable bundle image tag}"
 : "${CONSOLE_PLUGIN_IMAGE:?Set the verified console image digest pullspec}"
 : "${MUST_GATHER_IMAGE:?Set the verified must-gather digest pullspec}"
+
 [[ $NHC_BUILD_DIR == /* && $NHC_BUILD_REPORT_DIR == /* && $NHC_BUILD_DIR != /tmp/* && $NHC_BUILD_REPORT_DIR != /tmp/* ]]
 [[ $NHC_EXPECTED_SOURCE_COMMIT =~ ^[a-f0-9]{40}$ ]]
 [[ ${OPERATOR_BUILD_IMAGE##*/} == *:* && ${BUNDLE_BUILD_IMAGE##*/} == *:* ]]

@@ -26,12 +26,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var _ = Describe("NHC operator bundle upgrade", Serial, Ordered,
+var _ = Describe("NHC Upgrade Operator", Serial, Ordered,
 	Label(labels.OperatorNHC, nhcparams.Label, labels.TierUpgradeOperator,
 		labels.DisruptionNonDestructive, labels.PlatformAny, labels.ComponentOLM), func() {
 		var (
 			ctx        context.Context
-			inputs     nhcparams.UpgradeInputs
+			inputs     nhcparams.UpgradeOperatorInputs
 			oldCSV     *olm.ClusterServiceVersionBuilder
 			configUID  string
 			configSpec map[string]interface{}
@@ -43,9 +43,9 @@ var _ = Describe("NHC operator bundle upgrade", Serial, Ordered,
 
 			var err error
 
-			inputs, err = nhcparams.LoadUpgradeInputs()
+			inputs, err = nhcparams.LoadUpgradeOperatorInputs()
 			Expect(err).NotTo(HaveOccurred())
-			inputs, err = nhcutils.ResolveAndVerifyUpgradeInputs(ctx, inputs)
+			inputs, err = nhcutils.ResolveAndVerifyUpgradeOperatorInputs(ctx, inputs)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(inputs.Namespace).To(Equal(medik8sparams.OperatorNs), "NHC uses its established operator namespace")
 			sdkVersion, err := nhcutils.RunOperatorSDK(ctx, inputs.OperatorSDK, "version")
@@ -56,11 +56,15 @@ var _ = Describe("NHC operator bundle upgrade", Serial, Ordered,
 			clusterVersion := &configv1.ClusterVersion{}
 			Expect(APIClient.Get(ctx, client.ObjectKey{Name: "version"}, clusterVersion)).To(Succeed())
 			Expect(clusterVersion.Status.Desired.Version).To(HavePrefix("5.0."), "requires an OpenShift 5.0 cluster")
-			AddReportEntry("nhc-upgrade-inputs", map[string]string{
-				"candidateBundle": inputs.CandidateBundle, "candidateCommit": inputs.CandidateCommit, "candidateImage": inputs.CandidateImage,
-				"candidateVersion": inputs.CandidateVersion, "namespace": inputs.Namespace, "oldBundle": inputs.OldBundle,
-				"oldImage": inputs.OldImage, "oldVersion": inputs.OldVersion, "package": inputs.Package,
-				"sdk": inputs.OperatorSDK, "snrBundle": inputs.SNRBundle, "systemTestsRevision": inputs.TestRevision,
+			AddReportEntry("nhc-upgrade-operator-inputs", map[string]string{
+				"baselineNHCBundle": inputs.BaselineNHC.Bundle, "baselineNHCImage": inputs.BaselineNHC.Image,
+				"baselineNHCVersion": inputs.BaselineNHC.Version, "baselineSNRBundle": inputs.BaselineSNR.Bundle,
+				"baselineSNRImage": inputs.BaselineSNR.Image, "baselineSNRVersion": inputs.BaselineSNR.Version,
+				"candidateNHCBundle": inputs.CandidateNHC.Bundle, "candidateNHCImage": inputs.CandidateNHC.Image,
+				"candidateNHCVersion": inputs.CandidateNHC.Version, "candidateSNRBundle": inputs.CandidateSNR.Bundle,
+				"candidateSNRImage": inputs.CandidateSNR.Image, "candidateSNRVersion": inputs.CandidateSNR.Version,
+				"namespace": inputs.Namespace, "package": inputs.Package, "sdk": inputs.OperatorSDK,
+				"systemTestsRevision": inputs.TestRevision,
 			})
 		})
 
@@ -70,7 +74,7 @@ var _ = Describe("NHC operator bundle upgrade", Serial, Ordered,
 			}
 		})
 
-		It("installs a pinned old bundle and upgrades its preserved configuration", reportxml.ID("REPLACE_WITH_POLARION_ID"), func() {
+		It("installs a baseline bundle and upgrades its preserved configuration", reportxml.ID("REPLACE_WITH_POLARION_ID"), func() {
 			By("rejecting leftover resources owned by this standalone scenario")
 			Expect(nhcutils.CheckClean(ctx, APIClient, inputs.Namespace)).To(Succeed())
 			owned = &nhcutils.OwnedRun{API: APIClient, Namespace: inputs.Namespace,
@@ -103,23 +107,23 @@ var _ = Describe("NHC operator bundle upgrade", Serial, Ordered,
 			By("installing the pinned SNR prerequisite and its remediation template")
 
 			owned.Packages = append(owned.Packages, inputs.SNRPackage)
-			output, err := nhcutils.InstallBundle(ctx, inputs.OperatorSDK, inputs.Namespace, inputs.SNRBundle)
+			output, err := nhcutils.InstallBundle(ctx, inputs.OperatorSDK, inputs.Namespace, inputs.BaselineSNR.Bundle)
 			GinkgoWriter.Printf("operator-sdk run bundle (SNR) output:\n%s\n", output)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(waitForUpgradeAPI(ctx, upgradeTemplate(inputs.Namespace))).To(Succeed())
 			Expect(owned.Create(ctx, buildSNRT(nhcparams.NHCUpgradeTemplateName))).To(Succeed())
 			Expect(waitForSNRTemplate(ctx, nhcparams.NHCUpgradeTemplateName)).To(Succeed())
-			By("installing the explicitly pinned older upstream NHC bundle")
+			By("installing the resolved downstream NHC baseline bundle")
 
 			owned.Packages = append(owned.Packages, inputs.Package)
-			output, err = nhcutils.InstallBundle(ctx, inputs.OperatorSDK, inputs.Namespace, inputs.OldBundle)
-			GinkgoWriter.Printf("operator-sdk run bundle (old NHC) output:\n%s\n", output)
+			output, err = nhcutils.InstallBundle(ctx, inputs.OperatorSDK, inputs.Namespace, inputs.BaselineNHC.Bundle)
+			GinkgoWriter.Printf("operator-sdk run bundle (baseline NHC) output:\n%s\n", output)
 			Expect(err).NotTo(HaveOccurred())
 
-			oldCSV = waitForNHCUpgradeCSV(inputs.Namespace, inputs.OldVersion, inputs.OldImage, "old")
+			oldCSV = waitForNHCUpgradeCSV(inputs.Namespace, inputs.BaselineNHC.Version, inputs.BaselineNHC.Image, "baseline")
 			oldImage, err := nhcutils.GetNHCControllerImage(APIClient)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(oldImage).To(Equal(inputs.OldImage))
+			Expect(oldImage).To(Equal(inputs.BaselineNHC.Image))
 			By("creating a safe, observable NodeHealthCheck configuration")
 			Expect(waitForUpgradeAPI(ctx, upgradeNHC())).To(Succeed())
 			nhc := upgradeNHC()
@@ -130,17 +134,17 @@ var _ = Describe("NHC operator bundle upgrade", Serial, Ordered,
 
 			By("upgrading in place to the explicitly supplied candidate bundle")
 
-			output, err = nhcutils.UpgradeBundle(ctx, inputs.OperatorSDK, inputs.Namespace, inputs.CandidateBundle)
+			output, err = nhcutils.UpgradeBundle(ctx, inputs.OperatorSDK, inputs.Namespace, inputs.CandidateNHC.Bundle)
 			GinkgoWriter.Printf("operator-sdk run bundle-upgrade output:\n%s\n", output)
 			Expect(err).NotTo(HaveOccurred(), "the old operator must not be uninstalled before upgrade")
 			By("requiring a new CSV and the candidate version and image")
 
-			newCSV := waitForNHCUpgradeCSV(inputs.Namespace, inputs.CandidateVersion, inputs.CandidateImage, "candidate")
+			newCSV := waitForNHCUpgradeCSV(inputs.Namespace, inputs.CandidateNHC.Version, inputs.CandidateNHC.Image, "candidate")
 			Expect(newCSV.Object.Name).NotTo(Equal(oldCSV.Object.Name), "version parity is not an upgrade")
 
 			candidateImage, err := nhcutils.GetNHCControllerImage(APIClient)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(candidateImage).To(Equal(inputs.CandidateImage))
+			Expect(candidateImage).To(Equal(inputs.CandidateNHC.Image))
 			By("verifying the same configuration identity, specification, and reconciliation")
 
 			uid, spec := captureNHCConfiguration(ctx)

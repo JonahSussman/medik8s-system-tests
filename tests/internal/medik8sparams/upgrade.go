@@ -52,9 +52,9 @@ var (
 	// whose bundle already contains directly pullable image references.
 	SkipUpgradeIDMS = os.Getenv("MEDIK8S_SKIP_UPGRADE_IDMS") == envTrue
 	// CandidateVersion is the exact NHC version expected from a direct catalog.
-	CandidateVersion = os.Getenv("NHC_UPGRADE_CANDIDATE_VERSION")
+	CandidateVersion = os.Getenv("NHC_UPGRADE_CANDIDATE_NHC_VERSION")
 	// CandidateImage is the exact NHC controller image expected from a direct catalog.
-	CandidateImage = os.Getenv("NHC_UPGRADE_CANDIDATE_IMAGE")
+	CandidateImage = os.Getenv("NHC_UPGRADE_CANDIDATE_NHC_IMAGE")
 	// KubeletStopViaOCDebug switches the kubelet-stop remediation trigger from
 	// SSH to "oc debug node/".
 	KubeletStopViaOCDebug = os.Getenv("MEDIK8S_KUBELET_STOP_OCDEBUG") == envTrue

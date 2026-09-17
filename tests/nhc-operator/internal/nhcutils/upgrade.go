@@ -32,12 +32,12 @@ func RunOperatorSDK(ctx context.Context, binary string, args ...string) (string,
 
 // InstallBundle installs a bundle into the scenario's namespace.
 func InstallBundle(ctx context.Context, binary, namespace, bundle string) (string, error) {
-	return RunOperatorSDK(ctx, binary, "run", "bundle", "-n", namespace, bundle)
+	return RunOperatorSDK(ctx, binary, "run", "bundle", "-n", namespace, "--timeout=10m", bundle)
 }
 
 // UpgradeBundle upgrades the existing bundle installation in place.
 func UpgradeBundle(ctx context.Context, binary, namespace, bundle string) (string, error) {
-	return RunOperatorSDK(ctx, binary, "run", "bundle-upgrade", "-n", namespace, bundle)
+	return RunOperatorSDK(ctx, binary, "run", "bundle-upgrade", "-n", namespace, "--timeout=10m", bundle)
 }
 
 // CleanupBundle intentionally leaves CRDs and the namespace OperatorGroup

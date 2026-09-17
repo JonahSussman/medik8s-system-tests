@@ -31,7 +31,7 @@ func InstallGASNR(apiClient *clients.Settings) (*olm.SubscriptionBuilder, error)
 		medik8sparams.OperatorNs,
 		medik8sparams.GAOperatorCatalog,
 		medik8sparams.GACatalogNamespace,
-		nhcparams.ClusterUpgradeSNRPackage,
+		nhcparams.UpgradeSNRPackage,
 		medik8sparams.GAChannel,
 	)
 }

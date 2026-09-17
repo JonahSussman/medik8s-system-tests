@@ -3,9 +3,13 @@ package nhcparams
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 )
 
 const (
@@ -21,111 +25,181 @@ const (
 	ClusterUpgradeTestName = "nhc-upgrade-test"
 	// ClusterUpgradeSNRSubName is the test-owned SNR prerequisite Subscription.
 	ClusterUpgradeSNRSubName = "nhc-upgrade-snr"
-	// ClusterUpgradeSNRPackage is the released SNR package installed as the remediator.
-	ClusterUpgradeSNRPackage = "self-node-remediation"
+	// UpgradeSNRPackage is the released SNR package installed as the remediator.
+	UpgradeSNRPackage = "self-node-remediation"
 	// ClusterUpgradeSNRCSVPattern identifies the released SNR CSV.
 	ClusterUpgradeSNRCSVPattern = "self-node-remediation"
+	// UpgradeNHCPackage is the fixed NHC package under test.
+	UpgradeNHCPackage = "node-healthcheck-operator"
+	// UpgradeNamespace is the established namespace shared by the NHC and SNR operators.
+	UpgradeNamespace = medik8sparams.OperatorNs
+	// BaselineNHCBundleRepository contains released downstream NHC bundles.
+	BaselineNHCBundleRepository = "registry.redhat.io/workload-availability/node-healthcheck-operator-bundle"
+	// BaselineSNRBundleRepository contains released downstream SNR bundles.
+	BaselineSNRBundleRepository = "registry.redhat.io/workload-availability/self-node-remediation-operator-bundle"
 	// UpgradeRemediationCompletionTimeout bounds each destructive remediation checkpoint.
 	UpgradeRemediationCompletionTimeout = 20 * time.Minute
 )
 
-// UpgradeInputs make the exact input artifacts visible to both local and CI
-// runs. Required values intentionally have no floating-image defaults.
-type UpgradeInputs struct {
-	OldBundle, OldVersion, OldImage                                    string
-	CandidateBundle, CandidateVersion, CandidateImage                  string
-	CandidateCommit, TestRevision                                      string
-	SNRBundle, SNRVersion, SNRPackage, Package, Namespace, OperatorSDK string
-	SkipCleanup                                                        bool
+// OperatorArtifact identifies one bundle and the operator version and image it contains.
+type OperatorArtifact struct {
+	Bundle, Version, Image string
 }
 
-// CandidateInputs identify a PR-built candidate used after a real OpenShift upgrade.
-type CandidateInputs struct {
-	Bundle, Version, Image, Commit, TestRevision, Package, Namespace, OperatorSDK string
+// UpgradeOperatorInputs are the artifacts used by tier:upgrade-operator.
+type UpgradeOperatorInputs struct {
+	BaselineNHC, CandidateNHC, BaselineSNR, CandidateSNR      OperatorArtifact
+	TestRevision, Package, SNRPackage, Namespace, OperatorSDK string
+	SkipCleanup                                               bool
 }
 
-// LoadCandidateInputs reads the PR-built artifacts required by the cluster-to-candidate scenario.
-func LoadCandidateInputs() (CandidateInputs, error) {
-	inputs := CandidateInputs{
-		Bundle: os.Getenv("NHC_UPGRADE_CANDIDATE_BUNDLE"), Version: os.Getenv("NHC_UPGRADE_CANDIDATE_VERSION"),
-		Image: os.Getenv("NHC_UPGRADE_CANDIDATE_IMAGE"), Commit: os.Getenv("NHC_UPGRADE_CANDIDATE_COMMIT"),
-		TestRevision: os.Getenv("NHC_UPGRADE_TEST_REVISION"), Package: os.Getenv("NHC_UPGRADE_PACKAGE"),
-		Namespace: os.Getenv("NHC_UPGRADE_NAMESPACE"), OperatorSDK: os.Getenv("NHC_UPGRADE_OPERATOR_SDK"),
+// FreshInstallInputs are the artifacts used by tier:fresh-install.
+type FreshInstallInputs struct {
+	CandidateNHC, CandidateSNR                                OperatorArtifact
+	TestRevision, Package, SNRPackage, Namespace, OperatorSDK string
+	SkipCleanup                                               bool
+}
+
+// UpgradeClusterInputs are the PR-built artifacts used by tier:upgrade-cluster.
+type UpgradeClusterInputs struct {
+	CandidateNHC                                  OperatorArtifact
+	TestRevision, Package, Namespace, OperatorSDK string
+}
+
+// LoadUpgradeOperatorInputs reads candidate inputs and optional baseline/SNR overrides.
+func LoadUpgradeOperatorInputs() (UpgradeOperatorInputs, error) {
+	skipCleanup, err := loadSkipCleanup()
+	if err != nil {
+		return UpgradeOperatorInputs{}, err
 	}
 
+	testRevision, err := loadTestRevision()
+	if err != nil {
+		return UpgradeOperatorInputs{}, err
+	}
+
+	candidateNHC, operatorSDK, err := loadCandidateNHC("NHC operator upgrade scenario")
+	if err != nil {
+		return UpgradeOperatorInputs{}, err
+	}
+
+	return UpgradeOperatorInputs{
+		BaselineNHC: OperatorArtifact{
+			Bundle:  os.Getenv("NHC_UPGRADE_BASELINE_NHC_BUNDLE"),
+			Version: os.Getenv("NHC_UPGRADE_BASELINE_NHC_VERSION"),
+			Image:   os.Getenv("NHC_UPGRADE_BASELINE_NHC_IMAGE"),
+		},
+		CandidateNHC: candidateNHC,
+		BaselineSNR: OperatorArtifact{
+			Bundle:  os.Getenv("NHC_UPGRADE_BASELINE_SNR_BUNDLE"),
+			Version: os.Getenv("NHC_UPGRADE_BASELINE_SNR_VERSION"),
+			Image:   os.Getenv("NHC_UPGRADE_BASELINE_SNR_IMAGE"),
+		},
+		CandidateSNR: OperatorArtifact{
+			Bundle:  os.Getenv("NHC_UPGRADE_CANDIDATE_SNR_BUNDLE"),
+			Version: os.Getenv("NHC_UPGRADE_CANDIDATE_SNR_VERSION"),
+			Image:   os.Getenv("NHC_UPGRADE_CANDIDATE_SNR_IMAGE"),
+		},
+		TestRevision: testRevision, Package: UpgradeNHCPackage, SNRPackage: UpgradeSNRPackage,
+		Namespace: UpgradeNamespace, OperatorSDK: operatorSDK, SkipCleanup: skipCleanup,
+	}, nil
+}
+
+// LoadFreshInstallInputs reads candidate NHC and SNR artifacts for a fresh installation.
+func LoadFreshInstallInputs() (FreshInstallInputs, error) {
+	skipCleanup, err := loadSkipCleanup()
+	if err != nil {
+		return FreshInstallInputs{}, err
+	}
+
+	testRevision, err := loadTestRevision()
+	if err != nil {
+		return FreshInstallInputs{}, err
+	}
+
+	candidateNHC, operatorSDK, err := loadCandidateNHC("NHC fresh-install scenario")
+	if err != nil {
+		return FreshInstallInputs{}, err
+	}
+
+	return FreshInstallInputs{
+		CandidateNHC: candidateNHC,
+		CandidateSNR: OperatorArtifact{
+			Bundle:  os.Getenv("NHC_UPGRADE_CANDIDATE_SNR_BUNDLE"),
+			Version: os.Getenv("NHC_UPGRADE_CANDIDATE_SNR_VERSION"),
+			Image:   os.Getenv("NHC_UPGRADE_CANDIDATE_SNR_IMAGE"),
+		},
+		TestRevision: testRevision, Package: UpgradeNHCPackage, SNRPackage: UpgradeSNRPackage,
+		Namespace: UpgradeNamespace, OperatorSDK: operatorSDK, SkipCleanup: skipCleanup,
+	}, nil
+}
+
+// LoadUpgradeClusterInputs reads the PR-built NHC artifact used after a real OpenShift upgrade.
+func LoadUpgradeClusterInputs() (UpgradeClusterInputs, error) {
+	testRevision, err := loadTestRevision()
+	if err != nil {
+		return UpgradeClusterInputs{}, err
+	}
+
+	candidateNHC, operatorSDK, err := loadCandidateNHC("NHC candidate cluster-upgrade scenario")
+	if err != nil {
+		return UpgradeClusterInputs{}, err
+	}
+
+	return UpgradeClusterInputs{
+		CandidateNHC: candidateNHC, OperatorSDK: operatorSDK, TestRevision: testRevision,
+		Package: UpgradeNHCPackage, Namespace: UpgradeNamespace,
+	}, nil
+}
+
+func loadCandidateNHC(scenario string) (OperatorArtifact, string, error) {
+	// These four caller-supplied values may be populated by Makefile automation in the future.
+	candidate := OperatorArtifact{
+		Bundle:  os.Getenv("NHC_UPGRADE_CANDIDATE_NHC_BUNDLE"),
+		Version: os.Getenv("NHC_UPGRADE_CANDIDATE_NHC_VERSION"),
+		Image:   os.Getenv("NHC_UPGRADE_CANDIDATE_NHC_IMAGE"),
+	}
+	operatorSDK := os.Getenv("NHC_UPGRADE_OPERATOR_SDK")
+
 	for key, value := range map[string]string{
-		"NHC_UPGRADE_CANDIDATE_BUNDLE": inputs.Bundle, "NHC_UPGRADE_CANDIDATE_VERSION": inputs.Version,
-		"NHC_UPGRADE_CANDIDATE_IMAGE": inputs.Image, "NHC_UPGRADE_CANDIDATE_COMMIT": inputs.Commit,
-		"NHC_UPGRADE_TEST_REVISION": inputs.TestRevision, "NHC_UPGRADE_PACKAGE": inputs.Package,
-		"NHC_UPGRADE_NAMESPACE": inputs.Namespace, "NHC_UPGRADE_OPERATOR_SDK": inputs.OperatorSDK,
+		"NHC_UPGRADE_CANDIDATE_NHC_BUNDLE":  candidate.Bundle,
+		"NHC_UPGRADE_CANDIDATE_NHC_VERSION": candidate.Version,
+		"NHC_UPGRADE_CANDIDATE_NHC_IMAGE":   candidate.Image,
+		"NHC_UPGRADE_OPERATOR_SDK":          operatorSDK,
 	} {
 		if value == "" {
-			return CandidateInputs{}, fmt.Errorf("%s must be set for the NHC candidate cluster-upgrade scenario", key)
+			return OperatorArtifact{}, "", fmt.Errorf("%s must be set for the %s", key, scenario)
 		}
 	}
 
-	if inputs.Package != "node-healthcheck-operator" {
-		return CandidateInputs{}, fmt.Errorf("candidate package must be node-healthcheck-operator")
-	}
-
-	commit := regexp.MustCompile(`^[a-f0-9]{40}$`)
-	if !commit.MatchString(inputs.Commit) || !commit.MatchString(inputs.TestRevision) {
-		return CandidateInputs{}, fmt.Errorf("candidate and test revisions must be full Git commit hashes")
-	}
-
-	return inputs, nil
+	return candidate, operatorSDK, nil
 }
 
-// LoadUpgradeInputs reads and validates the pinned artifacts for an upgrade run.
-func LoadUpgradeInputs() (UpgradeInputs, error) {
+func loadSkipCleanup() (bool, error) {
 	skipCleanup, err := strconv.ParseBool(envOrDefault("NHC_UPGRADE_SKIP_CLEANUP", "false"))
 	if err != nil {
-		return UpgradeInputs{}, fmt.Errorf("NHC_UPGRADE_SKIP_CLEANUP must be a boolean: %w", err)
+		return false, fmt.Errorf("NHC_UPGRADE_SKIP_CLEANUP must be a boolean: %w", err)
 	}
 
-	inputs := UpgradeInputs{
-		OldBundle: os.Getenv("NHC_UPGRADE_OLD_BUNDLE"), OldVersion: os.Getenv("NHC_UPGRADE_OLD_VERSION"),
-		OldImage: os.Getenv("NHC_UPGRADE_OLD_IMAGE"), CandidateBundle: os.Getenv("NHC_UPGRADE_CANDIDATE_BUNDLE"),
-		CandidateVersion: os.Getenv("NHC_UPGRADE_CANDIDATE_VERSION"),
-		CandidateImage:   os.Getenv("NHC_UPGRADE_CANDIDATE_IMAGE"),
-		CandidateCommit:  os.Getenv("NHC_UPGRADE_CANDIDATE_COMMIT"), TestRevision: os.Getenv("NHC_UPGRADE_TEST_REVISION"),
-		SNRBundle: os.Getenv("NHC_UPGRADE_SNR_BUNDLE"), SNRPackage: os.Getenv("NHC_UPGRADE_SNR_PACKAGE"),
-		SNRVersion: os.Getenv("NHC_UPGRADE_SNR_VERSION"),
-		Package:    os.Getenv("NHC_UPGRADE_PACKAGE"), Namespace: os.Getenv("NHC_UPGRADE_NAMESPACE"),
-		OperatorSDK: os.Getenv("NHC_UPGRADE_OPERATOR_SDK"), SkipCleanup: skipCleanup,
-	}
-	if inputs.SNRVersion == "" {
-		inputs.SNRVersion = "0.13.0"
-	}
+	return skipCleanup, nil
+}
 
-	for key, value := range map[string]string{
-		"NHC_UPGRADE_OLD_BUNDLE": inputs.OldBundle, "NHC_UPGRADE_OLD_VERSION": inputs.OldVersion,
-		"NHC_UPGRADE_OLD_IMAGE": inputs.OldImage, "NHC_UPGRADE_CANDIDATE_BUNDLE": inputs.CandidateBundle,
-		"NHC_UPGRADE_CANDIDATE_VERSION": inputs.CandidateVersion, "NHC_UPGRADE_CANDIDATE_IMAGE": inputs.CandidateImage,
-		"NHC_UPGRADE_CANDIDATE_COMMIT": inputs.CandidateCommit, "NHC_UPGRADE_TEST_REVISION": inputs.TestRevision,
-		"NHC_UPGRADE_SNR_BUNDLE": inputs.SNRBundle, "NHC_UPGRADE_SNR_PACKAGE": inputs.SNRPackage,
-		"NHC_UPGRADE_PACKAGE": inputs.Package, "NHC_UPGRADE_NAMESPACE": inputs.Namespace,
-		"NHC_UPGRADE_OPERATOR_SDK": inputs.OperatorSDK,
-	} {
-		if value == "" {
-			return UpgradeInputs{}, fmt.Errorf("%s must be set for the NHC operator upgrade scenario", key)
+func loadTestRevision() (string, error) {
+	revision := os.Getenv("NHC_UPGRADE_TEST_REVISION")
+	if revision == "" {
+		output, err := exec.Command("git", "rev-parse", "HEAD").Output()
+		if err != nil {
+			return "", fmt.Errorf("derive NHC_UPGRADE_TEST_REVISION: %w", err)
 		}
+
+		revision = strings.TrimSpace(string(output))
 	}
 
-	if inputs.Package != "node-healthcheck-operator" || inputs.SNRPackage != "self-node-remediation" {
-		return UpgradeInputs{}, fmt.Errorf("this sample requires the upstream NHC and SNR packages")
+	if !regexp.MustCompile(`^[a-f0-9]{40}$`).MatchString(revision) {
+		return "", fmt.Errorf("NHC_UPGRADE_TEST_REVISION must be a full Git commit hash")
 	}
 
-	if inputs.OldVersion == inputs.CandidateVersion || inputs.OldImage == inputs.CandidateImage {
-		return UpgradeInputs{}, fmt.Errorf("candidate version and image must differ from the old installation")
-	}
-
-	commit := regexp.MustCompile(`^[a-f0-9]{40}$`)
-	if !commit.MatchString(inputs.CandidateCommit) || !commit.MatchString(inputs.TestRevision) {
-		return UpgradeInputs{}, fmt.Errorf("candidate and test revisions must be full Git commit hashes")
-	}
-
-	return inputs, nil
+	return revision, nil
 }
 
 func envOrDefault(name, fallback string) string {

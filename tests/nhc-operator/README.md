@@ -2,8 +2,8 @@
 
 ## Standalone operator-bundle upgrade (OpenShift 5.0)
 
-The `tier:upgrade-operator` scenario installs its own SNR and upstream
-NHC 0.12.0, upgrades to the supplied 5.8.0 candidate, and checks the new CSV,
+The `tier:upgrade-operator` scenario installs discovered downstream SNR and NHC
+baselines, upgrades NHC to the supplied candidate, and checks the new CSV,
 manager image, preserved NHC UID/full spec, and a fresh controller response.
 The independently selectable `tier:fresh-install` scenario starts clean,
 installs the same SNR prerequisite and candidate NHC bundle, and verifies the
@@ -26,9 +26,10 @@ shared operator namespace. The second run must pass the same clean preflight.
 
 The NHC selector requires the same label both to exist and not exist, so no
 current or future node can match. A pause request supplies a second guard.
-Both v0.12.0 and PR #430 validate this selector with `LabelSelectorAsSelector`;
-their controllers select only matching nodes and write `Paused` plus the exact
-pause request in `status.reason`. After old controller pods are gone, the test
+Both the downstream baseline and PR #430 validate this selector with
+`LabelSelectorAsSelector`; their controllers select only matching nodes and
+write `Paused` plus the exact pause request in `status.reason`. After old
+controller pods are gone, the test
 changes that token, waits for the exact new reason, restores the original
 token, and waits again. A persisted status or an invented observedGeneration
 field cannot satisfy this check. No node/kubelet action is performed.
@@ -57,7 +58,7 @@ related-image digests remain environment inputs. Do not create a personal
 Quay catalog. The commands below build/publish images only when the operator
 has authorized that work; the preparation fixes themselves do not run them.
 
-Use Linux amd64, Podman, Git, Make, oc, and the Go version required by the
+Use Linux amd64, Podman, Skopeo, Git, Make, oc, and the Go version required by the
 checked-out source (PR #430 requests toolchain 1.26.5). The Dockerfile downloads
 an amd64 toolchain and needs network access. Set these real inputs first:
 `NHC_SOURCE_REPOSITORY` (existing local NHC repo), `NHC_BUILD_DIR` (new persistent
@@ -77,14 +78,14 @@ export NHC_OPERATOR_IMAGE="${OPERATOR_BUILD_IMAGE%:*}@$(< "$NHC_BUILD_REPORT_DIR
 oc image info "$NHC_OPERATOR_IMAGE" -o json > "$NHC_BUILD_REPORT_DIR/published-operator.json"
 bash scripts/nhc-upgrade-prepare.sh bundle
 podman push --digestfile "$NHC_BUILD_REPORT_DIR/bundle.digest" "$BUNDLE_BUILD_IMAGE"
-export NHC_UPGRADE_CANDIDATE_BUNDLE="${BUNDLE_BUILD_IMAGE%:*}@$(< "$NHC_BUILD_REPORT_DIR/bundle.digest")"
+export NHC_UPGRADE_CANDIDATE_NHC_BUNDLE="${BUNDLE_BUILD_IMAGE%:*}@$(< "$NHC_BUILD_REPORT_DIR/bundle.digest")"
 export YQ="$NHC_BUILD_DIR/bin/yq"
 export NHC_UPGRADE_OPERATOR_SDK="$NHC_BUILD_DIR/bin/operator-sdk"
 "$NHC_UPGRADE_OPERATOR_SDK" version
 "$NHC_UPGRADE_OPERATOR_SDK" run --help
-"$NHC_UPGRADE_OPERATOR_SDK" bundle validate "$NHC_UPGRADE_CANDIDATE_BUNDLE"
-export NHC_UPGRADE_CANDIDATE_IMAGE="$NHC_OPERATOR_IMAGE"
-export NHC_UPGRADE_CANDIDATE_VERSION="$VERSION"
+"$NHC_UPGRADE_OPERATOR_SDK" bundle validate "$NHC_UPGRADE_CANDIDATE_NHC_BUNDLE"
+export NHC_UPGRADE_CANDIDATE_NHC_IMAGE="$NHC_OPERATOR_IMAGE"
+export NHC_UPGRADE_CANDIDATE_NHC_VERSION="$VERSION"
 ```
 
 The helper builds the existing Dockerfile, then calls the real
@@ -106,41 +107,45 @@ registry/index_image.go`). PR #430's default-version bundle has no CSV
 therefore does not establish an SDK upgrade blocker. Actual OLM resolution
 remains a first-run check; this says nothing about downstream catalog edges.
 
-Before a test, inspect the pinned old NHC and SNR bundles and verify every
-referenced image is pullable. `oc image info` is a laptop/registry check, not
-proof of node pull access. Confirm node access during the approved cluster
-attempt and retain image-pull failures. The manager image input must equal the
-literal old CSV/pod image string; record its resolved digest separately instead
-of substituting an equivalent digest string and breaking the equality check.
+By default, the test uses Skopeo to discover the latest GA downstream NHC and
+SNR bundles in `registry.redhat.io/workload-availability`, resolves them to
+digests, and extracts their CSV versions and manager images. Registry
+credentials must allow these reads. Verify every referenced image is pullable.
+`oc image info` is a laptop/registry check, not proof of node pull access.
+Confirm node access during the approved cluster attempt and retain image-pull
+failures.
 
 ### Two local runs, then CI
 
-Set `KUBECONFIG` to the disposable cluster and `NHC_UPGRADE_OLD_BUNDLE` and
-`NHC_UPGRADE_SNR_BUNDLE` to inspected upstream bundle digest pullspecs. The
-starting tags for lookup are NHC `v0.12.0` and SNR `v0.13.0`; they are not digest
-claims. Set `NHC_UPGRADE_OLD_IMAGE` to the old bundle's exact manager pullspec
-and `NHC_RUN_REPORT_DIR` to a persistent **new** directory for each run.
-The Go test resolves the supplied bundle tags to digests, extracts their CSVs,
-and verifies package, version, and operator-image identity before installation.
+Set `KUBECONFIG` to the disposable cluster and `NHC_RUN_REPORT_DIR` to a
+persistent **new** directory for each run. The four values below are currently
+caller supplied; ongoing Makefile work may populate them automatically later.
+The Go test resolves bundle tags to digests, extracts their CSVs, and verifies
+package, version, and operator-image identity before installation.
 
 ```bash
-: "${KUBECONFIG:?}" "${NHC_UPGRADE_OLD_BUNDLE:?}" "${NHC_UPGRADE_OLD_IMAGE:?}"
-: "${NHC_UPGRADE_SNR_BUNDLE:?}" "${NHC_RUN_REPORT_DIR:?}"
+: "${KUBECONFIG:?}" "${NHC_UPGRADE_CANDIDATE_NHC_BUNDLE:?}"
+: "${NHC_UPGRADE_CANDIDATE_NHC_VERSION:?}" "${NHC_UPGRADE_CANDIDATE_NHC_IMAGE:?}"
+: "${NHC_UPGRADE_OPERATOR_SDK:?}" "${NHC_RUN_REPORT_DIR:?}"
 export ECO_TEST_FEATURES=nhc-operator ECO_TEST_LABELS='tier:upgrade-operator'
 export WORKLOAD_IMAGE=unused-by-nhc-operator-upgrade
-export NHC_UPGRADE_NAMESPACE=openshift-workload-availability
-export NHC_UPGRADE_PACKAGE=node-healthcheck-operator NHC_UPGRADE_SNR_PACKAGE=self-node-remediation
-export NHC_UPGRADE_OLD_VERSION=0.12.0
-export NHC_UPGRADE_CANDIDATE_COMMIT="$NHC_EXPECTED_SOURCE_COMMIT"
-export NHC_UPGRADE_TEST_REVISION="$(git rev-parse HEAD)"
 export ECO_REPORTS_DUMP_DIR="$NHC_RUN_REPORT_DIR"
 mkdir -p "$ECO_REPORTS_DUMP_DIR"
 set -o pipefail
 make run-tests 2>&1 | tee "$ECO_REPORTS_DUMP_DIR/run.log"
 ```
 
+The package names and `openshift-workload-availability` namespace are fixed by
+the scenario. `NHC_UPGRADE_TEST_REVISION` is optional; when unset, the test
+records `git rev-parse HEAD`. Advanced runs can override discovery with the
+`NHC_UPGRADE_BASELINE_{NHC,SNR}_{BUNDLE,VERSION,IMAGE}` variables. Candidate
+SNR values default to the resolved baseline SNR. The test currently rejects a
+different `NHC_UPGRADE_CANDIDATE_SNR_{BUNDLE,VERSION,IMAGE}` because SNR upgrade
+sequencing has not yet been implemented.
+
 For the separate fresh-install checkpoint, use a new report directory and
-select only its label; keep the same pinned candidate inputs:
+select only its label; reuse the pinned candidate NHC inputs. Candidate SNR is
+optional and is discovered from the downstream registry when omitted:
 
 ```bash
 export ECO_TEST_LABELS='tier:fresh-install'
@@ -210,15 +215,15 @@ upgrade result and a downstream-catalog result must be reported separately.
 
 For a directly pullable public catalog, set
 `MEDIK8S_SKIP_UPGRADE_IDMS=true` and provide the exact
-`NHC_UPGRADE_CANDIDATE_VERSION` and `NHC_UPGRADE_CANDIDATE_IMAGE`. The test
+`NHC_UPGRADE_CANDIDATE_NHC_VERSION` and `NHC_UPGRADE_CANDIDATE_NHC_IMAGE`. The test
 still switches the existing Subscription to `medik8s-catalog`, requires the
 exact candidate CSV and controller image, and repeats remediation; it only
 skips the IDMS and MachineConfigPool rollout that public image references do
 not need.
 
 For a candidate source PR, set `MEDIK8S_UPGRADE_TO_PR_BUNDLE=true` instead
-and provide the same digest-pinned `NHC_UPGRADE_CANDIDATE_*`, operator-sdk,
-package, namespace, and revision inputs used by the standalone tests. After the
+and provide the same digest-pinned `NHC_UPGRADE_CANDIDATE_NHC_*` and
+operator-sdk inputs used by the standalone tests. After the
 real 4.22-to-5.0 update and released-NHC remediation checkpoint, the scenario
 runs `operator-sdk run bundle-upgrade` against that PR bundle, requires the new
 CSV and exact PR-built controller image, and repeats remediation. This proves a

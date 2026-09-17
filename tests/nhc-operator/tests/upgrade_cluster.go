@@ -34,7 +34,7 @@ import (
 // self-remediates via kubelet stop -> reboot, requiring no fence agents or
 // cloud credentials. This keeps the upgrade test platform-agnostic, unlike
 // the FAR upgrade test which requires AWS for fence agent remediation.
-var _ = Describe("NHC Operator Upgrade",
+var _ = Describe("NHC Upgrade Cluster",
 	Serial, Ordered,
 	Label(labels.OperatorNHC, nhcparams.Label,
 		labels.TierUpgrade, labels.TierUpgradeCluster, labels.DisruptionDestructive,
@@ -43,7 +43,7 @@ var _ = Describe("NHC Operator Upgrade",
 	func() {
 		var (
 			ctx                context.Context
-			candidateInputs    nhcparams.CandidateInputs
+			candidateInputs    nhcparams.UpgradeClusterInputs
 			previousCSV        *olm.ClusterServiceVersionBuilder
 			preUpgradeImage    string
 			preOCPUpgradeCSV   string
@@ -58,20 +58,20 @@ var _ = Describe("NHC Operator Upgrade",
 
 			if medik8sparams.SkipUpgradeIDMS {
 				Expect(medik8sparams.CandidateVersion).NotTo(BeEmpty(),
-					"NHC_UPGRADE_CANDIDATE_VERSION must identify the direct-catalog candidate")
+					"NHC_UPGRADE_CANDIDATE_NHC_VERSION must identify the direct-catalog candidate")
 				Expect(medik8sparams.CandidateImage).NotTo(BeEmpty(),
-					"NHC_UPGRADE_CANDIDATE_IMAGE must identify the direct-catalog candidate")
+					"NHC_UPGRADE_CANDIDATE_NHC_IMAGE must identify the direct-catalog candidate")
 			}
 
 			if medik8sparams.UpgradeToPRBundle {
 				var err error
 
-				candidateInputs, err = nhcparams.LoadCandidateInputs()
+				candidateInputs, err = nhcparams.LoadUpgradeClusterInputs()
 				Expect(err).NotTo(HaveOccurred())
-				candidateInputs, err = nhcutils.ResolveAndVerifyCandidateInputs(ctx, candidateInputs)
+				candidateInputs, err = nhcutils.ResolveAndVerifyUpgradeClusterInputs(ctx, candidateInputs)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(candidateInputs.Namespace).To(Equal(medik8sparams.OperatorNs))
-				AddReportEntry("nhc-cluster-candidate-inputs", candidateInputs)
+				AddReportEntry("nhc-upgrade-cluster-inputs", candidateInputs)
 			}
 
 			if medik8sparams.SkipOCPUpgrade {
@@ -364,13 +364,13 @@ var _ = Describe("NHC Operator Upgrade",
 					By("Step 7: Upgrade the surviving installation directly to the PR-built bundle")
 
 					output, upgradeErr := nhcutils.UpgradeBundle(ctx, candidateInputs.OperatorSDK,
-						candidateInputs.Namespace, candidateInputs.Bundle)
+						candidateInputs.Namespace, candidateInputs.CandidateNHC.Bundle)
 					GinkgoWriter.Printf("operator-sdk run bundle-upgrade output:\n%s\n", output)
 					Expect(upgradeErr).NotTo(HaveOccurred(),
 						"the released operator must be upgraded in place, not uninstalled")
 
 					candidateCSV := waitForNHCUpgradeCSV(candidateInputs.Namespace,
-						candidateInputs.Version, candidateInputs.Image, "post-OCP-upgrade candidate")
+						candidateInputs.CandidateNHC.Version, candidateInputs.CandidateNHC.Image, "post-OCP-upgrade candidate")
 					Expect(candidateCSV.Object.Name).NotTo(Equal(previousCSV.Object.Name),
 						"the PR bundle must produce a new CSV")
 
@@ -381,8 +381,8 @@ var _ = Describe("NHC Operator Upgrade",
 					cleanupPostRemediationNHC(ctx, &currentTargetNode, "post-candidate-upgrade")
 					AddReportEntry("nhc-cluster-candidate-result", map[string]string{
 						"ocpPath": "4.22-to-5.0", "oldCSV": previousCSV.Object.Name,
-						"candidateCSV": candidateCSV.Object.Name, "candidateBundle": candidateInputs.Bundle,
-						"candidateImage":  candidateInputs.Image,
+						"candidateCSV": candidateCSV.Object.Name, "candidateBundle": candidateInputs.CandidateNHC.Bundle,
+						"candidateImage":  candidateInputs.CandidateNHC.Image,
 						"functionalCheck": "remediation completed before and after the PR-bundle upgrade",
 					})
 

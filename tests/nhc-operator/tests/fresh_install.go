@@ -18,12 +18,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var _ = Describe("NHC candidate fresh installation", Serial,
+var _ = Describe("NHC Fresh Install", Serial,
 	Label(labels.OperatorNHC, nhcparams.Label, labels.TierFreshInstall,
 		labels.DisruptionNonDestructive, labels.PlatformAny, labels.ComponentOLM), func() {
 		var (
 			ctx    context.Context
-			inputs nhcparams.UpgradeInputs
+			inputs nhcparams.FreshInstallInputs
 		)
 
 		BeforeEach(func() {
@@ -31,11 +31,18 @@ var _ = Describe("NHC candidate fresh installation", Serial,
 
 			var err error
 
-			inputs, err = nhcparams.LoadUpgradeInputs()
+			inputs, err = nhcparams.LoadFreshInstallInputs()
 			Expect(err).NotTo(HaveOccurred())
-			inputs, err = nhcutils.ResolveAndVerifyUpgradeInputs(ctx, inputs)
+			inputs, err = nhcutils.ResolveAndVerifyFreshInstallInputs(ctx, inputs)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(inputs.Namespace).To(Equal(medik8sparams.OperatorNs))
+			AddReportEntry("nhc-fresh-install-inputs", map[string]string{
+				"candidateNHCBundle": inputs.CandidateNHC.Bundle, "candidateNHCImage": inputs.CandidateNHC.Image,
+				"candidateNHCVersion": inputs.CandidateNHC.Version, "candidateSNRBundle": inputs.CandidateSNR.Bundle,
+				"candidateSNRImage": inputs.CandidateSNR.Image, "candidateSNRVersion": inputs.CandidateSNR.Version,
+				"namespace": inputs.Namespace, "package": inputs.Package, "sdk": inputs.OperatorSDK,
+				"systemTestsRevision": inputs.TestRevision,
+			})
 
 			clusterVersion := &configv1.ClusterVersion{}
 			Expect(APIClient.Get(ctx, client.ObjectKey{Name: "version"}, clusterVersion)).To(Succeed())
@@ -82,7 +89,7 @@ var _ = Describe("NHC candidate fresh installation", Serial,
 			By("installing the pinned SNR prerequisite")
 
 			owned.Packages = append(owned.Packages, inputs.SNRPackage)
-			output, err := nhcutils.InstallBundle(ctx, inputs.OperatorSDK, inputs.Namespace, inputs.SNRBundle)
+			output, err := nhcutils.InstallBundle(ctx, inputs.OperatorSDK, inputs.Namespace, inputs.CandidateSNR.Bundle)
 			GinkgoWriter.Printf("operator-sdk run bundle (SNR) output:\n%s\n", output)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(waitForUpgradeAPI(ctx, upgradeTemplate(inputs.Namespace))).To(Succeed())
@@ -92,14 +99,14 @@ var _ = Describe("NHC candidate fresh installation", Serial,
 			By("fresh-installing the explicitly pinned candidate bundle")
 
 			owned.Packages = append(owned.Packages, inputs.Package)
-			output, err = nhcutils.InstallBundle(ctx, inputs.OperatorSDK, inputs.Namespace, inputs.CandidateBundle)
+			output, err = nhcutils.InstallBundle(ctx, inputs.OperatorSDK, inputs.Namespace, inputs.CandidateNHC.Bundle)
 			GinkgoWriter.Printf("operator-sdk run bundle (candidate NHC) output:\n%s\n", output)
 			Expect(err).NotTo(HaveOccurred())
-			waitForNHCUpgradeCSV(inputs.Namespace, inputs.CandidateVersion, inputs.CandidateImage, "fresh candidate")
+			waitForNHCUpgradeCSV(inputs.Namespace, inputs.CandidateNHC.Version, inputs.CandidateNHC.Image, "fresh candidate")
 
 			candidateImage, err := nhcutils.GetNHCControllerImage(APIClient)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(candidateImage).To(Equal(inputs.CandidateImage))
+			Expect(candidateImage).To(Equal(inputs.CandidateNHC.Image))
 
 			By("requiring a fresh response from the newly installed controller")
 			Expect(waitForUpgradeAPI(ctx, upgradeNHC())).To(Succeed())

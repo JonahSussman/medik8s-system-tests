@@ -93,6 +93,69 @@ else exit 99; fi
 	}
 }
 
+func TestFindLatestGABundle(t *testing.T) {
+	dir := t.TempDir()
+	writeScriptFixture(t, filepath.Join(dir, "skopeo"), `#!/usr/bin/env bash
+set -euo pipefail
+[[ $1 == list-tags && $2 == docker://registry.test/bundles ]]
+printf '{"Tags":["latest","v0.12.0","v0.13.0-rc.1","v0.12.1-a9feb15","v0.12.1-beta.1"]}\n'
+`, 0700)
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+
+	pullspec, err := findLatestGABundle(context.Background(), "registry.test/bundles")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if pullspec != "registry.test/bundles:v0.12.1-a9feb15" {
+		t.Fatalf("unexpected latest GA bundle: %s", pullspec)
+	}
+}
+
+func TestDownstreamGAVersion(t *testing.T) {
+	for tag, accepted := range map[string]bool{
+		"v0.12.1":         true,
+		"v0.12.1-a9feb15": true,
+		"v0.12.1-rc.1":    false,
+		"v0.12":           false,
+		"latest":          false,
+	} {
+		_, ok := downstreamGAVersion(tag)
+		if ok != accepted {
+			t.Fatalf("tag %q acceptance = %t, expected %t", tag, ok, accepted)
+		}
+	}
+}
+
+func TestBundleCommandsSetTimeout(t *testing.T) {
+	dir := t.TempDir()
+	binary := filepath.Join(dir, "operator-sdk")
+	writeScriptFixture(t, binary, "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> \"$COMMAND_LOG\"\n", 0700)
+	t.Setenv("COMMAND_LOG", filepath.Join(dir, "commands"))
+
+	if _, err := InstallBundle(context.Background(), binary, "test-namespace", "baseline-bundle"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := UpgradeBundle(context.Background(), binary, "test-namespace", "candidate-bundle"); err != nil {
+		t.Fatal(err)
+	}
+
+	commands, err := os.ReadFile(filepath.Join(dir, "commands"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, expected := range []string{
+		"run bundle -n test-namespace --timeout=10m baseline-bundle",
+		"run bundle-upgrade -n test-namespace --timeout=10m candidate-bundle",
+	} {
+		if !strings.Contains(string(commands), expected) {
+			t.Fatalf("missing %q in %s", expected, commands)
+		}
+	}
+}
+
 func TestRunnerPreservesReportsAndOriginalFailure(t *testing.T) {
 	root, err := filepath.Abs("../../../..")
 	if err != nil {
