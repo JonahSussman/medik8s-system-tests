@@ -85,7 +85,7 @@ test: run-internal-pkg-unit-tests run-nhc-upgrade-unit-tests
 
 .PHONY: run-nhc-upgrade-unit-tests
 run-nhc-upgrade-unit-tests:
-	UNIT_TEST=true WORKLOAD_IMAGE=unused go test ./tests/nhc-operator/internal/nhcutils
+	UNIT_TEST=true WORKLOAD_IMAGE=unused go test ./tests/nhc-operator/internal/...
 
 coverage-html: test
 	go tool cover -html cover.out

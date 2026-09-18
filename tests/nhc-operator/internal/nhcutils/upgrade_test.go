@@ -126,6 +126,33 @@ func TestPreflightRejectsOrphanClusterObjects(t *testing.T) {
 	}
 }
 
+func TestDeleteOrphanConsolePlugin(t *testing.T) {
+	ctx := context.Background()
+	plugin := consolePlugin()
+	plugin.SetUID("plugin-uid")
+	plugin.Object["spec"] = map[string]interface{}{"backend": map[string]interface{}{
+		"service": map[string]interface{}{
+			"namespace": "owned", "name": "node-healthcheck-node-remediation-console-plugin",
+		},
+	}}
+
+	api := testClient(plugin.DeepCopy())
+	if err := DeleteOrphanConsolePlugin(ctx, api, "owned"); err != nil {
+		t.Fatal(err)
+	}
+	if err := api.Get(ctx, client.ObjectKeyFromObject(plugin), plugin.DeepCopy()); !apierrors.IsNotFound(err) {
+		t.Fatalf("orphan plugin was not deleted: %v", err)
+	}
+
+	service := &corev1.Service{ObjectMeta: metav1.ObjectMeta{
+		Namespace: "owned", Name: "node-healthcheck-node-remediation-console-plugin",
+	}}
+	api = testClient(plugin.DeepCopy(), service)
+	if err := DeleteOrphanConsolePlugin(ctx, api, "owned"); err == nil {
+		t.Fatal("deleted plugin with a live backend service")
+	}
+}
+
 func TestCleanupPreservesReplacedNamespace(t *testing.T) {
 	namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "owned", UID: "replacement", Labels: map[string]string{RunLabel: "run"}}}
 	api := testClient(namespace)

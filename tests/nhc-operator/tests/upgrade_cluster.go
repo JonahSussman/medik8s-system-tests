@@ -42,15 +42,16 @@ var _ = Describe("NHC Upgrade Cluster",
 		labels.ComponentOLM),
 	func() {
 		var (
-			ctx                context.Context
-			candidateInputs    nhcparams.UpgradeClusterInputs
-			previousCSV        *olm.ClusterServiceVersionBuilder
-			preUpgradeImage    string
-			preOCPUpgradeCSV   string
-			preOCPUpgradeImage string
-			currentTargetNode  string
-			operatorUpgraded   bool
-			namespaceCreated   bool
+			ctx                     context.Context
+			candidateInputs         nhcparams.UpgradeClusterInputs
+			previousCSV             *olm.ClusterServiceVersionBuilder
+			preUpgradeImage         string
+			preOCPUpgradeCSV        string
+			preOCPUpgradeImage      string
+			currentTargetNode       string
+			operatorUpgraded        bool
+			namespaceCreated        bool
+			candidateCatalogCreated bool
 		)
 
 		BeforeAll(func() {
@@ -63,7 +64,10 @@ var _ = Describe("NHC Upgrade Cluster",
 					"NHC_UPGRADE_CANDIDATE_NHC_IMAGE must identify the direct-catalog candidate")
 			}
 
-			if medik8sparams.UpgradeToPRBundle {
+			if medik8sparams.UpgradeToCandidateCatalog {
+				Expect(medik8sparams.SkipDownstreamOperatorUpgrade).To(BeFalse(),
+					"unset MEDIK8S_SKIP_DOWNSTREAM_OPERATOR_UPGRADE when supplying a candidate catalog")
+
 				var err error
 
 				candidateInputs, err = nhcparams.LoadUpgradeClusterInputs()
@@ -138,18 +142,43 @@ var _ = Describe("NHC Upgrade Cluster",
 			// package while one exists ("clusterserviceversion ... exists
 			// and is not referenced by a subscription"), so start clean.
 			nhcutils.CleanupUpgradeResources(APIClient, GinkgoWriter.Printf)
+			Eventually(func() error {
+				return nhcutils.DeleteOrphanConsolePlugin(ctx, APIClient, medik8sparams.OperatorNs)
+			}, medik8sparams.DefaultTimeout, nhcparams.DefaultPollInterval).Should(Succeed(),
+				"Failed to remove the orphaned NHC ConsolePlugin from a prior run")
+			Expect(nhcutils.DeleteCandidateCatalog(APIClient)).To(Succeed(),
+				"Failed to remove a stale test-owned candidate CatalogSource")
+			Eventually(func() error {
+				catalog := &olmV1alpha1.CatalogSource{}
+
+				err := APIClient.Get(ctx, client.ObjectKey{
+					Name: nhcparams.CandidateCatalogName, Namespace: medik8sparams.GACatalogNamespace,
+				}, catalog)
+				if apierrors.IsNotFound(err) {
+					return nil
+				}
+
+				if err != nil {
+					return err
+				}
+
+				return fmt.Errorf("candidate CatalogSource is still being deleted")
+			}, medik8sparams.DefaultTimeout, nhcparams.DefaultPollInterval).Should(Succeed(),
+				"Test-owned candidate CatalogSource was not deleted")
 		})
 
 		AfterAll(func() {
-			if medik8sparams.UpgradeToPRBundle && candidateInputs.OperatorSDK != "" {
-				output, err := nhcutils.CleanupBundle(
-					ctx, candidateInputs.OperatorSDK, candidateInputs.Namespace, candidateInputs.Package)
-				if err != nil {
-					GinkgoWriter.Printf("WARNING: candidate bundle cleanup failed: %v\n%s\n", err, output)
+			nhcutils.CleanupUpgradeResources(APIClient, GinkgoWriter.Printf)
+			Eventually(func() error {
+				return nhcutils.DeleteOrphanConsolePlugin(ctx, APIClient, medik8sparams.OperatorNs)
+			}, medik8sparams.DefaultTimeout, nhcparams.DefaultPollInterval).Should(Succeed(),
+				"Failed to remove the NHC ConsolePlugin created by this test")
+
+			if candidateCatalogCreated {
+				if err := nhcutils.DeleteCandidateCatalog(APIClient); err != nil {
+					GinkgoWriter.Printf("WARNING: candidate CatalogSource cleanup failed: %v\n", err)
 				}
 			}
-
-			nhcutils.CleanupUpgradeResources(APIClient, GinkgoWriter.Printf)
 
 			if namespaceCreated {
 				namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: medik8sparams.OperatorNs}}
@@ -360,35 +389,6 @@ var _ = Describe("NHC Upgrade Cluster",
 
 				cleanupPostRemediationNHC(ctx, &currentTargetNode, "post-ocp-upgrade")
 
-				if medik8sparams.UpgradeToPRBundle {
-					By("Step 7: Upgrade the surviving installation directly to the PR-built bundle")
-
-					output, upgradeErr := nhcutils.UpgradeBundle(ctx, candidateInputs.OperatorSDK,
-						candidateInputs.Namespace, candidateInputs.CandidateNHC.Bundle)
-					GinkgoWriter.Printf("operator-sdk run bundle-upgrade output:\n%s\n", output)
-					Expect(upgradeErr).NotTo(HaveOccurred(),
-						"the released operator must be upgraded in place, not uninstalled")
-
-					candidateCSV := waitForNHCUpgradeCSV(candidateInputs.Namespace,
-						candidateInputs.CandidateNHC.Version, candidateInputs.CandidateNHC.Image, "post-OCP-upgrade candidate")
-					Expect(candidateCSV.Object.Name).NotTo(Equal(previousCSV.Object.Name),
-						"the PR bundle must produce a new CSV")
-
-					By("Step 8: Validate NHC remediation with the PR-built operator")
-
-					currentTargetNode, err = upgradeRunRemediationCycle(ctx, "post-candidate-upgrade")
-					Expect(err).NotTo(HaveOccurred(), "PR-built NHC remediation failed")
-					cleanupPostRemediationNHC(ctx, &currentTargetNode, "post-candidate-upgrade")
-					AddReportEntry("nhc-cluster-candidate-result", map[string]string{
-						"ocpPath": "4.22-to-5.0", "oldCSV": previousCSV.Object.Name,
-						"candidateCSV": candidateCSV.Object.Name, "candidateBundle": candidateInputs.CandidateNHC.Bundle,
-						"candidateImage":  candidateInputs.CandidateNHC.Image,
-						"functionalCheck": "remediation completed before and after the PR-bundle upgrade",
-					})
-
-					return
-				}
-
 				if medik8sparams.SkipDownstreamOperatorUpgrade {
 					AddReportEntry("nhc-cluster-upgrade-result", map[string]string{
 						"ocpPath":                "4.22-to-5.0",
@@ -401,7 +401,34 @@ var _ = Describe("NHC Upgrade Cluster",
 					return
 				}
 
-				if medik8sparams.SkipUpgradeIDMS {
+				targetCatalog := medik8sparams.UpgradeCatalogName
+
+				if medik8sparams.UpgradeToCandidateCatalog {
+					By("Step 7: Create a test-owned CatalogSource for the PR candidate")
+
+					_, err = nhcutils.CreateCandidateCatalog(APIClient, candidateInputs.CandidateCatalog)
+					Expect(err).NotTo(HaveOccurred(), "Failed to create candidate CatalogSource")
+
+					candidateCatalogCreated = true
+					targetCatalog = nhcparams.CandidateCatalogName
+
+					Eventually(func() error {
+						catalog, catalogErr := olm.PullCatalogSource(
+							APIClient, targetCatalog, medik8sparams.GACatalogNamespace)
+						if catalogErr != nil {
+							return catalogErr
+						}
+
+						if catalog.Object.Status.GRPCConnectionState == nil ||
+							catalog.Object.Status.GRPCConnectionState.LastObservedState != "READY" {
+							return fmt.Errorf("candidate catalog is not READY: %s",
+								catalog.Object.Status.Message)
+						}
+
+						return nil
+					}, medik8sparams.OperatorUpgradeTimeout, nhcparams.DefaultPollInterval).
+						Should(Succeed(), "Candidate CatalogSource did not become ready")
+				} else if medik8sparams.SkipUpgradeIDMS {
 					By("Step 7: Use directly pullable catalog images; no IDMS is required")
 				} else {
 					By("Step 7: Apply deferred IDMS for Konflux catalog images")
@@ -436,7 +463,7 @@ var _ = Describe("NHC Upgrade Cluster",
 				switchTime := time.Now()
 
 				_, err = nhcutils.SwitchSubscriptionCatalog(
-					APIClient, medik8sparams.UpgradeCatalogName)
+					APIClient, targetCatalog)
 				Expect(err).NotTo(HaveOccurred(),
 					"Failed to switch Subscription to target catalog")
 
@@ -456,9 +483,9 @@ var _ = Describe("NHC Upgrade Cluster",
 							medik8sparams.OperatorNs, nhcparams.ClusterUpgradeSubName)
 					}
 
-					if sub.Object.Spec.CatalogSource != medik8sparams.UpgradeCatalogName {
+					if sub.Object.Spec.CatalogSource != targetCatalog {
 						return fmt.Errorf("subscription source not yet updated to %s",
-							medik8sparams.UpgradeCatalogName)
+							targetCatalog)
 					}
 
 					// Guard against a race where status still reflects the
@@ -497,7 +524,7 @@ var _ = Describe("NHC Upgrade Cluster",
 
 					for _, ch := range sub.Object.Status.CatalogHealth {
 						if ch.CatalogSourceRef != nil &&
-							ch.CatalogSourceRef.Name == medik8sparams.UpgradeCatalogName &&
+							ch.CatalogSourceRef.Name == targetCatalog &&
 							ch.Healthy {
 							catalogHealthy = true
 
@@ -508,7 +535,7 @@ var _ = Describe("NHC Upgrade Cluster",
 					if !catalogHealthy {
 						return fmt.Errorf(
 							"catalog %s not yet healthy in subscription CatalogHealth",
-							medik8sparams.UpgradeCatalogName)
+							targetCatalog)
 					}
 
 					csv, csvErr := olm.PullClusterServiceVersion(
@@ -545,7 +572,7 @@ var _ = Describe("NHC Upgrade Cluster",
 				}, medik8sparams.OperatorUpgradeTimeout, nhcparams.DefaultPollInterval).Should(Succeed(),
 					"Operator upgrade or catalog switch verification failed")
 
-				if medik8sparams.SkipUpgradeIDMS {
+				if medik8sparams.SkipUpgradeIDMS || medik8sparams.UpgradeToCandidateCatalog {
 					candidateCSV := waitForNHCUpgradeCSV(medik8sparams.OperatorNs,
 						medik8sparams.CandidateVersion, medik8sparams.CandidateImage,
 						"post-public-catalog-switch candidate")
@@ -588,7 +615,7 @@ var _ = Describe("NHC Upgrade Cluster",
 				cleanupPostRemediationNHC(ctx, &currentTargetNode, "post-catalog-switch")
 				AddReportEntry("nhc-cluster-catalog-result", map[string]string{
 					"ocpPath": "4.22-to-5.0", "oldCSV": previousCSV.Object.Name,
-					"catalog":         medik8sparams.UpgradeCatalogName,
+					"catalog":         targetCatalog,
 					"functionalCheck": "remediation completed before and after the catalog switch",
 				})
 			})

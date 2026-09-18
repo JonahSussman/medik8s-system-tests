@@ -20,7 +20,7 @@ def generate() -> str:
 
 if __name__ == "__main__":
     output = generate()
-    
+
     if len(sys.argv) == 2:
         with open(sys.argv[1], "w", encoding="utf-8") as output_file:
             output_file.write(output)

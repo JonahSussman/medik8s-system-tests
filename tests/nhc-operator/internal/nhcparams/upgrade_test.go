@@ -11,6 +11,7 @@ func setRequiredCandidateInputs(t *testing.T) {
 	t.Setenv("NHC_UPGRADE_CANDIDATE_NHC_BUNDLE", "registry.test/nhc-bundle:candidate")
 	t.Setenv("NHC_UPGRADE_CANDIDATE_NHC_VERSION", "5.8.0")
 	t.Setenv("NHC_UPGRADE_CANDIDATE_NHC_IMAGE", "registry.test/nhc:candidate")
+	t.Setenv("NHC_UPGRADE_CANDIDATE_NHC_CATALOG", "registry.test/nhc-catalog:candidate")
 	t.Setenv("NHC_UPGRADE_OPERATOR_SDK", "/test/operator-sdk")
 	t.Setenv("NHC_UPGRADE_TEST_REVISION", strings.Repeat("a", 40))
 }
@@ -46,7 +47,7 @@ func TestLoadUpgradeClusterInputsUsesRenamedVariables(t *testing.T) {
 
 	if inputs.CandidateNHC.Bundle != "registry.test/nhc-bundle:candidate" || inputs.CandidateNHC.Version != "5.8.0" ||
 		inputs.CandidateNHC.Image != "registry.test/nhc:candidate" || inputs.Package != UpgradeNHCPackage ||
-		inputs.Namespace != UpgradeNamespace {
+		inputs.CandidateCatalog != "registry.test/nhc-catalog:candidate" || inputs.Namespace != UpgradeNamespace {
 		t.Fatalf("unexpected candidate inputs: %+v", inputs)
 	}
 }
@@ -83,5 +84,15 @@ func TestLoadUpgradeOperatorInputsRequiresOnlyCandidateNHCAndSDK(t *testing.T) {
 				t.Fatalf("missing %s was not reported: %v", variable, err)
 			}
 		})
+	}
+}
+
+func TestLoadUpgradeClusterInputsRequiresCandidateCatalog(t *testing.T) {
+	setRequiredCandidateInputs(t)
+	t.Setenv("NHC_UPGRADE_CANDIDATE_NHC_CATALOG", "")
+
+	_, err := LoadUpgradeClusterInputs()
+	if err == nil || !strings.Contains(err.Error(), "NHC_UPGRADE_CANDIDATE_NHC_CATALOG") {
+		t.Fatalf("missing candidate catalog was not reported: %v", err)
 	}
 }

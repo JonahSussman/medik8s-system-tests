@@ -46,8 +46,8 @@ var (
 	SkipOCPUpgrade = os.Getenv("MEDIK8S_SKIP_OCP_UPGRADE") == envTrue
 	// SkipDownstreamOperatorUpgrade ends the cluster-survival scenario before the downstream catalog phase.
 	SkipDownstreamOperatorUpgrade = os.Getenv("MEDIK8S_SKIP_DOWNSTREAM_OPERATOR_UPGRADE") == envTrue
-	// UpgradeToPRBundle upgrades NHC to a supplied PR bundle after the OCP upgrade.
-	UpgradeToPRBundle = os.Getenv("MEDIK8S_UPGRADE_TO_PR_BUNDLE") == envTrue
+	// UpgradeToCandidateCatalog selects the local candidate path when a catalog image is supplied.
+	UpgradeToCandidateCatalog = os.Getenv("NHC_UPGRADE_CANDIDATE_NHC_CATALOG") != ""
 	// SkipUpgradeIDMS switches the catalog phase to a directly pullable catalog
 	// whose bundle already contains directly pullable image references.
 	SkipUpgradeIDMS = os.Getenv("MEDIK8S_SKIP_UPGRADE_IDMS") == envTrue

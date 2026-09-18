@@ -65,8 +65,9 @@ if [[ $2 == extract ]]; then
     else shift; fi
   done
 elif [[ $2 == info ]]; then
-  if [[ $3 == wrong-operator ]]; then
-    printf '{"digest":"sha256:%064d"}\n' 2
+	[[ $3 == --filter-by-os=linux/amd64 ]]
+	if [[ $4 == wrong-operator ]]; then
+		printf '{"digest":"sha256:%064d"}\n' 2
   else
     printf '{"digest":"sha256:%064d"}\n' 1
   fi
@@ -93,12 +94,12 @@ else exit 99; fi
 	}
 }
 
-func TestFindLatestGABundle(t *testing.T) {
+func TestFindLatestGABundleUsesOnlyPlainSemverTags(t *testing.T) {
 	dir := t.TempDir()
 	writeScriptFixture(t, filepath.Join(dir, "skopeo"), `#!/usr/bin/env bash
 set -euo pipefail
 [[ $1 == list-tags && $2 == docker://registry.test/bundles ]]
-printf '{"Tags":["latest","v0.12.0","v0.13.0-rc.1","v0.12.1-a9feb15","v0.12.1-beta.1"]}\n'
+printf '{"Tags":["latest","v0.12.0","v0.13.0-rc.1","v0.12.1-a9feb15","v0.12.1","v0.12.10","v1.0.0-beta.1"]}\n'
 `, 0700)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 
@@ -107,15 +108,15 @@ printf '{"Tags":["latest","v0.12.0","v0.13.0-rc.1","v0.12.1-a9feb15","v0.12.1-be
 		t.Fatal(err)
 	}
 
-	if pullspec != "registry.test/bundles:v0.12.1-a9feb15" {
+	if pullspec != "registry.test/bundles:v0.12.10" {
 		t.Fatalf("unexpected latest GA bundle: %s", pullspec)
 	}
 }
 
-func TestDownstreamGAVersion(t *testing.T) {
+func TestDownstreamGAVersionRejectsSuffixedTags(t *testing.T) {
 	for tag, accepted := range map[string]bool{
 		"v0.12.1":         true,
-		"v0.12.1-a9feb15": true,
+		"v0.12.1-a9feb15": false,
 		"v0.12.1-rc.1":    false,
 		"v0.12":           false,
 		"latest":          false,

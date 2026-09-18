@@ -95,6 +95,42 @@ func CheckClean(ctx context.Context, api client.Client, namespace string) error 
 	return nil
 }
 
+// DeleteOrphanConsolePlugin removes NHC's cluster-scoped console plugin only
+// when its exact backend service is gone. This recovers a plugin left behind
+// after the upgrade-cluster test removed its OLM installation and namespace,
+// without deleting a plugin that is still serving a live NHC installation.
+func DeleteOrphanConsolePlugin(ctx context.Context, api client.Client, namespace string) error {
+	plugin := consolePlugin()
+	if err := api.Get(ctx, client.ObjectKeyFromObject(plugin), plugin); err != nil {
+		if MissingAPI(err) {
+			return nil
+		}
+
+		return err
+	}
+
+	backendNamespace, _, _ := unstructured.NestedString(
+		plugin.Object, "spec", "backend", "service", "namespace")
+	backendName, _, _ := unstructured.NestedString(
+		plugin.Object, "spec", "backend", "service", "name")
+	if backendNamespace != namespace || backendName != "node-healthcheck-node-remediation-console-plugin" {
+		return fmt.Errorf("refusing to delete ConsolePlugin %s with unexpected backend %s/%s",
+			plugin.GetName(), backendNamespace, backendName)
+	}
+
+	service := &corev1.Service{}
+	err := api.Get(ctx, client.ObjectKey{Namespace: backendNamespace, Name: backendName}, service)
+	if err == nil {
+		return fmt.Errorf("refusing to delete ConsolePlugin %s while backend service %s/%s exists",
+			plugin.GetName(), backendNamespace, backendName)
+	}
+	if !apierrors.IsNotFound(err) {
+		return err
+	}
+
+	return DeleteIdentity(ctx, api, plugin)
+}
+
 // OwnedRun acquires its namespace using a unique marker and records successful
 // CREATE identities. A failed preflight therefore has nothing to clean up.
 type OwnedRun struct {

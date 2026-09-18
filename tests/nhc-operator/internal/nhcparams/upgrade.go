@@ -37,6 +37,8 @@ const (
 	BaselineNHCBundleRepository = "registry.redhat.io/workload-availability/node-healthcheck-operator-bundle"
 	// BaselineSNRBundleRepository contains released downstream SNR bundles.
 	BaselineSNRBundleRepository = "registry.redhat.io/workload-availability/self-node-remediation-operator-bundle"
+	// CandidateCatalogName is the CatalogSource owned by the PR-candidate cluster test.
+	CandidateCatalogName = "nhc-upgrade-candidate"
 	// UpgradeRemediationCompletionTimeout bounds each destructive remediation checkpoint.
 	UpgradeRemediationCompletionTimeout = 20 * time.Minute
 )
@@ -76,11 +78,11 @@ type FreshInstallInputs struct {
 
 // UpgradeClusterInputs are the PR-built artifacts used by tier:upgrade-cluster.
 type UpgradeClusterInputs struct {
-	CandidateNHC OperatorArtifact `json:"candidateNHC"`
-	TestRevision string           `json:"testRevision"`
-	Package      string           `json:"package"`
-	Namespace    string           `json:"namespace"`
-	OperatorSDK  string           `json:"operatorSDK"`
+	CandidateNHC     OperatorArtifact `json:"candidateNHC"`
+	CandidateCatalog string           `json:"candidateCatalog"`
+	TestRevision     string           `json:"testRevision"`
+	Package          string           `json:"package"`
+	Namespace        string           `json:"namespace"`
 }
 
 // LoadUpgradeOperatorInputs reads candidate inputs and optional baseline/SNR overrides.
@@ -158,24 +160,29 @@ func LoadUpgradeClusterInputs() (UpgradeClusterInputs, error) {
 		return UpgradeClusterInputs{}, err
 	}
 
-	candidateNHC, operatorSDK, err := loadCandidateNHC("NHC candidate cluster-upgrade scenario")
-	if err != nil {
-		return UpgradeClusterInputs{}, err
+	candidateNHC := candidateNHCFromEnvironment()
+
+	candidateCatalog := os.Getenv("NHC_UPGRADE_CANDIDATE_NHC_CATALOG")
+	for key, value := range map[string]string{
+		"NHC_UPGRADE_CANDIDATE_NHC_BUNDLE":  candidateNHC.Bundle,
+		"NHC_UPGRADE_CANDIDATE_NHC_VERSION": candidateNHC.Version,
+		"NHC_UPGRADE_CANDIDATE_NHC_IMAGE":   candidateNHC.Image,
+		"NHC_UPGRADE_CANDIDATE_NHC_CATALOG": candidateCatalog,
+	} {
+		if value == "" {
+			return UpgradeClusterInputs{}, fmt.Errorf("%s must be set for the NHC candidate cluster-upgrade scenario", key)
+		}
 	}
 
 	return UpgradeClusterInputs{
-		CandidateNHC: candidateNHC, OperatorSDK: operatorSDK, TestRevision: testRevision,
+		CandidateNHC: candidateNHC, CandidateCatalog: candidateCatalog, TestRevision: testRevision,
 		Package: UpgradeNHCPackage, Namespace: UpgradeNamespace,
 	}, nil
 }
 
 func loadCandidateNHC(scenario string) (OperatorArtifact, string, error) {
 	// These four caller-supplied values may be populated by Makefile automation in the future.
-	candidate := OperatorArtifact{
-		Bundle:  os.Getenv("NHC_UPGRADE_CANDIDATE_NHC_BUNDLE"),
-		Version: os.Getenv("NHC_UPGRADE_CANDIDATE_NHC_VERSION"),
-		Image:   os.Getenv("NHC_UPGRADE_CANDIDATE_NHC_IMAGE"),
-	}
+	candidate := candidateNHCFromEnvironment()
 	operatorSDK := os.Getenv("NHC_UPGRADE_OPERATOR_SDK")
 
 	for key, value := range map[string]string{
@@ -190,6 +197,14 @@ func loadCandidateNHC(scenario string) (OperatorArtifact, string, error) {
 	}
 
 	return candidate, operatorSDK, nil
+}
+
+func candidateNHCFromEnvironment() OperatorArtifact {
+	return OperatorArtifact{
+		Bundle:  os.Getenv("NHC_UPGRADE_CANDIDATE_NHC_BUNDLE"),
+		Version: os.Getenv("NHC_UPGRADE_CANDIDATE_NHC_VERSION"),
+		Image:   os.Getenv("NHC_UPGRADE_CANDIDATE_NHC_IMAGE"),
+	}
 }
 
 func loadSkipCleanup() (bool, error) {

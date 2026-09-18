@@ -2,7 +2,7 @@
 
 ## Standalone operator-bundle upgrade (OpenShift 5.0)
 
-The `tier:upgrade-operator` scenario installs discovered downstream SNR and NHC
+The `tier:upgrade-operator` scenario discovers and installs downstream SNR and NHC
 baselines, upgrades NHC to the supplied candidate, and checks the new CSV,
 manager image, preserved NHC UID/full spec, and a fresh controller response.
 The independently selectable `tier:fresh-install` scenario starts clean,
@@ -107,10 +107,12 @@ registry/index_image.go`). PR #430's default-version bundle has no CSV
 therefore does not establish an SDK upgrade blocker. Actual OLM resolution
 remains a first-run check; this says nothing about downstream catalog edges.
 
-By default, the test uses Skopeo to discover the latest GA downstream NHC and
-SNR bundles in `registry.redhat.io/workload-availability`, resolves them to
-digests, and extracts their CSV versions and manager images. Registry
-credentials must allow these reads. Verify every referenced image is pullable.
+By default, the test uses Skopeo to discover the highest plain `vX.Y.Z` tags in
+the downstream NHC and SNR bundle repositories. Commit-suffixed, alpha, beta,
+and release-candidate tags are excluded. The test resolves the selected bundles
+to digests and extracts their CSV versions and manager images. Registry
+credentials must allow these reads. Explicit baseline variables remain
+available when a specific released version must be tested.
 `oc image info` is a laptop/registry check, not proof of node pull access.
 Confirm node access during the approved cluster attempt and retain image-pull
 failures.
@@ -145,7 +147,7 @@ sequencing has not yet been implemented.
 
 For the separate fresh-install checkpoint, use a new report directory and
 select only its label; reuse the pinned candidate NHC inputs. Candidate SNR is
-optional and is discovered from the downstream registry when omitted:
+optional and uses the latest discovered downstream GA bundle when omitted:
 
 ```bash
 export ECO_TEST_LABELS='tier:fresh-install'
@@ -221,14 +223,16 @@ exact candidate CSV and controller image, and repeats remediation; it only
 skips the IDMS and MachineConfigPool rollout that public image references do
 not need.
 
-For a candidate source PR, set `MEDIK8S_UPGRADE_TO_PR_BUNDLE=true` instead
-and provide the same digest-pinned `NHC_UPGRADE_CANDIDATE_NHC_*` and
-operator-sdk inputs used by the standalone tests. After the
-real 4.22-to-5.0 update and released-NHC remediation checkpoint, the scenario
-runs `operator-sdk run bundle-upgrade` against that PR bundle, requires the new
-CSV and exact PR-built controller image, and repeats remediation. This proves a
-PR candidate across the OpenShift update without claiming to test the downstream
-Red Hat catalog path.
+For a candidate source PR, unset `MEDIK8S_SKIP_DOWNSTREAM_OPERATOR_UPGRADE` and
+provide the digest-pinned bundle, operator, and catalog images using
+`NHC_UPGRADE_CANDIDATE_NHC_{BUNDLE,IMAGE,CATALOG}`, plus the exact candidate
+version. Supplying the catalog image automatically selects this path; no
+separate mode flag is needed. After the real 4.22-to-5.0 update and released-NHC remediation
+checkpoint, the scenario creates its own `nhc-upgrade-candidate` CatalogSource,
+switches the surviving Subscription to that catalog, requires the new CSV and
+exact PR-built controller image, and repeats remediation. Cleanup deletes that
+test-owned catalog; it never runs operator-sdk cleanup against the built-in Red
+Hat catalog.
 
 Automated tests validating the Node Health Check (NHC) operator
 deployment, OLM metadata, and security posture.

@@ -74,6 +74,13 @@ func ResolveAndVerifyUpgradeClusterInputs(
 
 	inputs.CandidateNHC.Bundle, inputs.CandidateNHC.Image = candidate.Pullspec, candidate.ManagerImage
 
+	catalog, err := resolveImage(ctx, inputs.CandidateCatalog)
+	if err != nil {
+		return inputs, fmt.Errorf("resolve candidate catalog: %w", err)
+	}
+
+	inputs.CandidateCatalog = catalog
+
 	return inputs, nil
 }
 
@@ -245,20 +252,19 @@ func findLatestGABundle(ctx context.Context, repository string) (string, error) 
 			continue
 		}
 
-		if compareVersion(version, latestVersion) > 0 ||
-			(compareVersion(version, latestVersion) == 0 && tag > latestTag) {
+		if compareVersion(version, latestVersion) > 0 {
 			latestTag, latestVersion = tag, version
 		}
 	}
 
 	if latestTag == "" {
-		return "", fmt.Errorf("no downstream GA tags found in %s", repository)
+		return "", fmt.Errorf("no plain GA vX.Y.Z tags found in %s", repository)
 	}
 
 	return repository + ":" + latestTag, nil
 }
 
-var downstreamGATag = regexp.MustCompile(`^v([0-9]+)\.([0-9]+)\.([0-9]+)(?:-([a-f0-9]{7,}))?$`)
+var downstreamGATag = regexp.MustCompile(`^v([0-9]+)\.([0-9]+)\.([0-9]+)$`)
 
 func downstreamGAVersion(tag string) ([3]int, bool) {
 	match := downstreamGATag.FindStringSubmatch(tag)
@@ -301,6 +307,7 @@ func inspectBundle(ctx context.Context, pullspec string) (inspectedBundle, error
 	}
 
 	repository := strings.Split(pullspec, "@")[0]
+
 	lastSlash := strings.LastIndex(repository, "/")
 	if colon := strings.LastIndex(repository, ":"); colon > lastSlash {
 		repository = repository[:colon]
@@ -374,7 +381,7 @@ func inspectBundle(ctx context.Context, pullspec string) (inspectedBundle, error
 
 //nolint:wsl_v5 // Parsing checks intentionally follow their inputs.
 func inspectImage(ctx context.Context, pullspec string) (imageInfo, error) {
-	output, err := RunCommand(ctx, "oc", "image", "info", pullspec, "-o", "json")
+	output, err := RunCommand(ctx, "oc", "image", "info", "--filter-by-os=linux/amd64", pullspec, "-o", "json")
 	if err != nil {
 		return imageInfo{}, fmt.Errorf("oc image info %s: %w\n%s", pullspec, err, output)
 	}
@@ -387,6 +394,22 @@ func inspectImage(ctx context.Context, pullspec string) (imageInfo, error) {
 	}
 
 	return info, nil
+}
+
+func resolveImage(ctx context.Context, pullspec string) (string, error) {
+	info, err := inspectImage(ctx, pullspec)
+	if err != nil {
+		return "", err
+	}
+
+	repository := strings.Split(pullspec, "@")[0]
+
+	lastSlash := strings.LastIndex(repository, "/")
+	if colon := strings.LastIndex(repository, ":"); colon > lastSlash {
+		repository = repository[:colon]
+	}
+
+	return repository + "@" + info.Digest, nil
 }
 
 //nolint:wsl_v5 // Package and version checks intentionally remain adjacent.
