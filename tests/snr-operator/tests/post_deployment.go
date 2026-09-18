@@ -204,6 +204,12 @@ var _ = Describe(
 			Label(labels.TierSmoke, labels.DisruptionNonDestructive,
 				labels.PlatformAny, labels.FrequencyPresubmit,
 				labels.ComponentOLM), func() {
+				if helpers.IsDevelopmentCSV(snrCSV) {
+					Skip(fmt.Sprintf(
+						"CSV product annotations are absent on development CSV version %s",
+						snrCSV.Object.Spec.Version))
+				}
+
 				By("Checking valid-subscription annotation")
 
 				annotations := snrCSV.Object.Annotations
@@ -241,34 +247,40 @@ var _ = Describe(
 				labels.ComponentOLM), func() {
 				By("Checking required CSV annotations")
 
-				annotations := snrCSV.Object.Annotations
-				Expect(annotations).ToNot(BeNil(), "CSV annotations should not be nil")
+				if helpers.IsDevelopmentCSV(snrCSV) {
+					By(fmt.Sprintf(
+						"Skipping product feature annotations for development CSV version %s",
+						snrCSV.Object.Spec.Version))
+				} else {
+					annotations := snrCSV.Object.Annotations
+					Expect(annotations).ToNot(BeNil(), "CSV annotations should not be nil")
 
-				var annotationErrors []string
+					var annotationErrors []string
 
-				for annotationKey, expectedValue := range snrparams.RequiredAnnotations {
-					annotationValue, exists := annotations[annotationKey]
-					if !exists {
-						annotationErrors = append(annotationErrors,
-							fmt.Sprintf("required annotation %q is missing", annotationKey))
+					for annotationKey, expectedValue := range snrparams.RequiredAnnotations {
+						annotationValue, exists := annotations[annotationKey]
+						if !exists {
+							annotationErrors = append(annotationErrors,
+								fmt.Sprintf("required annotation %q is missing", annotationKey))
 
-						continue
+							continue
+						}
+
+						if annotationValue != expectedValue {
+							annotationErrors = append(annotationErrors,
+								fmt.Sprintf("annotation %q: expected %q, got %q",
+									annotationKey, expectedValue, annotationValue))
+						}
 					}
 
-					if annotationValue != expectedValue {
-						annotationErrors = append(annotationErrors,
-							fmt.Sprintf("annotation %q: expected %q, got %q",
-								annotationKey, expectedValue, annotationValue))
-					}
-				}
+					if len(annotationErrors) > 0 {
+						errMsg := "SNR CSV annotation validation failures:\n"
+						for _, msg := range annotationErrors {
+							errMsg += fmt.Sprintf("- %s\n", msg)
+						}
 
-				if len(annotationErrors) > 0 {
-					errMsg := "SNR CSV annotation validation failures:\n"
-					for _, msg := range annotationErrors {
-						errMsg += fmt.Sprintf("- %s\n", msg)
+						Fail(errMsg)
 					}
-
-					Fail(errMsg)
 				}
 
 				By("Checking replaces field")

@@ -122,6 +122,13 @@ var _ = Describe(
 
 				nmoCSV := fetchActiveCSV()
 
+				if helpers.IsDevelopmentCSV(nmoCSV) {
+					Skip(fmt.Sprintf(
+						"CSV feature annotations are product packaging; "+
+							"skipped for development CSV version %s (main Quay / Makefile default)",
+						nmoCSV.Object.Spec.Version))
+				}
+
 				By("Checking annotation values on NMO CSV")
 
 				Expect(nmoCSV.Object.Annotations).ToNot(BeNil(), "CSV annotations should not be nil")

@@ -138,6 +138,13 @@ var _ = Describe(
 
 				mdrCSV := fetchActiveCSV()
 
+				if helpers.IsDevelopmentCSV(mdrCSV) {
+					Skip(fmt.Sprintf(
+						"CSV feature annotations are product packaging; "+
+							"skipped for development CSV version %s (main Quay / Makefile default)",
+						mdrCSV.Object.Spec.Version))
+				}
+
 				By("Checking annotation values on MDR CSV")
 
 				Expect(mdrCSV.Object.Annotations).ToNot(BeNil(), "CSV annotations should not be nil")

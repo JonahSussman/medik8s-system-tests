@@ -107,6 +107,13 @@ var _ = Describe(
 				}, medik8sparams.DefaultTimeout, farparams.DefaultPollInterval).Should(Succeed(),
 					"FAR CSV must reach Succeeded phase")
 
+				if helpers.IsDevelopmentCSV(farCSV) {
+					Skip(fmt.Sprintf(
+						"CSV feature annotations are product packaging; "+
+							"skipped for development CSV version %s (main Quay / Makefile default)",
+						farCSV.Object.Spec.Version))
+				}
+
 				By("Checking annotation values on FAR CSV")
 
 				Expect(farCSV.Object.Annotations).ToNot(BeNil(), "CSV annotations should not be nil")

@@ -132,6 +132,12 @@ var _ = Describe(
 				Expect(nhcCSV).ToNot(BeNil(),
 					"NHC CSV was not resolved in BeforeAll - is the operator installed?")
 
+				if helpers.IsDevelopmentCSV(nhcCSV) {
+					Skip(fmt.Sprintf(
+						"CSV product annotations are absent on development CSV version %s",
+						nhcCSV.Object.Spec.Version))
+				}
+
 				By("Checking valid-subscription annotation")
 
 				annotations := nhcCSV.Object.Annotations
@@ -172,34 +178,40 @@ var _ = Describe(
 
 				By("Checking required CSV annotations")
 
-				annotations := nhcCSV.Object.Annotations
-				Expect(annotations).ToNot(BeNil(), "CSV annotations should not be nil")
+				if helpers.IsDevelopmentCSV(nhcCSV) {
+					By(fmt.Sprintf(
+						"Skipping product feature annotations for development CSV version %s",
+						nhcCSV.Object.Spec.Version))
+				} else {
+					annotations := nhcCSV.Object.Annotations
+					Expect(annotations).ToNot(BeNil(), "CSV annotations should not be nil")
 
-				var annotationErrors []string
+					var annotationErrors []string
 
-				for annotationKey, expectedValue := range nhcparams.RequiredAnnotations {
-					annotationValue, exists := annotations[annotationKey]
-					if !exists {
-						annotationErrors = append(annotationErrors,
-							fmt.Sprintf("required annotation %q is missing", annotationKey))
+					for annotationKey, expectedValue := range nhcparams.RequiredAnnotations {
+						annotationValue, exists := annotations[annotationKey]
+						if !exists {
+							annotationErrors = append(annotationErrors,
+								fmt.Sprintf("required annotation %q is missing", annotationKey))
 
-						continue
+							continue
+						}
+
+						if annotationValue != expectedValue {
+							annotationErrors = append(annotationErrors,
+								fmt.Sprintf("annotation %q: expected %q, got %q",
+									annotationKey, expectedValue, annotationValue))
+						}
 					}
 
-					if annotationValue != expectedValue {
-						annotationErrors = append(annotationErrors,
-							fmt.Sprintf("annotation %q: expected %q, got %q",
-								annotationKey, expectedValue, annotationValue))
-					}
-				}
+					if len(annotationErrors) > 0 {
+						errMsg := "NHC CSV annotation validation failures:\n"
+						for _, msg := range annotationErrors {
+							errMsg += fmt.Sprintf("- %s\n", msg)
+						}
 
-				if len(annotationErrors) > 0 {
-					errMsg := "NHC CSV annotation validation failures:\n"
-					for _, msg := range annotationErrors {
-						errMsg += fmt.Sprintf("- %s\n", msg)
+						Fail(errMsg)
 					}
-
-					Fail(errMsg)
 				}
 
 				By("Checking replaces field when present")

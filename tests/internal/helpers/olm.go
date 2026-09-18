@@ -10,7 +10,16 @@ import (
 	olmV1alpha1 "github.com/rh-ecosystem-edge/eco-goinfra/pkg/schemes/olm/operators/v1alpha1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 )
+
+// IsDevelopmentCSV reports whether the CSV is a main/dev build (Makefile default VERSION 0.0.1).
+// Product feature annotations (features.operators.openshift.io/*) are typically absent on those CSVs.
+func IsDevelopmentCSV(csv *olm.ClusterServiceVersionBuilder) bool {
+	return csv != nil && csv.Object != nil &&
+		csv.Object.Spec.Version == medik8sparams.DevelopmentCSVVersion
+}
 
 // InstallGAOperatorSubscription creates an OLM OperatorGroup (if missing) and
 // Subscription for the GA operator from the specified catalog. OLM requires
