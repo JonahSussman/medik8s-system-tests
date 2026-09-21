@@ -18,7 +18,7 @@ import (
 // Product feature annotations (features.operators.openshift.io/*) are typically absent on those CSVs.
 func IsDevelopmentCSV(csv *olm.ClusterServiceVersionBuilder) bool {
 	return csv != nil && csv.Object != nil &&
-		csv.Object.Spec.Version == medik8sparams.DevelopmentCSVVersion
+		csv.Object.Spec.Version.String() == medik8sparams.DevelopmentCSVVersion
 }
 
 // InstallGAOperatorSubscription creates an OLM OperatorGroup (if missing) and
