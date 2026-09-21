@@ -113,17 +113,20 @@ func DeleteOrphanConsolePlugin(ctx context.Context, api client.Client, namespace
 		plugin.Object, "spec", "backend", "service", "namespace")
 	backendName, _, _ := unstructured.NestedString(
 		plugin.Object, "spec", "backend", "service", "name")
+
 	if backendNamespace != namespace || backendName != "node-healthcheck-node-remediation-console-plugin" {
 		return fmt.Errorf("refusing to delete ConsolePlugin %s with unexpected backend %s/%s",
 			plugin.GetName(), backendNamespace, backendName)
 	}
 
 	service := &corev1.Service{}
+
 	err := api.Get(ctx, client.ObjectKey{Namespace: backendNamespace, Name: backendName}, service)
 	if err == nil {
 		return fmt.Errorf("refusing to delete ConsolePlugin %s while backend service %s/%s exists",
 			plugin.GetName(), backendNamespace, backendName)
 	}
+
 	if !apierrors.IsNotFound(err) {
 		return err
 	}

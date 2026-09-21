@@ -140,6 +140,7 @@ func TestDeleteOrphanConsolePlugin(t *testing.T) {
 	if err := DeleteOrphanConsolePlugin(ctx, api, "owned"); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := api.Get(ctx, client.ObjectKeyFromObject(plugin), plugin.DeepCopy()); !apierrors.IsNotFound(err) {
 		t.Fatalf("orphan plugin was not deleted: %v", err)
 	}
@@ -148,6 +149,7 @@ func TestDeleteOrphanConsolePlugin(t *testing.T) {
 		Namespace: "owned", Name: "node-healthcheck-node-remediation-console-plugin",
 	}}
 	api = testClient(plugin.DeepCopy(), service)
+
 	if err := DeleteOrphanConsolePlugin(ctx, api, "owned"); err == nil {
 		t.Fatal("deleted plugin with a live backend service")
 	}
