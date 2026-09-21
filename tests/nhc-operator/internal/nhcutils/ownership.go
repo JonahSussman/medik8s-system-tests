@@ -88,6 +88,7 @@ func CheckClean(ctx context.Context, api client.Client, namespace string) error 
 			if gvk.Group != "apps" {
 				text += fmt.Sprint(object.Object["spec"])
 			}
+
 			if gvk.Group == "remediation.medik8s.io" || gvk.Group == "self-node-remediation.medik8s.io" ||
 				strings.Contains(text, "node-healthcheck") || strings.Contains(text, "self-node-remediation") {
 				return fmt.Errorf("pre-existing %s %s/%s is not owned by this run",

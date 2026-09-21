@@ -60,6 +60,7 @@ func TestCleanPreflight(t *testing.T) {
 				if kind == "Deployment" || kind == "DaemonSet" {
 					objectName = name
 				}
+
 				object := testObject(kind, "elsewhere", objectName)
 				if kind == "Deployment" || kind == "DaemonSet" {
 					object.SetAPIVersion("apps/v1")
@@ -75,6 +76,7 @@ func TestCleanPreflight(t *testing.T) {
 
 	ciDaemonSet := testObject("DaemonSet", "openshift-e2e-loki", "loki-promtail")
 	ciDaemonSet.SetAPIVersion("apps/v1")
+
 	ciDaemonSet.Object["spec"] = map[string]interface{}{"job": "node-healthcheck-operator-upgrade"}
 	if err := CheckClean(context.Background(), testClient(ciDaemonSet), "new-namespace"); err != nil {
 		t.Fatalf("unrelated CI DaemonSet must be accepted: %v", err)
