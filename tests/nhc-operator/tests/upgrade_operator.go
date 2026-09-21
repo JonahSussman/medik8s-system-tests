@@ -118,6 +118,10 @@ var _ = Describe("NHC Upgrade Operator", Serial, Ordered,
 			Expect(owned.Create(ctx, nhc)).To(Succeed())
 			Expect(waitForPauseResponse(ctx, nhc.GetUID(), owned.Token, nhc.GetResourceVersion())).To(Succeed())
 			configUID, configSpec = captureNHCConfiguration(ctx)
+			AddReportEntry("nhc-config-before-operator-upgrade", map[string]interface{}{
+				"uid": configUID, "spec": configSpec,
+			})
+			GinkgoWriter.Printf("NHC config before operator upgrade: uid=%s spec=%v\n", configUID, configSpec)
 
 			By("upgrading in place to the explicitly supplied candidate bundle")
 
@@ -146,5 +150,9 @@ var _ = Describe("NHC Upgrade Operator", Serial, Ordered,
 			uid, spec = captureNHCConfiguration(ctx)
 			Expect(uid).To(Equal(configUID))
 			Expect(spec).To(Equal(configSpec))
+			AddReportEntry("nhc-config-after-operator-upgrade", map[string]interface{}{
+				"uid": uid, "spec": spec,
+			})
+			GinkgoWriter.Printf("NHC config after operator upgrade: uid=%s spec=%v\n", uid, spec)
 		})
 	})

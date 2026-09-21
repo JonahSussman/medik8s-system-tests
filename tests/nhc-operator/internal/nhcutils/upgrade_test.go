@@ -56,7 +56,11 @@ func TestCleanPreflight(t *testing.T) {
 	for _, kind := range []string{"ClusterServiceVersion", "Subscription", "InstallPlan", "Deployment", "DaemonSet"} {
 		for _, name := range []string{"node-healthcheck-operator.v0.12.0", "self-node-remediation.v0.13.0"} {
 			t.Run(kind+name, func(t *testing.T) {
-				object := testObject(kind, "elsewhere", "arbitrary-name")
+				objectName := "arbitrary-name"
+				if kind == "Deployment" || kind == "DaemonSet" {
+					objectName = name
+				}
+				object := testObject(kind, "elsewhere", objectName)
 				if kind == "Deployment" || kind == "DaemonSet" {
 					object.SetAPIVersion("apps/v1")
 				}
@@ -67,6 +71,13 @@ func TestCleanPreflight(t *testing.T) {
 				}
 			})
 		}
+	}
+
+	ciDaemonSet := testObject("DaemonSet", "openshift-e2e-loki", "loki-promtail")
+	ciDaemonSet.SetAPIVersion("apps/v1")
+	ciDaemonSet.Object["spec"] = map[string]interface{}{"job": "node-healthcheck-operator-upgrade"}
+	if err := CheckClean(context.Background(), testClient(ciDaemonSet), "new-namespace"); err != nil {
+		t.Fatalf("unrelated CI DaemonSet must be accepted: %v", err)
 	}
 
 	api := interceptor.NewClient(testClient(), interceptor.Funcs{List: func(ctx context.Context, underlying client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
@@ -140,6 +151,7 @@ func TestDeleteOrphanConsolePlugin(t *testing.T) {
 	if err := DeleteOrphanConsolePlugin(ctx, api, "owned"); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := api.Get(ctx, client.ObjectKeyFromObject(plugin), plugin.DeepCopy()); !apierrors.IsNotFound(err) {
 		t.Fatalf("orphan plugin was not deleted: %v", err)
 	}
@@ -147,6 +159,7 @@ func TestDeleteOrphanConsolePlugin(t *testing.T) {
 	service := &corev1.Service{ObjectMeta: metav1.ObjectMeta{
 		Namespace: "owned", Name: "node-healthcheck-node-remediation-console-plugin",
 	}}
+
 	api = testClient(plugin.DeepCopy(), service)
 	if err := DeleteOrphanConsolePlugin(ctx, api, "owned"); err == nil {
 		t.Fatal("deleted plugin with a live backend service")

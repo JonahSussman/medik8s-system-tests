@@ -81,9 +81,13 @@ func CheckClean(ctx context.Context, api client.Client, namespace string) error 
 		}
 
 		for _, object := range list.Items {
-			// Inspect spec as well as names: Subscriptions/InstallPlans may use
-			// arbitrary names while still installing the conflicting package.
-			text := fmt.Sprint(object.Object["spec"], object.GetName())
+			// Subscriptions and InstallPlans may use arbitrary names while
+			// installing a conflicting package. Workload pod templates can
+			// mention NHC in unrelated CI metadata, so inspect their names only.
+			text := object.GetName()
+			if gvk.Group != "apps" {
+				text += fmt.Sprint(object.Object["spec"])
+			}
 			if gvk.Group == "remediation.medik8s.io" || gvk.Group == "self-node-remediation.medik8s.io" ||
 				strings.Contains(text, "node-healthcheck") || strings.Contains(text, "self-node-remediation") {
 				return fmt.Errorf("pre-existing %s %s/%s is not owned by this run",
@@ -111,19 +115,23 @@ func DeleteOrphanConsolePlugin(ctx context.Context, api client.Client, namespace
 
 	backendNamespace, _, _ := unstructured.NestedString(
 		plugin.Object, "spec", "backend", "service", "namespace")
+
 	backendName, _, _ := unstructured.NestedString(
 		plugin.Object, "spec", "backend", "service", "name")
+
 	if backendNamespace != namespace || backendName != "node-healthcheck-node-remediation-console-plugin" {
 		return fmt.Errorf("refusing to delete ConsolePlugin %s with unexpected backend %s/%s",
 			plugin.GetName(), backendNamespace, backendName)
 	}
 
 	service := &corev1.Service{}
+
 	err := api.Get(ctx, client.ObjectKey{Namespace: backendNamespace, Name: backendName}, service)
 	if err == nil {
 		return fmt.Errorf("refusing to delete ConsolePlugin %s while backend service %s/%s exists",
 			plugin.GetName(), backendNamespace, backendName)
 	}
+
 	if !apierrors.IsNotFound(err) {
 		return err
 	}

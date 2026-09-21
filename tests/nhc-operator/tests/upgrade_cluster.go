@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -48,6 +50,9 @@ var _ = Describe("NHC Upgrade Cluster",
 			preUpgradeImage         string
 			preOCPUpgradeCSV        string
 			preOCPUpgradeImage      string
+			persistentConfigUID     string
+			persistentConfigSpec    map[string]interface{}
+			persistentConfigToken   string
 			currentTargetNode       string
 			operatorUpgraded        bool
 			namespaceCreated        bool
@@ -196,6 +201,7 @@ var _ = Describe("NHC Upgrade Cluster",
 			}
 
 			cleanupNHCCR(ctx, nhcparams.ClusterUpgradeTestName)
+			cleanupNHCCR(ctx, nhcparams.NHCUpgradeTestName)
 
 			if currentTargetNode != "" {
 				nodeName := currentTargetNode
@@ -312,6 +318,22 @@ var _ = Describe("NHC Upgrade Cluster",
 				}, medik8sparams.OperatorUpgradeTimeout, nhcparams.DefaultPollInterval).
 					Should(Succeed(), "SNR node agents were not ready on every scheduled node")
 
+				By("Step 3c: Create and record a safe NHC configuration before the OpenShift upgrade")
+
+				persistentConfigToken = rand.Text()
+				persistentNHC := upgradeNHC()
+				persistentNHC.Object["spec"] = nhcutils.SafeSpec(
+					nhcparams.SNRTemplateName, medik8sparams.OperatorNs, persistentConfigToken)
+				Expect(APIClient.Create(ctx, persistentNHC)).To(Succeed())
+				Expect(waitForPauseResponse(ctx, persistentNHC.GetUID(), persistentConfigToken,
+					persistentNHC.GetResourceVersion())).To(Succeed())
+				persistentConfigUID, persistentConfigSpec = captureNHCConfiguration(ctx)
+				AddReportEntry("nhc-config-before-ocp-upgrade", map[string]interface{}{
+					"uid": persistentConfigUID, "spec": persistentConfigSpec,
+				})
+				GinkgoWriter.Printf("NHC config before OCP upgrade: uid=%s spec=%v\n",
+					persistentConfigUID, persistentConfigSpec)
+
 				if medik8sparams.SkipOCPUpgrade {
 					By("Step 4: Skipped (MEDIK8S_SKIP_OCP_UPGRADE=true) - OCP upgrade not performed")
 				} else {
@@ -380,6 +402,26 @@ var _ = Describe("NHC Upgrade Cluster",
 					"NHC image must remain unchanged across the OpenShift upgrade")
 				GinkgoWriter.Printf("Post-OCP-upgrade baseline for FBC upgrade: CSV=%s image=%s\n",
 					previousCSV.Object.Name, preUpgradeImage)
+
+				By("Step 5b: Verify the same NHC configuration survived and is reconciled after the OpenShift upgrade")
+
+				postOCPUID, postOCPSpec := captureNHCConfiguration(ctx)
+				Expect(postOCPUID).To(Equal(persistentConfigUID),
+					"OpenShift upgrade must preserve the existing NodeHealthCheck")
+				Expect(postOCPSpec).To(Equal(persistentConfigSpec),
+					"OpenShift upgrade must preserve the NodeHealthCheck specification")
+
+				postOCPProbe := persistentConfigToken + "-post-ocp"
+				changeUpgradePause(ctx, types.UID(persistentConfigUID), postOCPProbe)
+				changeUpgradePause(ctx, types.UID(persistentConfigUID), persistentConfigToken)
+				postOCPUID, postOCPSpec = captureNHCConfiguration(ctx)
+				Expect(postOCPUID).To(Equal(persistentConfigUID))
+				Expect(postOCPSpec).To(Equal(persistentConfigSpec))
+				AddReportEntry("nhc-config-after-ocp-upgrade", map[string]interface{}{
+					"uid": postOCPUID, "spec": postOCPSpec,
+				})
+				GinkgoWriter.Printf("NHC config after OCP upgrade: uid=%s spec=%v\n",
+					postOCPUID, postOCPSpec)
 
 				By("Step 6: Validate GA NHC on OCP N (post-OCP-upgrade remediation)")
 
@@ -578,6 +620,8 @@ var _ = Describe("NHC Upgrade Cluster",
 						"post-public-catalog-switch candidate")
 					Expect(candidateCSV.Object.Name).NotTo(Equal(previousCSV.Object.Name),
 						"the public catalog must produce a new candidate CSV")
+
+					operatorUpgraded = true
 				}
 
 				if operatorUpgraded {
@@ -605,6 +649,26 @@ var _ = Describe("NHC Upgrade Cluster",
 						"Step 10: Skipped (no operator upgrade occurred, " +
 							"Konflux and GA catalogs at same version)")
 				}
+
+				By("Step 10b: Verify the same NHC configuration survived and is reconciled by the candidate")
+
+				postCandidateUID, postCandidateSpec := captureNHCConfiguration(ctx)
+				Expect(postCandidateUID).To(Equal(persistentConfigUID),
+					"operator upgrade must preserve the existing NodeHealthCheck")
+				Expect(postCandidateSpec).To(Equal(persistentConfigSpec),
+					"operator upgrade must preserve the NodeHealthCheck specification")
+
+				postCandidateProbe := persistentConfigToken + "-post-candidate"
+				changeUpgradePause(ctx, types.UID(persistentConfigUID), postCandidateProbe)
+				changeUpgradePause(ctx, types.UID(persistentConfigUID), persistentConfigToken)
+				postCandidateUID, postCandidateSpec = captureNHCConfiguration(ctx)
+				Expect(postCandidateUID).To(Equal(persistentConfigUID))
+				Expect(postCandidateSpec).To(Equal(persistentConfigSpec))
+				AddReportEntry("nhc-config-after-operator-upgrade", map[string]interface{}{
+					"uid": postCandidateUID, "spec": postCandidateSpec,
+				})
+				GinkgoWriter.Printf("NHC config after operator upgrade: uid=%s spec=%v\n",
+					postCandidateUID, postCandidateSpec)
 
 				By("Step 11: Validate NHC on OCP N (post-catalog-switch remediation)")
 
