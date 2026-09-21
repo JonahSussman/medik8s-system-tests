@@ -122,11 +122,8 @@ var _ = Describe(
 
 				nmoCSV := fetchActiveCSV()
 
-				if helpers.IsDevelopmentCSV(nmoCSV) {
-					Skip(fmt.Sprintf(
-						"CSV feature annotations are product packaging; "+
-							"skipped for development CSV version %s (main Quay / Makefile default)",
-						nmoCSV.Object.Spec.Version))
+				if !helpers.IsBranded() {
+					Skip("CSV feature annotations are product packaging; skipped when ECO_BRANDED=false")
 				}
 
 				By("Checking annotation values on NMO CSV")

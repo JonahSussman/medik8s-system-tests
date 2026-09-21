@@ -279,11 +279,8 @@ var _ = Describe(
 
 				sbrCSV := fetchActiveCSV()
 
-				if helpers.IsDevelopmentCSV(sbrCSV) {
-					Skip(fmt.Sprintf(
-						"CSV feature annotations are product packaging; "+
-							"skipped for development CSV version %s (main Quay / Makefile default)",
-						sbrCSV.Object.Spec.Version))
+				if !helpers.IsBranded() {
+					Skip("CSV feature annotations are product packaging; skipped when ECO_BRANDED=false")
 				}
 
 				By("Checking annotation values on SBR CSV")

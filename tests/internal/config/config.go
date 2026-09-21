@@ -19,11 +19,15 @@ const (
 
 // GeneralConfig type keeps general configuration.
 type GeneralConfig struct {
-	ReportsDirAbsPath         string `yaml:"reports_dump_dir" envconfig:"ECO_REPORTS_DUMP_DIR"`
-	VerboseLevel              string `yaml:"verbose_level" envconfig:"ECO_VERBOSE_LEVEL"`
-	DumpFailedTests           bool   `yaml:"dump_failed_tests" envconfig:"ECO_DUMP_FAILED_TESTS"`
-	EnableReport              bool   `yaml:"enable_report" envconfig:"ECO_ENABLE_REPORT"`
-	DryRun                    bool   `yaml:"dry_run" envconfig:"ECO_DRY_RUN"`
+	ReportsDirAbsPath string `yaml:"reports_dump_dir" envconfig:"ECO_REPORTS_DUMP_DIR"`
+	VerboseLevel      string `yaml:"verbose_level" envconfig:"ECO_VERBOSE_LEVEL"`
+	DumpFailedTests   bool   `yaml:"dump_failed_tests" envconfig:"ECO_DUMP_FAILED_TESTS"`
+	EnableReport      bool   `yaml:"enable_report" envconfig:"ECO_ENABLE_REPORT"`
+	DryRun            bool   `yaml:"dry_run" envconfig:"ECO_DRY_RUN"`
+	// Branded is true when operators under test are product/branded builds
+	// (CSV feature annotations expected). Set ECO_BRANDED=false for upstream
+	// Quay main / unbranded bundles. Defaults to true.
+	Branded                   bool   `yaml:"branded" envconfig:"ECO_BRANDED"`
 	SSHKeyPath                string `envconfig:"ECO_SSH_KEY_PATH"`
 	SSHUser                   string `yaml:"ssh_user" envconfig:"ECO_SSH_USER"`
 	KubernetesRolePrefix      string `yaml:"kubernetes_role_prefix" envconfig:"ECO_KUBERNETES_ROLE_PREFIX"`

@@ -12,9 +12,6 @@ const (
 	OperatorNs = "openshift-workload-availability"
 	// DefaultTimeout represents the default timeout.
 	DefaultTimeout = 300 * time.Second
-	// DevelopmentCSVVersion is the default VERSION from Medik8s operator Makefiles on main
-	// (IMAGE_TAG=latest). Product / release CSVs use real semver (e.g. 0.3.0).
-	DevelopmentCSVVersion = "0.0.1"
 )
 
 // WorkloadImage is the container image used for test workload pods.

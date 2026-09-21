@@ -47,6 +47,10 @@ The test framework is designed to test a pre-installed OCP cluster which meets t
   export WORKLOAD_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal:latest
   ```
 #### Optional:
+* `ECO_BRANDED` - Whether operators under test are expected to carry product/branded
+  OLM packaging (CSV feature annotations, etc.). Defaults to `true`. Set to `false`
+  for upstream Quay `main` / unbranded bundles (e.g. `5.0-upstream` Prow jobs) so
+  those packaging checks are skipped.
 * Logging with glog
 
 We use glog library for logging in the project. In order to enable verbose logging the following needs to be done:

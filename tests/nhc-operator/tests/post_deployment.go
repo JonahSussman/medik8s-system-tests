@@ -132,10 +132,8 @@ var _ = Describe(
 				Expect(nhcCSV).ToNot(BeNil(),
 					"NHC CSV was not resolved in BeforeAll - is the operator installed?")
 
-				if helpers.IsDevelopmentCSV(nhcCSV) {
-					Skip(fmt.Sprintf(
-						"CSV product annotations are absent on development CSV version %s",
-						nhcCSV.Object.Spec.Version))
+				if !helpers.IsBranded() {
+					Skip("CSV product annotations are absent when ECO_BRANDED=false")
 				}
 
 				By("Checking valid-subscription annotation")
@@ -178,10 +176,8 @@ var _ = Describe(
 
 				By("Checking required CSV annotations")
 
-				if helpers.IsDevelopmentCSV(nhcCSV) {
-					By(fmt.Sprintf(
-						"Skipping product feature annotations for development CSV version %s",
-						nhcCSV.Object.Spec.Version))
+				if !helpers.IsBranded() {
+					By("Skipping product feature annotations when ECO_BRANDED=false")
 				} else {
 					annotations := nhcCSV.Object.Annotations
 					Expect(annotations).ToNot(BeNil(), "CSV annotations should not be nil")
