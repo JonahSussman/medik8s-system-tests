@@ -7,7 +7,7 @@ LABEL description="system-tests development image"
 LABEL go.version=${GO_VER}
 LABEL container.user=${CONTAINERUSER}
 
-RUN dnf install -y tar gcc make && \
+RUN dnf install -y tar gcc make skopeo && \
     dnf clean all && \
     useradd -U -u 1000 -m -d /home/${CONTAINERUSER} -s /usr/bin/bash ${CONTAINERUSER}
 
