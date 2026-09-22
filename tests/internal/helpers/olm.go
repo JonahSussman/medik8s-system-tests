@@ -14,11 +14,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// IsBranded reports whether operators under test are expected to carry product /
-// branded OLM packaging (CSV feature annotations, etc.). Controlled by
-// ECO_BRANDED; defaults to true when unset so downstream jobs keep those checks.
-func IsBranded() bool {
-	v, set := os.LookupEnv("ECO_BRANDED")
+// IsDownstream reports whether operators under test are expected to carry
+// product/downstream OLM packaging (CSV feature annotations, etc.). Controlled
+// by ECO_IS_DOWNSTREAM; defaults to true when unset so downstream jobs keep
+// those checks.
+func IsDownstream() bool {
+	v, set := os.LookupEnv("ECO_IS_DOWNSTREAM")
 	if !set || strings.TrimSpace(v) == "" {
 		return true
 	}

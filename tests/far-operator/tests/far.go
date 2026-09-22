@@ -107,8 +107,8 @@ var _ = Describe(
 				}, medik8sparams.DefaultTimeout, farparams.DefaultPollInterval).Should(Succeed(),
 					"FAR CSV must reach Succeeded phase")
 
-				if !helpers.IsBranded() {
-					Skip("CSV feature annotations are product packaging; skipped when ECO_BRANDED=false")
+				if !helpers.IsDownstream() {
+					Skip("CSV feature annotations are product packaging; skipped when ECO_IS_DOWNSTREAM=false")
 				}
 
 				By("Checking annotation values on FAR CSV")

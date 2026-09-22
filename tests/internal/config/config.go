@@ -24,10 +24,10 @@ type GeneralConfig struct {
 	DumpFailedTests   bool   `yaml:"dump_failed_tests" envconfig:"ECO_DUMP_FAILED_TESTS"`
 	EnableReport      bool   `yaml:"enable_report" envconfig:"ECO_ENABLE_REPORT"`
 	DryRun            bool   `yaml:"dry_run" envconfig:"ECO_DRY_RUN"`
-	// Branded is true when operators under test are product/branded builds
-	// (CSV feature annotations expected). Set ECO_BRANDED=false for upstream
-	// Quay main / unbranded bundles. Defaults to true.
-	Branded                   bool   `yaml:"branded" envconfig:"ECO_BRANDED"`
+	// IsDownstream is true when operators under test are expected to carry
+	// product/downstream OLM packaging (CSV feature annotations, etc.).
+	// Set ECO_IS_DOWNSTREAM=false for upstream Quay main bundles. Defaults to true.
+	IsDownstream              bool   `yaml:"is_downstream" envconfig:"ECO_IS_DOWNSTREAM"`
 	SSHKeyPath                string `envconfig:"ECO_SSH_KEY_PATH"`
 	SSHUser                   string `yaml:"ssh_user" envconfig:"ECO_SSH_USER"`
 	KubernetesRolePrefix      string `yaml:"kubernetes_role_prefix" envconfig:"ECO_KUBERNETES_ROLE_PREFIX"`

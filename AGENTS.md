@@ -41,7 +41,7 @@ export ECO_TEST_VERBOSE=true                   # -vv output
 export ECO_TEST_TRACE=true                     # full stack trace on failure
 export ECO_DUMP_FAILED_TESTS=true              # dump cluster state on failure
 export ECO_REPORTS_DUMP_DIR=/tmp/reports       # default: /tmp/reports
-export ECO_BRANDED=false                       # optional; default true. false skips product CSV packaging checks (upstream Quay main)
+export ECO_IS_DOWNSTREAM=false                       # optional; default true. false = upstream Quay main
 make run-tests
 ```
 

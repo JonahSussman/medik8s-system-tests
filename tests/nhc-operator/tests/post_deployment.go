@@ -132,8 +132,8 @@ var _ = Describe(
 				Expect(nhcCSV).ToNot(BeNil(),
 					"NHC CSV was not resolved in BeforeAll - is the operator installed?")
 
-				if !helpers.IsBranded() {
-					Skip("CSV product annotations are absent when ECO_BRANDED=false")
+				if !helpers.IsDownstream() {
+					Skip("CSV product annotations are absent when ECO_IS_DOWNSTREAM=false")
 				}
 
 				By("Checking valid-subscription annotation")
@@ -176,8 +176,8 @@ var _ = Describe(
 
 				By("Checking required CSV annotations")
 
-				if !helpers.IsBranded() {
-					By("Skipping product feature annotations when ECO_BRANDED=false")
+				if !helpers.IsDownstream() {
+					By("Skipping product feature annotations when ECO_IS_DOWNSTREAM=false")
 				} else {
 					annotations := nhcCSV.Object.Annotations
 					Expect(annotations).ToNot(BeNil(), "CSV annotations should not be nil")
