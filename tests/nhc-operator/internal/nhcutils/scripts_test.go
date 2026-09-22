@@ -208,10 +208,14 @@ func TestPreparationUsesExactMakeInputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The real helper requires a persistent source context. This temporary
-	// fixture lives under this package and is removed when this test finishes.
-	//nolint:usetesting // The helper requires its source path to persist beneath the package working directory.
-	dir, err := os.MkdirTemp(".", "prepare-fixture-")
+	// The helper rejects /tmp build paths. CI checks out system-tests under
+	// /tmp, so place the fixture in its writable artifact directory.
+	fixtureParent := "."
+	if artifactDir := os.Getenv("ARTIFACT_DIR"); artifactDir != "" {
+		fixtureParent = artifactDir
+	}
+	//nolint:usetesting // The fixture must live outside /tmp when CI runs this test.
+	dir, err := os.MkdirTemp(fixtureParent, "prepare-fixture-")
 	if err != nil {
 		t.Fatal(err)
 	}
