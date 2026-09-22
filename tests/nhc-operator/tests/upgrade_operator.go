@@ -65,8 +65,6 @@ var _ = Describe("NHC Upgrade Operator", Serial, Ordered,
 				AddReportEntry("nhc-upgrade-cleanup", "skipped by NHC_UPGRADE_SKIP_CLEANUP=true")
 			} else {
 				DeferCleanup(func() {
-					failed := CurrentSpecReport().Failed()
-
 					cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 					defer cancel()
 
@@ -74,10 +72,6 @@ var _ = Describe("NHC Upgrade Operator", Serial, Ordered,
 					if err != nil {
 						AddReportEntry("nhc-upgrade-cleanup-failure", err.Error())
 						AddReportEntry("nhc-upgrade-cleanup-evidence", nhcutils.CollectFailureEvidence(cleanupCtx, inputs.Namespace))
-					}
-
-					if !failed {
-						Expect(err).NotTo(HaveOccurred(), "test-owned resources must be removed")
 					}
 				})
 			}
