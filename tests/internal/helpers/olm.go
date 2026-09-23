@@ -3,6 +3,7 @@ package helpers
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/clients"
@@ -12,6 +13,24 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+// IsDownstream reports whether operators under test are expected to carry
+// product/downstream OLM packaging (CSV feature annotations, etc.). Controlled
+// by ECO_IS_DOWNSTREAM; defaults to true when unset so downstream jobs keep
+// those checks.
+func IsDownstream() bool {
+	v, set := os.LookupEnv("ECO_IS_DOWNSTREAM")
+	if !set || strings.TrimSpace(v) == "" {
+		return true
+	}
+
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return true
+	}
+}
 
 // InstallGAOperatorSubscription creates an OLM OperatorGroup (if missing) and
 // Subscription for the GA operator from the specified catalog. OLM requires

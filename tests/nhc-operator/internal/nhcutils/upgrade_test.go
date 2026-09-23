@@ -163,6 +163,7 @@ func TestDeleteOrphanConsolePlugin(t *testing.T) {
 	}}
 
 	api = testClient(plugin.DeepCopy(), service)
+
 	if err := DeleteOrphanConsolePlugin(ctx, api, "owned"); err == nil {
 		t.Fatal("deleted plugin with a live backend service")
 	}
