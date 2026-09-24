@@ -279,12 +279,16 @@ var _ = Describe(
 					}
 				}
 
-				By("Checking replaces field")
+				if helpers.IsDownstream() {
+					By("Checking replaces field")
 
-				replaces := snrCSV.Object.Spec.Replaces
-				Expect(replaces).ToNot(BeEmpty(), "CSV spec.replaces should not be empty")
-				Expect(replaces).To(ContainSubstring(snrparams.CSVNamePattern),
-					"replaces field should contain %q, got %q", snrparams.CSVNamePattern, replaces)
+					replaces := snrCSV.Object.Spec.Replaces
+					Expect(replaces).ToNot(BeEmpty(), "CSV spec.replaces should not be empty")
+					Expect(replaces).To(ContainSubstring(snrparams.CSVNamePattern),
+						"replaces field should contain %q, got %q", snrparams.CSVNamePattern, replaces)
+				} else {
+					By("Skipping replaces field check when ECO_IS_DOWNSTREAM=false")
+				}
 
 				By("Checking cluster topology for replica validation")
 
