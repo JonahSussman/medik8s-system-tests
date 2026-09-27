@@ -30,7 +30,7 @@ import (
 )
 
 var _ = Describe(
-	"NMO Master Quorum",
+	"NMO Control-Plane Quorum",
 	Ordered,
 	Serial,
 	Label(labels.OperatorNMO), func() {
@@ -55,7 +55,7 @@ var _ = Describe(
 			Expect(infraErr).ToNot(HaveOccurred(), "Failed to pull infrastructure configuration")
 
 			if infraConfig.Object.Status.ControlPlaneTopology == configv1.SingleReplicaTopologyMode {
-				Skip("Master quorum test requires a multi-node control plane (SNO detected)")
+				Skip("Control-plane quorum test requires a multi-node control plane (SNO detected)")
 			}
 
 			controlPlaneCount, err := helpers.CountControlPlaneNodes(ctx, APIClient)
@@ -63,7 +63,7 @@ var _ = Describe(
 
 			if controlPlaneCount < nmoparams.MinControlPlaneNodesForQuorum {
 				Skip(fmt.Sprintf(
-					"Master quorum test requires at least %d control-plane nodes, found %d",
+					"Control-plane quorum test requires at least %d control-plane nodes, found %d",
 					nmoparams.MinControlPlaneNodesForQuorum, controlPlaneCount))
 			}
 
@@ -79,13 +79,13 @@ var _ = Describe(
 
 			if pdb.Status.DisruptionsAllowed != nmoparams.ExpectedQuorumDisruptions {
 				Skip(fmt.Sprintf(
-					"Master quorum test requires an etcd PDB that tolerates exactly %d disruption, found DisruptionsAllowed=%d",
+					"Control-plane quorum test requires an etcd PDB that tolerates exactly %d disruption, found DisruptionsAllowed=%d",
 					nmoparams.ExpectedQuorumDisruptions, pdb.Status.DisruptionsAllowed))
 			}
 
 			By("Verifying the NodeMaintenance validating webhook is installed")
 			// Refuse to run a destructive control-plane test if the admission webhook
-			// (the component under test, and the guard preventing a second master drain)
+			// (the component under test, and the guard preventing a second control-plane drain)
 			// is absent -- otherwise a second maintenance could be admitted and disrupt etcd.
 			assertNodeMaintenanceWebhookPresent(ctx)
 		})
@@ -116,9 +116,12 @@ var _ = Describe(
 				deleteNMsForNode(ctx, firstNodeName, nmoparams.UncordonTimeout)
 
 				By("Registering cleanup to end maintenance and recover the control-plane node")
+				// Control-plane teardown (uncordon, drain-taint removal, finalizer) is
+				// given the control-plane maintenance budget rather than the worker-scale
+				// UncordonTimeout, which a control-plane node can plausibly exceed.
 				DeferCleanup(func() {
 					cleanupCtx := context.Background()
-					deleteAndWaitForNMCR(cleanupCtx, firstNMName, nmoparams.UncordonTimeout)
+					deleteAndWaitForNMCR(cleanupCtx, firstNMName, nmoparams.ControlPlaneMaintenanceTimeout)
 					waitForNodeReadyAndUncordoned(cleanupCtx, firstNodeName, nmoparams.RebootTimeout)
 				})
 
@@ -153,12 +156,12 @@ var _ = Describe(
 					}
 
 					return current.Status.Phase, nil
-				}, nmoparams.MasterMaintenanceTimeout, nmoparams.DefaultPollInterval).Should(
+				}, nmoparams.ControlPlaneMaintenanceTimeout, nmoparams.DefaultPollInterval).Should(
 					Equal(nmov1beta1.MaintenanceSucceeded),
 					"First control-plane NodeMaintenance did not reach Succeeded phase")
 
 				By("Verifying the first control-plane node is cordoned with the drain taint")
-				assertNodeCordonAndTaint(firstNodeName, true, nmoparams.MasterMaintenanceTimeout)
+				assertNodeCordonAndTaint(firstNodeName, true, nmoparams.ControlPlaneMaintenanceTimeout)
 
 				By("Verifying the first NodeMaintenance reports drain completed")
 				assertDrainCompleted(ctx, firstNMName)
@@ -172,8 +175,9 @@ var _ = Describe(
 
 					return pdb.Status.DisruptionsAllowed, nil
 				}, nmoparams.QuorumUpdateTimeout, nmoparams.DefaultPollInterval).Should(
-					Equal(int32(0)),
-					"etcd PDB should report zero allowed disruptions while a master is under maintenance")
+					Equal(nmoparams.QuorumExhaustedDisruptions),
+					"etcd PDB should report zero allowed disruptions "+
+						"while a control-plane node is under maintenance")
 
 				By("Selecting a second, distinct schedulable control-plane node")
 
@@ -186,20 +190,14 @@ var _ = Describe(
 				By(fmt.Sprintf("Pre-cleaning any stale NodeMaintenance for node %s", secondNodeName))
 				deleteNMsForNode(ctx, secondNodeName, nmoparams.UncordonTimeout)
 
-				By("Registering safety cleanup for the second control-plane node")
-				DeferCleanup(func() {
-					cleanupCtx := context.Background()
-					deleteAndWaitForNMCR(cleanupCtx, secondNMName, nmoparams.UncordonTimeout)
-					waitForNodeReadyAndUncordoned(cleanupCtx, secondNodeName, nmoparams.RebootTimeout)
-				})
-
 				By(fmt.Sprintf(
 					"Verifying the second node %s still holds a Ready etcd guard pod", secondNodeName))
 				// The webhook admits a second maintenance if the target's etcd guard pod is
 				// NOT Ready (it treats the node as already disrupted). Confirming the guard pod
 				// is Ready here makes the rejection deterministic, so the assertion below does
 				// not flake. Actual safety comes from the dry-run create, which is never
-				// persisted and so can never drain a second master.
+				// persisted and so can never drain a second control-plane node. Nothing is
+				// persisted for this node, so it needs no cleanup registration.
 				assertEtcdGuardPodReady(ctx, secondNodeName)
 
 				By(fmt.Sprintf(
@@ -217,7 +215,8 @@ var _ = Describe(
 
 				By("Verifying the admission webhook rejects it on etcd-quorum grounds")
 				// Dry-run: the validating webhook still runs and returns the same rejection,
-				// but the CR is never persisted, so this test cannot itself drain a second master.
+				// but the CR is never persisted, so this test cannot itself drain a second
+				// control-plane node.
 				Expect(APIClient.Create(ctx, secondNM, client.DryRunAll)).To(
 					MatchError(ContainSubstring(nmoparams.WebhookMsgQuorumViolation)),
 					"Second control-plane NodeMaintenance should be rejected to preserve etcd quorum")
@@ -264,7 +263,7 @@ func getEtcdQuorumPDB(ctx context.Context) (*policyv1.PodDisruptionBudget, error
 
 // logEtcdQuorumPDB prints the etcd quorum PDB name and its currently allowed
 // disruptions -- the runtime equivalent of the Polarion plan's
-// "print current master quorum" step.
+// control-plane quorum reporting step.
 func logEtcdQuorumPDB(ctx context.Context) {
 	GinkgoHelper()
 

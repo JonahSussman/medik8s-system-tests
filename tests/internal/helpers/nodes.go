@@ -69,13 +69,15 @@ func SelectWorkerNode(ctx context.Context, k8sClient client.Client, excludeNodes
 }
 
 // controlPlaneRoleLabels are the node-role labels that identify a control-plane
-// (master) node. Clusters may carry either or both depending on OCP version.
+// node. Clusters may carry either or both depending on OCP version; the legacy
+// label string is retained here because it is a Kubernetes API value, not a name
+// this repo chooses.
 var controlPlaneRoleLabels = []string{
 	"node-role.kubernetes.io/control-plane",
 	"node-role.kubernetes.io/master",
 }
 
-// isControlPlaneNode reports whether the node carries a control-plane/master role label.
+// isControlPlaneNode reports whether the node carries a control-plane role label.
 func isControlPlaneNode(node *corev1.Node) bool {
 	for _, label := range controlPlaneRoleLabels {
 		if _, ok := node.Labels[label]; ok {
@@ -87,7 +89,7 @@ func isControlPlaneNode(node *corev1.Node) bool {
 }
 
 // CountControlPlaneNodes returns the total number of nodes carrying a
-// control-plane (master) role label. It intentionally counts ALL such nodes
+// control-plane role label. It intentionally counts ALL such nodes
 // regardless of Ready/schedulable state, because it is used as a topology guard
 // (a real etcd quorum needs at least 3 control-plane nodes) rather than to
 // assess current availability.
@@ -109,7 +111,7 @@ func CountControlPlaneNodes(ctx context.Context, k8sClient client.Client) (int, 
 }
 
 // SelectControlPlaneNode returns a random Ready, schedulable control-plane
-// (master) node that is not in the excludeNodes list.
+// node that is not in the excludeNodes list.
 func SelectControlPlaneNode(
 	ctx context.Context, k8sClient client.Client, excludeNodes ...string) (*corev1.Node, error) {
 	nodeList := &corev1.NodeList{}
@@ -117,15 +119,15 @@ func SelectControlPlaneNode(
 		return nil, fmt.Errorf("failed to list nodes: %w", err)
 	}
 
-	var masters []corev1.Node
+	var controlPlaneNodes []corev1.Node
 
 	for i := range nodeList.Items {
 		if isControlPlaneNode(&nodeList.Items[i]) {
-			masters = append(masters, nodeList.Items[i])
+			controlPlaneNodes = append(controlPlaneNodes, nodeList.Items[i])
 		}
 	}
 
-	node := pickRandomReadyNode(masters, excludeNodes...)
+	node := pickRandomReadyNode(controlPlaneNodes, excludeNodes...)
 	if node == nil {
 		return nil, fmt.Errorf("no eligible Ready control-plane node found (excluded: %v)", excludeNodes)
 	}
@@ -158,7 +160,7 @@ func CountReadyWorkerNodes(ctx context.Context, k8sClient client.Client) (int, e
 }
 
 // ListSchedulableWorkerNodes returns Ready, schedulable nodes that carry the worker role and
-// do NOT carry a master or control-plane role label. Excluding control-plane nodes keeps
+// do NOT carry a control-plane role label. Excluding control-plane nodes keeps
 // resilience/cordon tests from touching control-plane capacity on compact clusters.
 func ListSchedulableWorkerNodes(ctx context.Context, k8sClient client.Client) ([]corev1.Node, error) {
 	nodeList := &corev1.NodeList{}

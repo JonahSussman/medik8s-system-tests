@@ -110,27 +110,16 @@ func GetReadyControlPlaneNodes(ctx context.Context, k8sClient client.Client) ([]
 	return cpNodes, nil
 }
 
-// SelectControlPlaneNode returns a Ready CP node that is not in the exclude list.
+// SelectControlPlaneNode returns a Ready control-plane node that is not in the
+// exclude list. It delegates to helpers.SelectControlPlaneNode so the selection
+// logic lives in one place; this wrapper is kept so far-operator callers keep a
+// package-local entry point. Relative to the previous local implementation the
+// shared helper also skips cordoned nodes and picks at random rather than always
+// returning the first match, matching helpers.SelectWorkerNode.
 func SelectControlPlaneNode(
 	ctx context.Context, k8sClient client.Client, excludeNodes ...string,
 ) (*corev1.Node, error) {
-	cpNodes, err := GetReadyControlPlaneNodes(ctx, k8sClient)
-	if err != nil {
-		return nil, err
-	}
-
-	excluded := make(map[string]bool, len(excludeNodes))
-	for _, name := range excludeNodes {
-		excluded[name] = true
-	}
-
-	for i := range cpNodes {
-		if !excluded[cpNodes[i].Name] {
-			return &cpNodes[i], nil
-		}
-	}
-
-	return nil, fmt.Errorf("no eligible CP node found (excluded: %v)", excludeNodes)
+	return helpers.SelectControlPlaneNode(ctx, k8sClient, excludeNodes...)
 }
 
 // CordonExtraWorkers cordons all Ready worker nodes except those in keepNames.
