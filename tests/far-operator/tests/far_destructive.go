@@ -56,10 +56,14 @@ var _ = Describe("FAR Destructive Tests",
 			nodeParams             map[string]interface{}
 			currentFARTemplateName string
 			currentFARName         string
+			// Keep failed deletions tracked across specs that reuse currentFARName.
+			pendingFARDeleteNames map[string]struct{}
 		)
 
 		BeforeAll(func() {
 			ctx = context.Background()
+			pendingFARDeleteNames = make(map[string]struct{})
+
 			ensureDestructiveWorkerCapacity(ctx, APIClient)
 
 			prereqs := setupAWSFARPrerequisites(ctx, APIClient)
@@ -69,7 +73,30 @@ var _ = Describe("FAR Destructive Tests",
 			nodeParams = prereqs.nodeParams
 		})
 
+		AfterAll(func() {
+			var retryErrors []string
+
+			for farName := range pendingFARDeleteNames {
+				if err := deleteRemediationCR(ctx, APIClient, farGVK, farName); err != nil {
+					message := fmt.Sprintf("failed to delete FAR CR %s during final cleanup: %v", farName, err)
+					GinkgoWriter.Printf("WARNING: %s\n", message)
+					AddReportEntry("far-cr-final-cleanup-delete-failed", message)
+					retryErrors = append(retryErrors, message)
+
+					continue
+				}
+
+				delete(pendingFARDeleteNames, farName)
+			}
+
+			if len(retryErrors) > 0 {
+				Fail("FAR CR cleanup retries failed: " + strings.Join(retryErrors, "; "))
+			}
+		})
+
 		JustAfterEach(func() {
+			var cleanupErrors []string
+
 			spec := CurrentSpecReport()
 			if spec.Failed() {
 				GinkgoWriter.Println(
@@ -130,9 +157,18 @@ var _ = Describe("FAR Destructive Tests",
 				}
 
 				By("Deleting FAR CR " + currentFARName)
+
 				farNodeName := currentFARName
-				Expect(deleteRemediationCR(ctx, APIClient, farGVK, currentFARName)).To(Succeed(),
-					"Failed to delete FAR CR %s", currentFARName)
+				if err := deleteRemediationCR(ctx, APIClient, farGVK, farNodeName); err != nil {
+					message := fmt.Sprintf("failed to delete FAR CR %s: %v", farNodeName, err)
+					GinkgoWriter.Printf("WARNING: %s\n", message)
+					AddReportEntry("far-cr-cleanup-delete-failed", message)
+					cleanupErrors = append(cleanupErrors, message)
+					pendingFARDeleteNames[farNodeName] = struct{}{}
+				} else {
+					delete(pendingFARDeleteNames, farNodeName)
+				}
+
 				currentFARName = ""
 
 				By("Verifying FAR NoSchedule taint removed after CR deletion")
@@ -190,6 +226,10 @@ var _ = Describe("FAR Destructive Tests",
 					AddReportEntry("safety-net-recovery-failed",
 						fmt.Sprintf("node %s did not recover: %v", nodeName, err))
 				}
+			}
+
+			if len(cleanupErrors) > 0 {
+				Fail("FAR cleanup failed: " + strings.Join(cleanupErrors, "; "))
 			}
 		})
 
