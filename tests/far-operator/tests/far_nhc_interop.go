@@ -133,6 +133,8 @@ var _ = Describe("NHC+FAR Interop",
 				logKubeletDiagnostics(ctx, nhcState.targetNode)
 			}
 
+			var cleanupErrors []string
+
 			nhcRemoved := true
 
 			if nhcState.nhcName != "" {
@@ -257,6 +259,7 @@ var _ = Describe("NHC+FAR Interop",
 						nodeName, farparams.NodeReadyTimeout, err)
 					GinkgoWriter.Printf("WARNING: %s\n", message)
 					AddReportEntry("nhc-cleanup-node-recovery-failed", message)
+					cleanupErrors = append(cleanupErrors, message)
 				}
 			}
 
@@ -295,9 +298,14 @@ var _ = Describe("NHC+FAR Interop",
 						secondNHCState.targetNode, farparams.NodeReadyTimeout, err)
 					GinkgoWriter.Printf("WARNING: %s\n", message)
 					AddReportEntry("nhc-cleanup-second-node-recovery-failed", message)
+					cleanupErrors = append(cleanupErrors, message)
 				}
 
 				secondNHCState = nhcRemediationState{}
+			}
+
+			if len(cleanupErrors) > 0 {
+				Fail("NHC cleanup failed: " + strings.Join(cleanupErrors, "; "))
 			}
 		})
 
