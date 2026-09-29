@@ -10,7 +10,7 @@ on:
 jobs:
   build:
     name: Build and push docker image
-    if: github.repository_owner == 'medik8s'
+    if: github.repository_owner == 'openshift'
     runs-on: ubuntu-latest
 
     steps:
