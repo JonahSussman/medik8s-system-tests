@@ -8,8 +8,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	configv1 "github.com/openshift/api/config/v1"
-
 	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -44,15 +42,13 @@ var farTemplateGVK = schema.GroupVersionKind{
 }
 
 var _ = Describe("FAR Destructive Tests",
-	Serial,
+	Ordered, ContinueOnFailure, Serial,
 	Label(labels.OperatorFAR, farparams.Label,
 		labels.DisruptionDestructive,
 		labels.PlatformAWS, labels.FrequencyWeekly),
 	func() {
 		var (
 			ctx                    context.Context
-			platform               configv1.PlatformType
-			region                 string
 			fenceAgent             string
 			leaderNode             string
 			targetNode             *corev1.Node
@@ -60,120 +56,47 @@ var _ = Describe("FAR Destructive Tests",
 			nodeParams             map[string]interface{}
 			currentFARTemplateName string
 			currentFARName         string
-
-			destructiveSetupDone    bool
-			destructiveSetupSkipped bool
+			// Keep failed deletions tracked across specs that reuse currentFARName.
+			pendingFARDeleteNames map[string]struct{}
 		)
 
-		BeforeEach(func() {
-			if destructiveSetupSkipped {
-				Skip("FAR destructive tests require AWS")
-			}
-
-			if destructiveSetupDone {
-				return
-			}
-
+		BeforeAll(func() {
 			ctx = context.Background()
+			pendingFARDeleteNames = make(map[string]struct{})
 
-			By("Detecting cluster platform")
+			ensureDestructiveWorkerCapacity(ctx, APIClient)
 
-			var err error
+			prereqs := setupAWSFARPrerequisites(ctx, APIClient)
+			fenceAgent = prereqs.fenceAgent
+			leaderNode = prereqs.leaderNode
+			sharedParams = prereqs.sharedParams
+			nodeParams = prereqs.nodeParams
+		})
 
-			platform, region, err = helpers.DetectPlatform(ctx, APIClient)
-			Expect(err).ToNot(HaveOccurred())
+		AfterAll(func() {
+			var retryErrors []string
 
-			if platform != configv1.AWSPlatformType {
-				destructiveSetupSkipped = true
+			for farName := range pendingFARDeleteNames {
+				if err := deleteRemediationCR(ctx, APIClient, farGVK, farName); err != nil {
+					message := fmt.Sprintf("failed to delete FAR CR %s during final cleanup: %v", farName, err)
+					GinkgoWriter.Printf("WARNING: %s\n", message)
+					AddReportEntry("far-cr-final-cleanup-delete-failed", message)
+					retryErrors = append(retryErrors, message)
 
-				Skip(fmt.Sprintf(
-					"FAR destructive tests require AWS, got %s", platform))
-			}
-
-			By("Resolving fence agent for platform")
-
-			fenceAgent, _, err = farutils.FenceAgentForPlatform(platform)
-			Expect(err).ToNot(HaveOccurred())
-			GinkgoWriter.Printf(
-				"Platform: %s, Agent: %s, Region: %s\n",
-				platform, fenceAgent, region)
-
-			By("Verifying FAR operator deployment is ready")
-
-			farDeployment, err := deployment.Pull(
-				APIClient, farparams.OperatorDeploymentName, medik8sparams.OperatorNs)
-			Expect(err).ToNot(HaveOccurred(), "Failed to get FAR deployment")
-			Expect(farDeployment.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(),
-				"FAR deployment is not Ready")
-
-			By("Reading AWS credentials from CCO Secret")
-
-			awsAccessKey, awsSecretKey, err := farutils.GetAWSCredentials(
-				ctx, APIClient, medik8sparams.OperatorNs)
-			Expect(err).ToNot(HaveOccurred(),
-				"AWS credentials must be provisioned by the "+
-					"medik8s-aws-credentials CI step")
-
-			By("Creating shared credentials Secret for FAR SharedSecretName")
-
-			credentialsSecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      farparams.SharedCredentialsSecretName,
-					Namespace: medik8sparams.OperatorNs,
-				},
-				StringData: map[string]string{
-					"--access-key": awsAccessKey,
-					"--secret-key": awsSecretKey,
-				},
-			}
-
-			err = APIClient.Create(ctx, credentialsSecret)
-			if err != nil && !k8serrors.IsAlreadyExists(err) {
-				Expect(err).ToNot(HaveOccurred(),
-					"Failed to create shared credentials Secret")
-			}
-
-			By("Building fence_aws shared parameters")
-
-			sharedParams = map[string]interface{}{
-				"--region":          region,
-				"--action":          "reboot",
-				"--skip-race-check": "",
-			}
-
-			By("Building node parameters (--plug = EC2 instance ID)")
-
-			awsNodeParams, err := farutils.BuildAWSNodeParameters(
-				ctx, APIClient)
-			Expect(err).ToNot(HaveOccurred())
-
-			nodeParams = make(map[string]interface{})
-
-			for paramName, nodeMap := range awsNodeParams {
-				inner := make(map[string]interface{}, len(nodeMap))
-				for nodeName, val := range nodeMap {
-					inner[nodeName] = val
+					continue
 				}
 
-				nodeParams[paramName] = inner
+				delete(pendingFARDeleteNames, farName)
 			}
 
-			By("Identifying active FAR controller node")
-
-			Eventually(func() error {
-				var leaderErr error
-
-				leaderNode, leaderErr = farutils.GetActiveFARControllerNode(ctx, APIClient)
-
-				return leaderErr
-			}, farparams.ControllerHandoverTimeout, farparams.DefaultPollInterval).Should(Succeed(),
-				"FAR leader election did not settle")
-			GinkgoWriter.Printf("FAR leader is on node: %s\n", leaderNode)
-
-			destructiveSetupDone = true
+			if len(retryErrors) > 0 {
+				Fail("FAR CR cleanup retries failed: " + strings.Join(retryErrors, "; "))
+			}
 		})
 
 		JustAfterEach(func() {
+			var cleanupErrors []string
+
 			spec := CurrentSpecReport()
 			if spec.Failed() {
 				GinkgoWriter.Println(
@@ -234,8 +157,18 @@ var _ = Describe("FAR Destructive Tests",
 				}
 
 				By("Deleting FAR CR " + currentFARName)
+
 				farNodeName := currentFARName
-				deleteRemediationCR(ctx, APIClient, farGVK, currentFARName)
+				if err := deleteRemediationCR(ctx, APIClient, farGVK, farNodeName); err != nil {
+					message := fmt.Sprintf("failed to delete FAR CR %s: %v", farNodeName, err)
+					GinkgoWriter.Printf("WARNING: %s\n", message)
+					AddReportEntry("far-cr-cleanup-delete-failed", message)
+					cleanupErrors = append(cleanupErrors, message)
+					pendingFARDeleteNames[farNodeName] = struct{}{}
+				} else {
+					delete(pendingFARDeleteNames, farNodeName)
+				}
+
 				currentFARName = ""
 
 				By("Verifying FAR NoSchedule taint removed after CR deletion")
@@ -267,9 +200,15 @@ var _ = Describe("FAR Destructive Tests",
 			}
 
 			if currentFARTemplateName != "" {
-				By("Safety net: deleting FARTemplate " + currentFARTemplateName)
-				deleteRemediationCR(ctx, APIClient, farTemplateGVK, currentFARTemplateName)
-				currentFARTemplateName = ""
+				By("Safety net: deleting FAR template " + currentFARTemplateName)
+
+				if err := deleteRemediationCR(ctx, APIClient, farTemplateGVK, currentFARTemplateName); err != nil {
+					message := fmt.Sprintf("failed to delete FAR template %s: %v", currentFARTemplateName, err)
+					GinkgoWriter.Printf("WARNING: %s\n", message)
+					AddReportEntry("far-template-cleanup-delete-failed", message)
+				} else {
+					currentFARTemplateName = ""
+				}
 			}
 
 			if targetNode != nil {
@@ -287,6 +226,10 @@ var _ = Describe("FAR Destructive Tests",
 					AddReportEntry("safety-net-recovery-failed",
 						fmt.Sprintf("node %s did not recover: %v", nodeName, err))
 				}
+			}
+
+			if len(cleanupErrors) > 0 {
+				Fail("FAR cleanup failed: " + strings.Join(cleanupErrors, "; "))
 			}
 		})
 
@@ -670,13 +613,7 @@ var _ = Describe("FAR Destructive Tests",
 			})
 		})
 
-		Context("NHC+FAR interop", func() {
-			// RHWA-1035: 4 NHC+FAR interop tests will be added here.
-			// These tests install both NHC and FAR, configure NHC to use
-			// FAR as the remediator, then trigger remediation via NHC by
-			// stopping kubelet and waiting for NHC to detect the unhealthy
-			// node and create a FAR CR automatically.
-		})
+		// NHC+FAR interop tests live in far_nhc_interop.go (RHWA-1035).
 
 		Context("control plane node target",
 			Label(labels.TopologyControlPlane),
@@ -1352,20 +1289,12 @@ func createFARCR(
 	// helpers, unlike a fixed EventuallyWithOffset.
 	GinkgoHelper()
 
-	deleteRemediationCR(ctx, k8sClient, farCR.GroupVersionKind(),
-		farCR.GetName())
+	Expect(deleteRemediationCR(ctx, k8sClient, farCR.GroupVersionKind(),
+		farCR.GetName())).To(Succeed(), "Failed to delete existing FAR CR before creation")
 
 	Eventually(func(assertion Gomega) {
 		err := k8sClient.Create(ctx, farCR)
 		if err != nil {
-			if k8serrors.IsAlreadyExists(err) {
-				GinkgoWriter.Printf(
-					"INFO: FAR CR %s already exists (prior delete may not have finalized), treating as success\n",
-					farCR.GetName())
-
-				return
-			}
-
 			assertion.Expect(err).ToNot(HaveOccurred(),
 				"Failed to create FAR CR")
 		}
@@ -1652,11 +1581,14 @@ func removeWorkloadImage(ctx context.Context, nodeName string) {
 func deleteRemediationCR(
 	ctx context.Context, k8sClient client.Client,
 	gvk schema.GroupVersionKind, name string,
-) {
+) error {
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(gvk)
 
 	key := client.ObjectKey{Name: name, Namespace: medik8sparams.OperatorNs}
+	if gvk == nhcGVK {
+		key.Namespace = ""
+	}
 
 	if waitErr := wait.PollUntilContextTimeout(
 		ctx, farparams.DefaultPollInterval, farparams.RemediationCRDeletionTimeout, true,
@@ -1683,5 +1615,10 @@ func deleteRemediationCR(
 		GinkgoWriter.Printf(
 			"Warning: %s %s not fully deleted within %s: %v\n",
 			gvk.Kind, name, farparams.RemediationCRDeletionTimeout, waitErr)
+
+		return fmt.Errorf("%s %s not fully deleted within %s: %w",
+			gvk.Kind, name, farparams.RemediationCRDeletionTimeout, waitErr)
 	}
+
+	return nil
 }
