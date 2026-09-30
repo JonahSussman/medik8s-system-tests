@@ -95,6 +95,39 @@ const (
 	// SchemaBadNameMsg is the API server validation substring for a metadata.name with invalid characters.
 	SchemaBadNameMsg = "must start and end with an alphanumeric character"
 
+	// QuorumReason is the spec.reason value used by the control-plane etcd-quorum test.
+	QuorumReason = "system-tests control-plane quorum validation (RHWA-1251)"
+
+	// EtcdNamespace is the namespace holding the etcd quorum PodDisruptionBudget.
+	// The NMO webhook lists the single PDB here to assess control-plane quorum.
+	EtcdNamespace = "openshift-etcd"
+	// MinControlPlaneNodesForQuorum is the minimum number of control-plane nodes
+	// required to exercise the etcd-quorum guard (a real quorum needs 3 members).
+	MinControlPlaneNodesForQuorum = 3
+	// ExpectedQuorumDisruptions is the etcd PDB DisruptionsAllowed value the
+	// control-plane quorum test requires before starting: exactly one, i.e. a 3-member
+	// etcd control plane that tolerates a single disruption. Larger etcd (5 members)
+	// tolerates more, so a single maintenance would not exhaust quorum and the test
+	// does not apply.
+	ExpectedQuorumDisruptions = int32(1)
+	// QuorumExhaustedDisruptions is the etcd PDB DisruptionsAllowed value expected
+	// once a control-plane node is under maintenance: the single allowed disruption
+	// has been consumed, so no further control-plane disruption may be admitted.
+	QuorumExhaustedDisruptions = int32(0)
+	// ControlPlaneMaintenanceTimeout is the maximum wait for a control-plane
+	// NodeMaintenance to reach Succeeded. Control-plane drains are slower than
+	// worker drains. It is also used for control-plane teardown, which must cover
+	// uncordon, drain-taint removal and finalizer processing.
+	ControlPlaneMaintenanceTimeout = 10 * time.Minute
+	// QuorumUpdateTimeout is the maximum wait for the etcd PDB to reflect that a
+	// control-plane node under maintenance has consumed the allowed disruption.
+	QuorumUpdateTimeout = 3 * time.Minute
+	// WebhookMsgQuorumViolation is the substring emitted by the NMO admission
+	// webhook when a second control-plane NodeMaintenance would violate etcd quorum.
+	// Verified against node-maintenance-operator errorControlPlaneQuorumViolation,
+	// identical from tag v0.18.0 through the pinned v0.21.0 (see go.mod).
+	WebhookMsgQuorumViolation = "will violate etcd quorum"
+
 	// MinWorkerNodesForMaintenance is the minimum number of schedulable worker nodes
 	// required by the destructive collision tests: one node is put under real
 	// maintenance while at least one other remains available (for cluster health and,

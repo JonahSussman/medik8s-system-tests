@@ -394,8 +394,19 @@ func deleteAndWaitForNMCR(ctx context.Context, name string, timeout time.Duratio
 
 	switch {
 	case err == nil:
-		ExpectWithOffset(1, APIClient.Delete(ctx, existing)).To(Succeed(),
+		// Retry the Delete rather than asserting on a single attempt: one transient
+		// API error must not abort cleanup and leave a node cordoned and drained.
+		// On a control-plane node a leaked drain degrades etcd.
+		EventuallyWithOffset(1, func() error {
+			deleteErr := APIClient.Delete(ctx, existing)
+			if errors.IsNotFound(deleteErr) {
+				return nil
+			}
+
+			return deleteErr
+		}, timeout, nmoparams.DefaultPollInterval).Should(Succeed(),
 			fmt.Sprintf("Failed to delete NodeMaintenance CR %s", name))
+
 		EventuallyWithOffset(1, func() bool {
 			err := APIClient.Get(ctx,
 				client.ObjectKey{Name: name}, &nmov1beta1.NodeMaintenance{})
