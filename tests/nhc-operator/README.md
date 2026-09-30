@@ -184,6 +184,36 @@ catalog qualification, or remediation test. Related-image tags in the unmodified
 CI candidate are resolved and recorded, but are still mutable references; local
 bundle generation pins console and must-gather explicitly.
 
+## Standalone FBC operator upgrade (OpenShift 5.0)
+
+The common six-operator input contract is documented in
+[`../../docs/fbc-upgrades.md`](../../docs/fbc-upgrades.md).
+
+The `tier:upgrade-operator-fbc` scenario installs GA NHC and SNR from the
+cluster's built-in `redhat-operators` catalog. It then creates a test-owned
+CatalogSource from the supplied file-based catalog image and switches the
+existing NHC Subscription to that catalog. The test requires OLM to install a
+new CSV with the exact expected version and controller image, while preserving
+and freshly reconciling the existing NodeHealthCheck configuration.
+
+This path does not use a candidate bundle or `operator-sdk bundle-upgrade`.
+Provide a pullable FBC image containing a valid upgrade edge from the installed
+GA version to the expected candidate:
+
+```bash
+: "${KUBECONFIG:?}" "${MEDIK8S_FBC_CATALOG_IMAGE:?}" "${MEDIK8S_FBC_IDMS_PATH:?}"
+: "${MEDIK8S_FBC_CANDIDATE_VERSION:?}" "${MEDIK8S_FBC_CANDIDATE_IMAGE:?}"
+export ECO_TEST_FEATURES=nhc-operator
+export ECO_TEST_LABELS='tier:upgrade-operator-fbc'
+export WORKLOAD_IMAGE=unused-by-nhc-fbc-upgrade
+make run-tests
+```
+
+Cleanup is enabled by default. For FBC debugging only, set
+`MEDIK8S_FBC_SKIP_CLEANUP=true` to preserve resources. Source upgrade scenarios
+continue to use `NHC_UPGRADE_SKIP_CLEANUP`. The next run rejects leftovers, so remove them manually
+before rerunning.
+
 ## OpenShift 4.22 to 5.0 cluster-upgrade scenario
 
 `tier:upgrade-cluster` is a separate destructive scenario. It installs released
