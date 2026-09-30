@@ -341,6 +341,8 @@ func countReadyMasterNodes(ctx context.Context, k8sClient client.Client) (int, e
 
 // buildNHCForWorkers builds an unstructured NodeHealthCheck CR that
 // monitors worker nodes and triggers SNR remediation via the named SNRT.
+//
+//nolint:unparam // Keep the resource name explicit for parity with master helpers.
 func buildNHCForWorkers(name, snrtName string) *unstructured.Unstructured {
 	return buildNHC(name, snrtName, "node-role.kubernetes.io/worker")
 }

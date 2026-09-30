@@ -56,7 +56,8 @@ func waitForSNRNodeAgents(ctx context.Context) error {
 		func(ctx context.Context) (bool, error) {
 			daemonSet := &appsv1.DaemonSet{}
 			if err := APIClient.Get(ctx, client.ObjectKey{
-				Name: nhcparams.SNRDaemonSetName, Namespace: medik8sparams.OperatorNs,
+				Name:      nhcparams.SNRDaemonSetName,
+				Namespace: medik8sparams.OperatorNs,
 			}, daemonSet); err != nil {
 				return false, client.IgnoreNotFound(err)
 			}
