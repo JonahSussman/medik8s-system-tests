@@ -1,8 +1,22 @@
-# See the OWNERS docs at https://go.k8s.io/owners
-
-filters:
-  ".*":
-    reviewers:
-      - code-reviewers
-    approvers:
-      - approvers
+approvers:
+  - mshitrit
+  - razo7
+  - ugreener
+  - weshayutin
+  - mpryc
+  - jmontleon
+  - abrugaro
+  - eemcmullan
+  - JonahSussman
+  - pranavgaikwad
+reviewers:
+  - mshitrit
+  - razo7
+  - ugreener
+  - weshayutin
+  - mpryc
+  - jmontleon
+  - abrugaro
+  - eemcmullan
+  - JonahSussman
+  - pranavgaikwad
