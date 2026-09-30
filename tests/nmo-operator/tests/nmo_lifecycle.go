@@ -387,6 +387,7 @@ func assertMaintenanceLease(ctx context.Context, nodeName string, shouldExist bo
 	}
 }
 
+//nolint:unparam // Keep the timeout explicit at call sites for lifecycle readability.
 func deleteAndWaitForNMCR(ctx context.Context, name string, timeout time.Duration) {
 	existing := &nmov1beta1.NodeMaintenance{}
 

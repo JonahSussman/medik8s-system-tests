@@ -15,4 +15,4 @@ This directory contains cross-cutting architecture, shared testing workflows, an
 
 ## Guides
 
-- [File-Based Catalog (FBC) Operator Upgrades](fbc-upgrades.md) (`tier:upgrade-operator-fbc`): Common release upgrade contract, environment inputs, and execution for all six operators.
+- [File-Based Catalog (FBC) Operator Upgrades](fbc-upgrades.md) (`tier:upgrade-operator`): Common release upgrade contract, environment inputs, and execution for all six operators.
