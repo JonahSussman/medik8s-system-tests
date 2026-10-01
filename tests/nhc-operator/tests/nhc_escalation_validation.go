@@ -258,11 +258,11 @@ var _ = Describe("NHC Escalation -- Edit During Remediation",
 				setupTestRemediationResources(ctx)
 				DeferCleanup(func() { cleanupTestRemediationResources(ctx) })
 
-				By("Creating NHC with escalation: TestRemediation (order=0, timeout=600s) then SNR (order=1)")
+				By("Creating NHC with escalation: TestRemediation (order=0, timeout=60s) then SNR (order=1, timeout=180s)")
 
 				nhc := buildNHCWithEscalation(nhcName, []escalationStep{
-					testRemediationEscalationStep(0, nhcparams.EscalationLongTimeout),
-					snrEscalationStep(1, nhcparams.EscalationLongTimeout),
+					testRemediationEscalationStep(0, nhcparams.EscalationFirstStepTimeout),
+					snrEscalationStep(1, nhcparams.EscalationSNRStepTimeout),
 				})
 
 				err := APIClient.Create(ctx, nhc)
