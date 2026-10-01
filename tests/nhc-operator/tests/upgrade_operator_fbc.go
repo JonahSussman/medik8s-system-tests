@@ -3,8 +3,10 @@ package tests
 import (
 	"context"
 	"crypto/rand"
+	"fmt"
 
 	"github.com/medik8s/system-tests/tests/internal/fbcsuite"
+	"github.com/medik8s/system-tests/tests/internal/helpers"
 	"github.com/medik8s/system-tests/tests/internal/labels"
 	. "github.com/medik8s/system-tests/tests/internal/medik8sinittools"
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
@@ -12,20 +14,38 @@ import (
 	"github.com/medik8s/system-tests/tests/nhc-operator/internal/nhcutils"
 )
 
+func prepareGASNR(ctx context.Context) error {
+	if _, err := nhcutils.InstallGASNR(APIClient); err != nil {
+		return fmt.Errorf("create GA SNR subscription: %w", err)
+	}
+
+	if _, err := helpers.WaitForInstalledOperator(ctx, APIClient, helpers.OperatorOLMSpec{
+		Package:          nhcparams.UpgradeSNRPackage,
+		SubscriptionName: nhcparams.ClusterUpgradeSNRSubName,
+		Namespace:        medik8sparams.OperatorNs,
+		CSVNamePattern:   nhcparams.ClusterUpgradeSNRCSVPattern,
+		Channel:          medik8sparams.GAChannel,
+	}, medik8sparams.OperatorUpgradeTimeout, nhcparams.DefaultPollInterval); err != nil {
+		return fmt.Errorf("wait for GA SNR CSV: %w", err)
+	}
+
+	if err := waitForSNRControllerAndWebhook(ctx); err != nil {
+		return fmt.Errorf("wait for GA SNR controller and webhook: %w", err)
+	}
+
+	return nil
+}
+
 func newNHCFBCTest(medik8sparams.FBCUpgradeInputs) fbcsuite.UpgradeOperatorFBCTest {
 	owned := &nhcutils.OwnedRun{
 		API: APIClient, Namespace: medik8sparams.OperatorNs, Token: rand.Text(),
 	}
 
 	return &nhcUpgradeOperatorFBCTest{
-		owned:     owned,
-		namespace: medik8sparams.OperatorNs,
-		token:     owned.Token,
-		prepareSNR: func(context.Context) error {
-			_, err := nhcutils.InstallGASNR(APIClient)
-
-			return err
-		},
+		owned:      owned,
+		namespace:  medik8sparams.OperatorNs,
+		token:      owned.Token,
+		prepareSNR: prepareGASNR,
 	}
 }
 
