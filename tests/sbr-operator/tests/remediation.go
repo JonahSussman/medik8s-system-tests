@@ -32,7 +32,6 @@ func pullSBRCR(nodeName string) (*unstructured.Unstructured, error) {
 	sbrObject := &unstructured.Unstructured{}
 	sbrObject.SetAPIVersion(sbrparams.CRDGroup + "/" + sbrparams.CRDVersion)
 	sbrObject.SetKind("StorageBasedRemediation")
-
 	err := APIClient.Get(context.TODO(),
 		types.NamespacedName{Name: nodeName, Namespace: medik8sparams.OperatorNs}, sbrObject)
 	if err != nil {
@@ -78,7 +77,6 @@ func cleanupSBRCR(nodeName string) {
 // so a CR targeting one of these nodes exercises a different code path.
 func controllerPodNodes() map[string]bool {
 	nodeSet := make(map[string]bool)
-
 	pods, err := pod.List(APIClient, medik8sparams.OperatorNs,
 		metav1.ListOptions{LabelSelector: sbrparams.OperatorControllerPodLabelSelector})
 	if err != nil {
@@ -183,19 +181,16 @@ var _ = Describe(
 			setupSBRC = buildSBRC(sbrparams.SBRCFunctionalTestName, map[string]interface{}{
 				"sharedStorageClass": storageClass,
 			})
-
 			createErr := APIClient.Create(context.TODO(), setupSBRC)
 			Expect(createErr).ToNot(HaveOccurred(),
 				"StorageBasedRemediationConfig %q must be created before the remediation CR test",
 				sbrparams.SBRCFunctionalTestName)
-
 			waitForSBRCReady(sbrparams.SBRCFunctionalTestName)
 
 			// Exclude nodes running SBR controller pods: the reconciler skips fencing its own
 			// node (CR name == ownNodeName check), which would leave the CR in a state where
 			// no conditions are ever set and the finalizer is never released on its own.
 			controllerNodes := controllerPodNodes()
-
 			nodeList, err := APIClient.CoreV1Interface.Nodes().List(context.TODO(), metav1.ListOptions{
 				LabelSelector: "node-role.kubernetes.io/worker",
 			})
@@ -274,7 +269,6 @@ var _ = Describe(
 					GinkgoWriter.Printf(
 						"DeferCleanup: node %s still cordoned after SBR CR removal; patching to uncordon\n",
 						targetNodeName)
-
 					patch := []byte(`{"spec":{"unschedulable":false}}`)
 					if _, patchErr := APIClient.CoreV1Interface.Nodes().Patch(
 						context.TODO(), targetNodeName, types.MergePatchType, patch, metav1.PatchOptions{},
@@ -305,7 +299,6 @@ var _ = Describe(
 				By(fmt.Sprintf("Creating StorageBasedRemediation CR targeting node %q", targetNodeName))
 
 				sbrCR := buildSBR(targetNodeName)
-
 				createErr := APIClient.Create(context.TODO(), sbrCR)
 				Expect(createErr).ToNot(HaveOccurred(),
 					"StorageBasedRemediation CR should be admitted by the API server (spec is intentionally empty)")

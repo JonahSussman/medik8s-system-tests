@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -21,7 +23,6 @@ const (
 func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), packageLoadTimeout)
 	err := run(ctx, os.Args[1:])
-
 	cancel()
 
 	if err != nil {
@@ -30,7 +31,14 @@ func main() {
 	}
 }
 
-func run(ctx context.Context, patterns []string) error {
+func run(ctx context.Context, args []string) error {
+	flags := flag.NewFlagSet("blanklines", flag.ContinueOnError)
+	fix := flags.Bool("fix", false, "remove blank lines between consecutive simple statements")
+	if err := flags.Parse(args); err != nil {
+		return fmt.Errorf("parse blank-line checker arguments: %w", err)
+	}
+
+	patterns := flags.Args()
 	if len(patterns) == 0 {
 		patterns = []string{"./..."}
 	}
@@ -59,21 +67,34 @@ func run(ctx context.Context, patterns []string) error {
 			}
 
 			seen[filename] = true
-
 			source, readErr := os.ReadFile(filename)
 			if readErr != nil {
 				return fmt.Errorf("read %s for blank-line checks: %w", filename, readErr)
 			}
 
-			for _, position := range checkFile(pkg.Fset, file, pkg.TypesInfo, source) {
-				fmt.Fprintf(os.Stderr, "%s: remove blank line between assignment and delete on the same variable\n", position)
+			findings := checkFile(pkg.Fset, file, pkg.TypesInfo, source)
+			if len(findings) == 0 {
+				continue
+			}
 
-				found = true
+			found = true
+			if *fix {
+				if err := writeFixedFile(filename, source, findings); err != nil {
+					return err
+				}
+
+				fmt.Fprintf(os.Stderr, "%s: removed %d redundant blank lines\n", filename, len(findings))
+
+				continue
+			}
+
+			for _, position := range findings {
+				fmt.Fprintf(os.Stderr, "%s: remove blank line between consecutive simple statements\n", position)
 			}
 		}
 	}
 
-	if found {
+	if found && !*fix {
 		return fmt.Errorf("blank-line checks failed")
 	}
 
@@ -99,20 +120,18 @@ func checkFile(fset *token.FileSet, file *ast.File, info *types.Info, source []b
 
 		for index := 0; index+1 < len(statements); index++ {
 			first, second := statements[index], statements[index+1]
-			if !assignmentThenDelete(first, second, info) || hasCommentBetween(file, first.End(), second.Pos()) {
+			if !simpleStatement(first, info) || !simpleStatement(second, info) ||
+				hasCommentBetween(file, first.End(), second.Pos()) {
 				continue
 			}
 
 			start := fset.PositionFor(first.End(), false)
 			end := fset.PositionFor(second.Pos(), false)
-
 			gapLines := strings.Split(string(source[start.Offset:end.Offset]), "\n")
 			for offset := 1; offset+1 < len(gapLines); offset++ {
 				if strings.TrimSpace(gapLines[offset]) == "" {
 					position := fset.File(first.Pos()).LineStart(start.Line + offset)
 					findings = append(findings, fset.PositionFor(position, false))
-
-					break
 				}
 			}
 		}
@@ -123,50 +142,74 @@ func checkFile(fset *token.FileSet, file *ast.File, info *types.Info, source []b
 	return findings
 }
 
-func assignmentThenDelete(first, second ast.Stmt, info *types.Info) bool {
-	assignment, isAssignment := first.(*ast.AssignStmt)
-	if !isAssignment {
-		return false
-	}
-
-	expression, isExpression := second.(*ast.ExprStmt)
-	if !isExpression {
-		return false
-	}
-
-	call, isCall := expression.X.(*ast.CallExpr)
-	if !isCall || len(call.Args) == 0 {
-		return false
-	}
-
-	function, isFunction := call.Fun.(*ast.Ident)
-	if !isFunction {
-		return false
-	}
-
-	builtin, isBuiltin := info.Uses[function].(*types.Builtin)
-	if !isBuiltin || builtin.Name() != "delete" {
-		return false
-	}
-
-	target, isTarget := call.Args[0].(*ast.Ident)
-	if !isTarget {
-		return false
-	}
-
-	variable, isVariable := info.Uses[target].(*types.Var)
-	if !isVariable {
-		return false
-	}
-
-	for _, left := range assignment.Lhs {
-		identifier, isIdentifier := left.(*ast.Ident)
-		if isIdentifier && info.ObjectOf(identifier) == variable {
-			return true
+func simpleStatement(statement ast.Stmt, info *types.Info) bool {
+	containsCallback := false
+	ast.Inspect(statement, func(node ast.Node) bool {
+		if _, isCallback := node.(*ast.FuncLit); isCallback {
+			containsCallback = true
 		}
+
+		return !containsCallback
+	})
+	if containsCallback {
+		return false
 	}
 
-	return false
+	switch statement := statement.(type) {
+	case *ast.AssignStmt, *ast.IncDecStmt:
+		return true
+	case *ast.ExprStmt:
+		call, isCall := statement.X.(*ast.CallExpr)
+
+		return isCall && !ginkgoStep(call, info)
+	default:
+		return false
+	}
+}
+
+func ginkgoStep(call *ast.CallExpr, info *types.Info) bool {
+	var identifier *ast.Ident
+
+	switch function := ast.Unparen(call.Fun).(type) {
+	case *ast.Ident:
+		identifier = function
+	case *ast.SelectorExpr:
+		identifier = function.Sel
+	default:
+		return false
+	}
+
+	object := info.Uses[identifier]
+
+	return object != nil && object.Pkg() != nil &&
+		object.Pkg().Path() == "github.com/onsi/ginkgo/v2" && object.Name() == "By"
+}
+
+func writeFixedFile(filename string, source []byte, findings []token.Position) error {
+	stat, err := os.Stat(filename)
+	if err != nil {
+		return fmt.Errorf("stat %s before fixing blank lines: %w", filename, err)
+	}
+
+	if err := os.WriteFile(filename, removeBlankLines(source, findings), stat.Mode().Perm()); err != nil {
+		return fmt.Errorf("fix blank lines in %s: %w", filename, err)
+	}
+
+	return nil
+}
+
+func removeBlankLines(source []byte, findings []token.Position) []byte {
+	sort.Slice(findings, func(first, second int) bool {
+		return findings[first].Offset > findings[second].Offset
+	})
+
+	fixed := append([]byte(nil), source...)
+	for _, position := range findings {
+		end := position.Offset + strings.IndexByte(string(fixed[position.Offset:]), '\n') + 1
+		fixed = append(fixed[:position.Offset], fixed[end:]...)
+	}
+
+	return fixed
 }
 
 func hasCommentBetween(file *ast.File, start, end token.Pos) bool {

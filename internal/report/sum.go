@@ -18,7 +18,6 @@ var sourceCodeSum string = getSourceSum()
 // string is returned.
 func getSourceSum() string {
 	summer := sha256.New()
-
 	dirEntries, err := programSourceCode.ReadDir(".")
 	if err != nil {
 		return ""

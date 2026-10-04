@@ -114,10 +114,8 @@ var _ = Describe("FAR Observability Tests",
 				"--action":          "reboot",
 				"--skip-race-check": "",
 			}
-
 			awsNodeParams, err := farutils.BuildAWSNodeParameters(ctx, APIClient)
 			Expect(err).ToNot(HaveOccurred())
-
 			nodeParams = make(map[string]interface{})
 			for paramName, nodeMap := range awsNodeParams {
 				inner := make(map[string]interface{}, len(nodeMap))
@@ -170,7 +168,6 @@ var _ = Describe("FAR Observability Tests",
 
 					farCR := buildFARUnstructured(targetNode.Name, fenceAgent, sharedParams, nodeParams)
 					createFARCR(ctx, APIClient, farCR)
-
 					farCRName := targetNode.Name
 
 					DeferCleanup(func() {
@@ -276,7 +273,6 @@ var _ = Describe("FAR Observability Tests",
 							MinCount:     1,
 						},
 					}
-
 					missingItems := farutils.ValidateMustGatherContents(mustGatherDir, expectations)
 					Expect(missingItems).To(BeEmpty(),
 						"Must-gather validation failed:\n%s", strings.Join(missingItems, "\n"))
@@ -287,7 +283,6 @@ var _ = Describe("FAR Observability Tests",
 						ctx, APIClient, targetNode.Name, oldBootID,
 						farparams.NodeRebootTimeout, GinkgoWriter.Printf)).To(Succeed(),
 						"Node %s did not reboot", targetNode.Name)
-
 					Expect(farutils.WaitForNodeReady(
 						ctx, APIClient, targetNode.Name,
 						farparams.NodeReadyTimeout, GinkgoWriter.Printf)).To(Succeed(),
@@ -346,7 +341,6 @@ var _ = Describe("FAR Observability Tests",
 
 					plugMap, ok := timedOutNodeParams[farparams.NodeIdentifierAWS].(map[string]interface{})
 					Expect(ok).To(BeTrue(), "--plug node parameter map has unexpected type")
-
 					overriddenPlugMap := make(map[string]interface{})
 					for k, v := range plugMap {
 						overriddenPlugMap[k] = v
@@ -354,11 +348,9 @@ var _ = Describe("FAR Observability Tests",
 
 					overriddenPlugMap[targetNode.Name] = farparams.TimedOutBadInstanceID
 					timedOutNodeParams[farparams.NodeIdentifierAWS] = overriddenPlugMap
-
 					retryCount := farparams.FARCRRetryCount
 					retryIntervalDuration, parseErr := time.ParseDuration(farparams.FARCRRetryInterval)
 					Expect(parseErr).ToNot(HaveOccurred())
-
 					farCRName := targetNode.Name
 
 					By("Creating FAR CR with invalid --plug targeting " + targetNode.Name)
@@ -378,7 +370,6 @@ var _ = Describe("FAR Observability Tests",
 
 					activeLeaderNode, err := farutils.GetActiveFARControllerNode(ctx, APIClient)
 					Expect(err).ToNot(HaveOccurred())
-
 					controllerPods, err = farutils.GetFARControllerPods(ctx, APIClient)
 					Expect(err).ToNot(HaveOccurred())
 
@@ -394,7 +385,6 @@ var _ = Describe("FAR Observability Tests",
 
 					Expect(activeControllerPodName).ToNot(BeEmpty(),
 						"Could not find active controller pod on leader node %s", activeLeaderNode)
-
 					timedOutPattern := regexp.MustCompile(farparams.TimedOutLogPattern)
 
 					// Resolving the leader pod once is safe here: the timed-out fencing is

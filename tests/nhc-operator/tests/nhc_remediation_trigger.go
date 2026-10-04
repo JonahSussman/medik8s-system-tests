@@ -70,7 +70,6 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 
 			targetNode, err := helpers.SelectWorkerNode(ctx, APIClient)
 			Expect(err).ToNot(HaveOccurred(), "Failed to select worker node")
-
 			targetWorkerName = targetNode.Name
 			GinkgoWriter.Printf("Target worker node: %s\n", targetWorkerName)
 		})
@@ -104,7 +103,6 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 			cleanupNHCCR(ctx, nhcparams.NHCSecondTestName)
 			cleanupNHCCR(ctx, nhcparams.NHCOldDefaultName)
 			cleanupNHCCR(ctx, nhcparams.NHCControlPlaneTestName)
-
 			GinkgoWriter.Printf("Pre-remediation boot ID: %s\n", oldBootID)
 		})
 
@@ -188,7 +186,6 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 				editableTarget := &unstructured.Unstructured{}
 				editableTarget.SetGroupVersionKind(nhcGVK)
 				editableTarget.SetName(nhcparams.NHCTestName)
-
 				editablePatch := []byte(
 					`{"spec":{"minHealthy":"0%","unhealthyConditions":[` +
 						`{"type":"Ready","status":"False","duration":"60s"},` +
@@ -205,12 +202,10 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 				target := &unstructured.Unstructured{}
 				target.SetGroupVersionKind(nhcGVK)
 				target.SetName(nhcparams.NHCTestName)
-
 				patchBytes := []byte(`{"spec":{"selector":{"matchLabels":{"kubernetes.io/hostname":"other-node"}}}}`)
 				patchErr := APIClient.Patch(ctx, target,
 					client.RawPatch(types.MergePatchType, patchBytes),
 				)
-
 				Expect(patchErr).To(MatchError(ContainSubstring("selector update prohibited due to running remediation")),
 					"Selector edit should be rejected by NHC webhook during remediation")
 				GinkgoWriter.Printf("Selector edit rejected (expected): %v\n", patchErr)
@@ -343,7 +338,6 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 					nhcparams.DefaultPollInterval, nhcparams.NodeReadyTimeout,
 					GinkgoWriter.Printf,
 				)).To(Succeed(), "Worker node did not become Ready")
-
 				Expect(helpers.WaitForNodeReady(ctx, APIClient,
 					nhcControllerNodeName,
 					nhcparams.DefaultPollInterval, nhcparams.NodeReadyTimeout,
@@ -391,7 +385,6 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 						"type": "Ready", "status": "Unknown", "duration": nhcparams.UnhealthyConditionDuration,
 					},
 				}
-
 				Expect(APIClient.Create(ctx, nhcSNR)).To(Succeed())
 
 				By("Creating TestRemediation-based NHC CR (10s unhealthy duration)")
@@ -482,7 +475,6 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 						"type": "Ready", "status": "Unknown", "duration": "10s",
 					},
 				}
-
 				Expect(APIClient.Create(ctx, nhcFirst)).To(Succeed())
 
 				By("Creating second SNR-based NHC CR (11s, triggers slower)")
@@ -496,7 +488,6 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 						"type": "Ready", "status": "Unknown", "duration": "11s",
 					},
 				}
-
 				Expect(APIClient.Create(ctx, nhcSecond)).To(Succeed())
 
 				By("Waiting for both NHCs to reach Enabled")
@@ -610,7 +601,6 @@ var _ = Describe("NHC Functional -- Selector and CR Management",
 				target := &unstructured.Unstructured{}
 				target.SetGroupVersionKind(nhcGVK)
 				target.SetName(nhcparams.NHCTestName)
-
 				Expect(APIClient.Patch(ctx, target,
 					client.RawPatch(types.MergePatchType, patchBytes),
 				)).To(Succeed(), "Failed to patch NHC selector")
@@ -638,7 +628,6 @@ var _ = Describe("NHC Functional -- Selector and CR Management",
 				invalidTarget := &unstructured.Unstructured{}
 				invalidTarget.SetGroupVersionKind(nhcGVK)
 				invalidTarget.SetName(nhcparams.NHCTestName)
-
 				invalidOpErr := APIClient.Patch(ctx, invalidTarget,
 					client.RawPatch(types.MergePatchType, invalidOpPatch),
 				)
@@ -652,7 +641,6 @@ var _ = Describe("NHC Functional -- Selector and CR Management",
 				emptyTarget := &unstructured.Unstructured{}
 				emptyTarget.SetGroupVersionKind(nhcGVK)
 				emptyTarget.SetName(nhcparams.NHCTestName)
-
 				emptyErr := APIClient.Patch(ctx, emptyTarget,
 					client.RawPatch(types.MergePatchType, emptySelectorPatch),
 				)
@@ -666,7 +654,6 @@ var _ = Describe("NHC Functional -- Selector and CR Management",
 				Expect(err).ToNot(HaveOccurred())
 				Expect(phase).To(Equal(nhcparams.NHCPhaseEnabled),
 					"NHC should remain Enabled after rejected edits")
-
 				observedNodes, err := getNHCObservedNodes(ctx, nhcparams.NHCTestName)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(observedNodes).To(Equal(int64(0)),

@@ -50,7 +50,6 @@ var _ = Describe("NHC Upgrade Operator", Serial, Ordered,
 			Expect(err).NotTo(HaveOccurred())
 			Expect(sdkVersion).To(ContainSubstring("v1.42.2"))
 			AddReportEntry("nhc-upgrade-sdk", sdkVersion)
-
 			clusterVersion := &configv1.ClusterVersion{}
 			Expect(APIClient.Get(ctx, client.ObjectKey{Name: "version"}, clusterVersion)).To(Succeed())
 			Expect(clusterVersion.Status.Desired.Version).To(HavePrefix("5.0."), "requires an OpenShift 5.0 cluster")
@@ -89,7 +88,6 @@ var _ = Describe("NHC Upgrade Operator", Serial, Ordered,
 			if currentTargetNode != "" {
 				nodeName := currentTargetNode
 				currentTargetNode = ""
-
 				cleanupSNRCR(ctx, nodeName)
 
 				if isSSHAvailable() {
@@ -136,7 +134,6 @@ var _ = Describe("NHC Upgrade Operator", Serial, Ordered,
 			output, err = nhcutils.InstallBundle(ctx, inputs.OperatorSDK, inputs.Namespace, inputs.BaselineNHC.Bundle)
 			GinkgoWriter.Printf("operator-sdk run bundle (baseline NHC) output:\n%s\n", output)
 			Expect(err).NotTo(HaveOccurred())
-
 			oldCSV = waitForNHCUpgradeCSV(inputs.Namespace, inputs.BaselineNHC.Version, inputs.BaselineNHC.Image, "baseline")
 			oldImage, err := nhcutils.GetNHCControllerImage(APIClient)
 			Expect(err).NotTo(HaveOccurred())
@@ -162,7 +159,6 @@ var _ = Describe("NHC Upgrade Operator", Serial, Ordered,
 
 			newCSV := waitForNHCUpgradeCSV(inputs.Namespace, inputs.CandidateNHC.Version, inputs.CandidateNHC.Image, "candidate")
 			Expect(newCSV.Object.Name).NotTo(Equal(oldCSV.Object.Name), "version parity is not an upgrade")
-
 			candidateImage, err := nhcutils.GetNHCControllerImage(APIClient)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(candidateImage).To(Equal(inputs.CandidateNHC.Image))

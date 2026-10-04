@@ -185,7 +185,6 @@ func removeCephFSRejectOutput(injectorPod *pod.Builder) {
 // are propagated as test failures to avoid silently skipping NHC-dependent tests.
 func isNHCCRDInstalled() bool {
 	crd := &apiextensionsv1.CustomResourceDefinition{}
-
 	err := APIClient.Get(context.TODO(),
 		types.NamespacedName{Name: sbrparams.NHCCRDName}, crd)
 	if err == nil {
@@ -254,7 +253,6 @@ func cleanupNHCCR(name string) {
 	nhc.SetAPIVersion(sbrparams.NHCAPIGroup + "/" + sbrparams.NHCAPIVersion)
 	nhc.SetKind("NodeHealthCheck")
 	nhc.SetName(name)
-
 	err := APIClient.Delete(context.TODO(), nhc)
 	if err != nil && !k8serrors.IsNotFound(err) {
 		GinkgoT().Logf("Warning: cleanup NHC %s: %v", name, err)
@@ -264,7 +262,6 @@ func cleanupNHCCR(name string) {
 // pickTargetWorkerNode returns the first schedulable worker node that does not host an SBR controller pod.
 func pickTargetWorkerNode() string {
 	controllerNodes := controllerPodNodes()
-
 	nodeList, err := APIClient.CoreV1Interface.Nodes().List(context.TODO(), metav1.ListOptions{
 		LabelSelector: "node-role.kubernetes.io/worker",
 	})

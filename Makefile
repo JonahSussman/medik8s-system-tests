@@ -37,6 +37,7 @@ lint-blanklines:
 
 fmt:
 	scripts/golangci-lint.sh fmt
+	go run ./internal/tools/blanklines --fix ./...
 
 deps-update:
 	go mod tidy && \

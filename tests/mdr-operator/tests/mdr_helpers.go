@@ -72,7 +72,6 @@ func buildNHCForMDR(name, mdrtName string) *unstructured.Unstructured {
 	nhc := &unstructured.Unstructured{}
 	nhc.SetGroupVersionKind(nhcGVK)
 	nhc.SetName(name)
-
 	nhc.Object["spec"] = map[string]interface{}{
 		"selector": map[string]interface{}{
 			"matchExpressions": []interface{}{
@@ -111,7 +110,6 @@ func buildNHCForMDR(name, mdrtName string) *unstructured.Unstructured {
 // on transient API errors to avoid silently skipping tests.
 func isNHCCRDInstalled() bool {
 	crd := &apiextensionsv1.CustomResourceDefinition{}
-
 	err := APIClient.Get(
 		context.Background(),
 		types.NamespacedName{Name: mdrparams.NHCCRDName},
@@ -162,7 +160,6 @@ func deleteRemediationCR(
 ) {
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(gvk)
-
 	key := types.NamespacedName{
 		Name:      name,
 		Namespace: medik8sparams.OperatorNs,
@@ -247,7 +244,6 @@ func waitForMDRRemediationComplete(
 			// Check if MDR CR still exists.
 			mdrObj := &unstructured.Unstructured{}
 			mdrObj.SetGroupVersionKind(mdrGVK)
-
 			getErr := APIClient.Get(ctx, types.NamespacedName{
 				Name:      originalNodeName,
 				Namespace: medik8sparams.OperatorNs,
@@ -256,7 +252,6 @@ func waitForMDRRemediationComplete(
 				// MDR CR exists -- remediation in progress.
 				if !mdrCRSeen {
 					GinkgoWriter.Printf("MDR CR %s detected -- remediation in progress\n", originalNodeName)
-
 					mdrCRSeen = true
 				}
 
@@ -530,7 +525,6 @@ func findMessageInControllerLogs(message string, logWindow time.Duration) error 
 	listOptions := metav1.ListOptions{
 		LabelSelector: mdrparams.OperatorControllerPodLabelSelector,
 	}
-
 	mdrPods, listErr := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
 	if listErr != nil {
 		return fmt.Errorf("failed to list MDR controller pods: %w", listErr)

@@ -98,7 +98,6 @@ func GetReadyControlPlaneNodes(ctx context.Context, k8sClient client.Client) ([]
 
 	for i := range nodeList.Items {
 		node := &nodeList.Items[i]
-
 		_, hasCP := node.Labels[commonlabels.ControlPlaneRole]
 		_, hasMaster := node.Labels[commonlabels.MasterRole]
 

@@ -60,7 +60,6 @@ var _ = Describe("NHC Status Field Tracking",
 
 			targetNode, err := helpers.SelectWorkerNode(ctx, APIClient)
 			Expect(err).ToNot(HaveOccurred(), "Failed to select worker node")
-
 			targetWorkerName = targetNode.Name
 			GinkgoWriter.Printf("Target worker node: %s\n", targetWorkerName)
 
@@ -97,7 +96,6 @@ var _ = Describe("NHC Status Field Tracking",
 			cleanupNHCCR(ctx, nhcparams.NHCStatusTestName)
 			waitForNHCGone(ctx, nhcparams.NHCStatusTestName)
 			cleanupSNRCR(ctx, targetWorkerName)
-
 			GinkgoWriter.Printf("Pre-remediation boot ID: %s\n", oldBootID)
 		})
 

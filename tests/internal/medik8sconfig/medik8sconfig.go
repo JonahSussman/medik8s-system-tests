@@ -28,11 +28,9 @@ func NewMedik8sConfig() *Medik8sConfig {
 	var medik8sConf Medik8sConfig
 
 	medik8sConf.GeneralConfig = config.NewConfig()
-
 	_, filename, _, _ := runtime.Caller(0)
 	baseDir := filepath.Dir(filename)
 	confFile := filepath.Join(baseDir, PathToDefaultParamsFile)
-
 	err := readFile(&medik8sConf, confFile)
 	if err != nil {
 		log.Printf("Error to read config file %s", confFile)
@@ -61,7 +59,6 @@ func readFile(medik8sConfig *Medik8sConfig, cfgFile string) error {
 	}()
 
 	decoder := yaml.NewDecoder(openedCfgFile)
-
 	err = decoder.Decode(&medik8sConfig)
 	if err != nil {
 		return err

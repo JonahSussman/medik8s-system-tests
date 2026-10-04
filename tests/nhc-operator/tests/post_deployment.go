@@ -48,7 +48,6 @@ var _ = Describe(
 
 			infraConfig, infraErr := infrastructure.Pull(APIClient)
 			Expect(infraErr).ToNot(HaveOccurred(), "Failed to pull infrastructure configuration")
-
 			controlPlaneTopology = infraConfig.Object.Status.ControlPlaneTopology
 
 			By("Get NHC ClusterServiceVersion")
@@ -104,7 +103,6 @@ var _ = Describe(
 					Version: nhcparams.CRDVersion,
 					Kind:    "NodeHealthCheckList",
 				})
-
 				err := APIClient.List(context.TODO(), nhcList)
 				Expect(err).ToNot(HaveOccurred(),
 					"NodeHealthCheck CRD should be installed and listable")
@@ -114,7 +112,6 @@ var _ = Describe(
 				ctrlListOptions := metav1.ListOptions{
 					LabelSelector: nhcparams.OperatorControllerPodLabelSelector,
 				}
-
 				_, err = pod.WaitForAllPodsInNamespaceRunning(
 					APIClient,
 					medik8sparams.OperatorNs,
@@ -140,7 +137,6 @@ var _ = Describe(
 
 				annotations := nhcCSV.Object.Annotations
 				Expect(annotations).ToNot(BeNil(), "CSV annotations should not be nil")
-
 				_, hasValidSubscription := annotations["operators.openshift.io/valid-subscription"]
 				Expect(hasValidSubscription).To(BeTrue(),
 					"CSV should have operators.openshift.io/valid-subscription annotation")
@@ -265,7 +261,6 @@ var _ = Describe(
 				listOptions := metav1.ListOptions{
 					LabelSelector: nhcparams.OperatorControllerPodLabelSelector,
 				}
-
 				_, err := pod.WaitForAllPodsInNamespaceRunning(
 					APIClient,
 					medik8sparams.OperatorNs,
@@ -278,10 +273,8 @@ var _ = Describe(
 
 				nhcPods, err := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
 				Expect(err).ToNot(HaveOccurred(), "Failed to list NHC controller pods")
-
 				runningPods := helpers.FilterRunningPods(nhcPods)
 				Expect(runningPods).ToNot(BeEmpty(), "No running NHC controller pods found")
-
 				errorMessages := helpers.ValidateNonRootSecurityContext(
 					runningPods, nhcparams.ManagerContainerName, true)
 

@@ -132,7 +132,6 @@ var _ = Describe(
 
 			Eventually(func() error {
 				stale := buildSBRC(sbrparams.SBRCDetectOnlyTestName, map[string]interface{}{})
-
 				deleteErr := APIClient.Delete(context.TODO(), stale)
 				if deleteErr == nil || k8serrors.IsNotFound(deleteErr) {
 					return nil
@@ -146,7 +145,6 @@ var _ = Describe(
 
 			Eventually(func() error {
 				staleCheck := buildSBRC(sbrparams.SBRCDetectOnlyTestName, map[string]interface{}{})
-
 				getErr := APIClient.Get(context.TODO(),
 					types.NamespacedName{Name: sbrparams.SBRCDetectOnlyTestName, Namespace: medik8sparams.OperatorNs},
 					staleCheck)
@@ -167,7 +165,6 @@ var _ = Describe(
 
 				for _, nodeName := range workerNodes {
 					podName := keepalivePodName(nodeName)
-
 					keepalivePod, createErr := pod.NewBuilder(
 						APIClient, podName, medik8sparams.OperatorNs, sbrparams.WatchdogDebugImage).
 						DefineOnNode(nodeName).
@@ -187,7 +184,6 @@ var _ = Describe(
 					} else {
 						GinkgoWriter.Printf("Keepalive pod %s Running on node %s\n",
 							keepalivePod.Definition.Name, nodeName)
-
 						keepalivePods = append(keepalivePods, podName)
 					}
 				}
@@ -207,7 +203,6 @@ var _ = Describe(
 				"sharedStorageClass": rwxStorageClass,
 				"sbrTimeoutSeconds":  int64(sbrparams.SBRCTimeoutSecondsMin),
 			})
-
 			createErr := APIClient.Create(context.TODO(), detectOnlySBRC)
 			Expect(createErr).ToNot(HaveOccurred(),
 				"StorageBasedRemediationConfig with detectOnlyMode: Enabled must be admitted by the API server")
@@ -437,7 +432,6 @@ var _ = Describe(
 
 				for i := range agentPodList.Items {
 					agentPod := &agentPodList.Items[i]
-
 					rawLogs, logsErr := APIClient.CoreV1Interface.Pods(medik8sparams.OperatorNs).
 						GetLogs(agentPod.Name, &corev1.PodLogOptions{}).DoRaw(context.TODO())
 					if logsErr != nil {
@@ -498,7 +492,6 @@ var _ = Describe(
 
 					if nhcCreatedByUs && nhcCR != nil {
 						cleanupNHCCR(sbrparams.NHCDetectOnlyTestName)
-
 						nhcCreatedByUs = false
 					}
 				})
@@ -507,13 +500,11 @@ var _ = Describe(
 
 				liveSBRC := &unstructured.Unstructured{}
 				liveSBRC.SetGroupVersionKind(detectOnlySBRC.GroupVersionKind())
-
 				getErr := APIClient.Get(context.TODO(),
 					types.NamespacedName{Name: sbrparams.SBRCDetectOnlyTestName, Namespace: medik8sparams.OperatorNs},
 					liveSBRC)
 				Expect(getErr).ToNot(HaveOccurred(),
 					"StorageBasedRemediationConfig %q must exist on the cluster", sbrparams.SBRCDetectOnlyTestName)
-
 				mode, found, nestedErr := unstructured.NestedString(liveSBRC.Object, "spec", "detectOnlyMode")
 				Expect(nestedErr).ToNot(HaveOccurred(),
 					"detectOnlyMode field must be readable from StorageBasedRemediationConfig spec")
@@ -521,7 +512,6 @@ var _ = Describe(
 					"detectOnlyMode must be present in StorageBasedRemediationConfig spec")
 				Expect(mode).To(Equal("Enabled"),
 					"detectOnlyMode must be Enabled in the StorageBasedRemediationConfig spec")
-
 				nhcInstalled := isNHCCRDInstalled()
 
 				if nhcInstalled {
@@ -552,7 +542,6 @@ var _ = Describe(
 					CreateAndWaitUntilRunning(medik8sparams.DefaultTimeout)
 				Expect(createErr).ToNot(HaveOccurred(),
 					"Failed to create injector pod on node %q", targetNodeName)
-
 				injectCephFSRejectBidirectional(injectorPod, targetNodeName)
 
 				By(fmt.Sprintf("Waiting for node %q to acquire %s=True",
@@ -671,7 +660,6 @@ var _ = Describe(
 				patchTarget.SetGroupVersionKind(detectOnlySBRC.GroupVersionKind())
 				patchTarget.SetName(sbrparams.SBRCDetectOnlyTestName)
 				patchTarget.SetNamespace(medik8sparams.OperatorNs)
-
 				patchErr := APIClient.Patch(context.TODO(), patchTarget,
 					client.RawPatch(types.MergePatchType, []byte(`{"spec":{"detectOnlyMode":"Disabled"}}`)))
 				Expect(patchErr).ToNot(HaveOccurred(),
@@ -709,7 +697,6 @@ var _ = Describe(
 				By("Deleting the StorageBasedRemediationConfig")
 
 				liveRef := detectOnlySBRC.DeepCopy()
-
 				deleteErr := APIClient.Delete(context.TODO(), liveRef)
 				Expect(deleteErr).ToNot(HaveOccurred(),
 					"StorageBasedRemediationConfig %q must be deletable", sbrparams.SBRCDetectOnlyTestName)

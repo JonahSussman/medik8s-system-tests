@@ -79,7 +79,6 @@ var _ = Describe("MDR Functional -- NHC-Triggered Remediation",
 			Expect(err).ToNot(HaveOccurred())
 			Expect(workerCount).To(BeNumerically(">=", 2),
 				"MDR remediation tests require at least 2 Ready worker nodes")
-
 			initialWorkerCount = workerCount
 
 			By("Recording initial worker node names")
@@ -92,7 +91,6 @@ var _ = Describe("MDR Functional -- NHC-Triggered Remediation",
 			workerNodes := &corev1.NodeList{}
 			Expect(APIClient.List(ctx, workerNodes,
 				client.MatchingLabels{"node-role.kubernetes.io/worker": ""})).To(Succeed())
-
 			initialWorkerNames = make(map[string]bool, len(workerNodes.Items))
 			for i := range workerNodes.Items {
 				initialWorkerNames[workerNodes.Items[i].Name] = true
@@ -102,7 +100,6 @@ var _ = Describe("MDR Functional -- NHC-Triggered Remediation",
 
 			targetNode, err := helpers.SelectWorkerNode(ctx, APIClient)
 			Expect(err).ToNot(HaveOccurred(), "Failed to select worker node")
-
 			targetWorkerName = targetNode.Name
 			GinkgoWriter.Printf("Target worker node: %s\n", targetWorkerName)
 		})
@@ -178,7 +175,6 @@ var _ = Describe("MDR Functional -- NHC-Triggered Remediation",
 				mdrt := buildMDRT(mdrparams.MDRTestTemplateName)
 				Expect(APIClient.Create(ctx, mdrt)).To(Succeed(),
 					"Failed to create MDRT %s", mdrparams.MDRTestTemplateName)
-
 				currentMDRTName = mdrparams.MDRTestTemplateName
 
 				By("Creating NHC CR pointing to MDRT")
@@ -186,7 +182,6 @@ var _ = Describe("MDR Functional -- NHC-Triggered Remediation",
 				nhcCR := buildNHCForMDR(mdrparams.NHCTestName, mdrparams.MDRTestTemplateName)
 				Expect(APIClient.Create(ctx, nhcCR)).To(Succeed(),
 					"Failed to create NHC CR %s", mdrparams.NHCTestName)
-
 				currentNHCName = mdrparams.NHCTestName
 
 				By(fmt.Sprintf("Stopping kubelet on worker node %s", targetWorkerName))
@@ -239,7 +234,6 @@ var _ = Describe("MDR Functional -- NHC-Triggered Remediation",
 					ctx, targetWorkerName, initialWorkerCount, initialWorkerNames,
 					testStartTime, mdrparams.RemediationCompleteTimeout,
 				)
-
 				Expect(waitErr).ToNot(HaveOccurred(),
 					"MDR remediation did not complete for node %s", targetWorkerName)
 				Expect(newNodeName).ToNot(BeEmpty(),
@@ -253,7 +247,6 @@ var _ = Describe("MDR Functional -- NHC-Triggered Remediation",
 					GinkgoWriter.Printf,
 				)).To(Succeed(),
 					"Replacement node %s did not become Ready", newNodeName)
-
 				delete(initialWorkerNames, targetWorkerName)
 				initialWorkerNames[newNodeName] = true
 				targetWorkerName = newNodeName
@@ -262,7 +255,6 @@ var _ = Describe("MDR Functional -- NHC-Triggered Remediation",
 
 				cleanupNHCCR(currentNHCName)
 				currentNHCName = ""
-
 				cleanupMDRT(currentMDRTName)
 				currentMDRTName = ""
 			})

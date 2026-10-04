@@ -18,7 +18,6 @@ var _, currentFile, _, _ = runtime.Caller(0)
 func TestMDR(t *testing.T) {
 	_, reporterConfig := GinkgoConfiguration()
 	reporterConfig.JUnitReport = Medik8sConfig.GetJunitReportPath(currentFile)
-
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "MDR", Label(mdrparams.Labels...), reporterConfig)
 }

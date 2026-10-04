@@ -33,7 +33,6 @@ func MissingAPI(err error) bool {
 // a shared namespace is unsupported: SDK cleanup is scoped by package name.
 func CheckClean(ctx context.Context, api client.Client, namespace string) error {
 	prior := &OwnedRun{API: api, Namespace: namespace}
-
 	clusterObjects, err := prior.clusterObjects(ctx)
 	if err != nil {
 		return err
@@ -112,7 +111,6 @@ func (run *OwnedRun) CreateNamespace(ctx context.Context) error {
 		"security.openshift.io/scc.podSecurityLabelSync": "false",
 		"pod-security.kubernetes.io/enforce":             "privileged",
 	}}}
-
 	err := run.API.Create(ctx, namespace)
 	if err == nil {
 		run.NamespaceUID = namespace.UID
@@ -159,7 +157,6 @@ func (run *OwnedRun) Cleanup(ctx context.Context) error {
 
 	for i := len(run.Objects) - 1; i >= 0; i-- {
 		object := run.Objects[i]
-
 		current := object.DeepCopy()
 		if err := run.API.Get(ctx, client.ObjectKeyFromObject(current), current); err != nil {
 			if !MissingAPI(err) {
@@ -195,7 +192,6 @@ func (run *OwnedRun) Cleanup(ctx context.Context) error {
 	}
 
 	namespace := &corev1.Namespace{}
-
 	err := run.API.Get(ctx, client.ObjectKey{Name: run.Namespace}, namespace)
 	if apierrors.IsNotFound(err) {
 		return errors.Join(failures...)

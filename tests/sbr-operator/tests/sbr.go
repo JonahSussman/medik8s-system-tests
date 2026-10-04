@@ -69,7 +69,6 @@ var _ = Describe(
 				labels.FrequencyPresubmit,
 			), func() {
 				WatchdogDevicesByNode = make(map[string][]string)
-
 				nodeList, err := APIClient.CoreV1Interface.Nodes().List(context.TODO(), metav1.ListOptions{})
 				Expect(err).ToNot(HaveOccurred(), "Failed to list cluster nodes for watchdog inventory")
 
@@ -213,7 +212,6 @@ var _ = Describe(
 
 			infraConfig, infraErr := infrastructure.Pull(APIClient)
 			Expect(infraErr).ToNot(HaveOccurred(), "Failed to pull infrastructure configuration")
-
 			controlPlaneTopology = infraConfig.Object.Status.ControlPlaneTopology
 		})
 
@@ -486,7 +484,6 @@ func snapshotDaemonSetNames() map[string]bool {
 	dsList, listErr := APIClient.DaemonSets(medik8sparams.OperatorNs).List(
 		context.TODO(), metav1.ListOptions{})
 	Expect(listErr).ToNot(HaveOccurred(), "Failed to list DaemonSets in operator namespace")
-
 	names := make(map[string]bool, len(dsList.Items))
 	for _, ds := range dsList.Items {
 		names[ds.Name] = true
@@ -591,7 +588,6 @@ func sbrcReadinessDiagnostics(sbrcName, dsName string) string {
 	var report strings.Builder
 
 	fmt.Fprintf(&report, "=== SBRC %q readiness diagnostics (namespace %s) ===\n", sbrcName, namespace)
-
 	agentDS, dsErr := APIClient.DaemonSets(namespace).Get(ctx, dsName, metav1.GetOptions{})
 	if dsErr != nil {
 		fmt.Fprintf(&report, "DaemonSet %s: GET failed: %v\n", dsName, dsErr)
@@ -646,7 +642,6 @@ func agentPodDiagnostics(ctx context.Context, namespace, dsName, podSelector str
 		}
 
 		found = true
-
 		fmt.Fprintf(&report, "Pod %s: phase=%s node=%q\n",
 			agentPod.Name, agentPod.Status.Phase, agentPod.Spec.NodeName)
 
@@ -695,7 +690,6 @@ func pvcDiagnostics(ctx context.Context, namespace string) string {
 
 	for idx := range pvcList.Items {
 		pvc := &pvcList.Items[idx]
-
 		storageClass := ""
 		if pvc.Spec.StorageClassName != nil {
 			storageClass = *pvc.Spec.StorageClassName
@@ -826,7 +820,6 @@ var _ = Describe(
 
 			for _, name := range staleNames {
 				staleRef := buildSBRC(name, map[string]interface{}{})
-
 				deleteErr := APIClient.Delete(context.TODO(), staleRef)
 				if deleteErr != nil && !k8serrors.IsNotFound(deleteErr) {
 					GinkgoT().Logf("Warning: pre-test cleanup of stale StorageBasedRemediationConfig %s failed: %v", name, deleteErr)
@@ -910,7 +903,6 @@ var _ = Describe(
 						fmt.Sprintf("%s-%s", sbrparams.SBRCInvalidTestName, invalidCase.name),
 						map[string]interface{}{invalidCase.field: invalidCase.value},
 					)
-
 					createErr := APIClient.Create(context.TODO(), invalidSBRC)
 					if createErr == nil {
 						invalidSBRCRef := invalidSBRC.DeepCopy()
@@ -944,11 +936,9 @@ var _ = Describe(
 					map[string]interface{}{
 						"sharedStorageClass": "nonexistent-storage-class",
 					})
-
 				err := APIClient.Create(context.TODO(), sbrc)
 				Expect(err).ToNot(HaveOccurred(),
 					"StorageBasedRemediationConfig with invalid StorageClass reference should be admitted by API server")
-
 				sbrcRef := sbrc.DeepCopy()
 
 				DeferCleanup(func() {
@@ -1032,11 +1022,9 @@ var _ = Describe(
 					By(fmt.Sprintf("Creating StorageBasedRemediationConfig with %s", invalidCase.desc))
 
 					sbrc := buildSBRC(invalidCase.name, invalidCase.spec)
-
 					createErr := APIClient.Create(context.TODO(), sbrc)
 					Expect(createErr).ToNot(HaveOccurred(),
 						"StorageBasedRemediationConfig with %s should be admitted by the API server", invalidCase.desc)
-
 					sbrcRef := sbrc.DeepCopy()
 
 					DeferCleanup(func() {
@@ -1091,7 +1079,6 @@ var _ = Describe(
 
 					sbrcCheck := &unstructured.Unstructured{}
 					sbrcCheck.SetGroupVersionKind(sbrcRef.GroupVersionKind())
-
 					getErr := APIClient.Get(context.TODO(),
 						types.NamespacedName{Name: invalidCase.name, Namespace: medik8sparams.OperatorNs},
 						sbrcCheck)

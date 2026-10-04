@@ -105,8 +105,12 @@ linters:
         - github.com/onsi/ginkgo/v2
         - github.com/medik8s/system-tests/tests/internal/inittools
         - github.com/medik8s/system-tests/tests/internal/medik8sinittools
-    wsl:
-      strict-append: false
+    wsl_v5:
+      default: none
+      enable:
+        - err
+        - leading-whitespace
+        - trailing-whitespace
   exclusions:
     generated: lax
     presets:

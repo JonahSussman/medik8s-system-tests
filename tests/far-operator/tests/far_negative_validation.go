@@ -197,7 +197,6 @@ var _ = Describe("FAR Negative -- Misconfiguration",
 // nothing -- and retries until the call no longer fails on connectivity.
 func waitForFARWebhookReady(ctx context.Context) {
 	GinkgoHelper()
-
 	probe := buildFARForNegativeTest(
 		"far-webhook-readiness-probe",
 		farparams.FenceAgentIPMI,
@@ -220,7 +219,6 @@ func waitForFARWebhookReady(ctx context.Context) {
 // cleanupFARCR safely deletes a FenceAgentsRemediation CR by name.
 func cleanupFARCR(name string) {
 	GinkgoHelper()
-
 	helpers.DeleteRemediationCR(
 		context.Background(), APIClient, farGVK, name, medik8sparams.OperatorNs,
 		farparams.DefaultPollInterval, farparams.RemediationCRDeletionTimeout,
@@ -230,7 +228,6 @@ func cleanupFARCR(name string) {
 // cleanupFARTemplateCR safely deletes a FenceAgentsRemediationTemplate CR by name.
 func cleanupFARTemplateCR(name string) {
 	GinkgoHelper()
-
 	helpers.DeleteRemediationCR(
 		context.Background(), APIClient, farTemplateGVK, name, medik8sparams.OperatorNs,
 		farparams.DefaultPollInterval, farparams.RemediationCRDeletionTimeout,
@@ -259,7 +256,6 @@ func verifyAdmissionRejections(ctx context.Context, cases ...admissionRejectionC
 		By(testCase.desc)
 
 		err := APIClient.Create(ctx, testCase.cr)
-
 		matched, matchErr := MatchError(ContainSubstring(testCase.wantSubstring)).Match(err)
 		if matchErr != nil || !matched {
 			failures = append(failures,

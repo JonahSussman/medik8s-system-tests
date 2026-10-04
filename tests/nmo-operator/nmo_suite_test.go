@@ -18,7 +18,6 @@ var _, currentFile, _, _ = runtime.Caller(0)
 func TestNMO(t *testing.T) {
 	_, reporterConfig := GinkgoConfiguration()
 	reporterConfig.JUnitReport = Medik8sConfig.GetJunitReportPath(currentFile)
-
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "NMO", Label(nmoparams.Labels...), reporterConfig)
 }

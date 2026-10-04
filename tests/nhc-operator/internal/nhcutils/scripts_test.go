@@ -75,7 +75,6 @@ else exit 99; fi
 `, 0o700)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 	t.Setenv("FIXTURE_DIR", dir)
-
 	bundle, err := inspectBundle(context.Background(), "bundle")
 	if err != nil {
 		t.Fatal(err)
@@ -102,7 +101,6 @@ set -euo pipefail
 printf '{"Tags":["latest","v0.12.0","v0.13.0-rc.1","v0.12.1-a9feb15","v0.12.1","v0.12.10","v1.0.0-beta.1"]}\n'
 `, 0o700)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
-
 	pullspec, err := findLatestGABundle(context.Background(), "registry.test/bundles")
 	if err != nil {
 		t.Fatal(err)
@@ -189,9 +187,7 @@ exit 7
 		command := exec.Command("bash", "scripts/test-runner.sh")
 		command.Dir = root
 		output, err := command.CombinedOutput()
-
 		exitError := &exec.ExitError{}
-
 		ok := errors.As(err, &exitError)
 		if !ok || exitError.ExitCode() != 7 || !strings.Contains(string(output), "original test failure") {
 			t.Fatalf("lost original failure: %v %s", err, output)

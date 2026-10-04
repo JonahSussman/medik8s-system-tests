@@ -89,7 +89,6 @@ var _ = Describe(
 				By("Running oc adm must-gather")
 
 				testStartTime := time.Now()
-
 				ctx, cancel := context.WithTimeout(context.Background(), sbrparams.MustGatherContextTimeout)
 				defer cancel()
 
@@ -168,22 +167,18 @@ func runMustGather(ctx context.Context, image, destDir string) {
 	}
 
 	ocTimeout := fmt.Sprintf("%ds", int(sbrparams.MustGatherOCTimeout.Seconds()))
-
 	cmd := exec.CommandContext(ctx, "oc", "adm", "must-gather",
 		"--image="+image,
 		"--dest-dir="+destDir,
 		"--timeout="+ocTimeout,
 	)
-
 	env := os.Environ()
 	if os.Getenv("HOME") == "" {
 		env = append(env, "HOME=/tmp")
 	}
 
 	cmd.Env = env
-
 	output, err := cmd.CombinedOutput()
-
 	logFile := filepath.Join(destDir, "oc-adm-must-gather.log")
 
 	if writeErr := os.WriteFile(logFile, output, 0o644); writeErr != nil {
@@ -289,7 +284,6 @@ func cleanupMustGatherNamespaces(ctx context.Context, testStartTime time.Time) {
 		}
 
 		GinkgoWriter.Printf("Cleaning up leftover must-gather namespace: %s\n", namespaceName)
-
 		cleanupOut, cleanupErr := exec.CommandContext(cleanupCtx, "oc", "delete", "ns", namespaceName,
 			"--ignore-not-found", "--wait=false").CombinedOutput()
 		if cleanupErr != nil {

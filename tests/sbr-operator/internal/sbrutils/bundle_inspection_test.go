@@ -61,7 +61,6 @@ else exit 99; fi
 `, 0o700)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 	t.Setenv("FIXTURE_DIR", dir)
-
 	bundle, err := inspectBundle(context.Background(), "bundle")
 	if err != nil {
 		t.Fatal(err)
@@ -88,7 +87,6 @@ set -euo pipefail
 printf '{"Tags":["latest","v0.2.0","v0.3.0-rc.1","v0.2.1-a9feb15","v0.2.1","v0.2.10","v1.0.0-beta.1"]}\n'
 `, 0o700)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
-
 	pullspec, err := findLatestGABundle(context.Background(), "registry.test/bundles")
 	if err != nil {
 		t.Fatal(err)
@@ -111,7 +109,6 @@ echo 'W0924 12:04:07.722005 helpers.go:151] Defaulting of registry auth file is 
 printf '{"digest":"sha256:%064d"}\n' 3
 `, 0o700)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
-
 	info, err := inspectImage(context.Background(), "some-image")
 	if err != nil {
 		t.Fatal(err)

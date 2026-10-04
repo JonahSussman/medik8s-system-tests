@@ -64,7 +64,6 @@ func WaitForEvents(
 			// rate-limited request consuming the whole timeout budget.
 			listCtx, listCancel := context.WithTimeout(ctx, 2*interval)
 			events, listErr := ListEventsForObject(listCtx, clientset, involved)
-
 			listCancel()
 
 			if listErr != nil {
@@ -74,7 +73,6 @@ func WaitForEvents(
 			}
 
 			lastListErr = nil
-
 			lastMissing = lastMissing[:0]
 
 			for _, expectation := range expected {
@@ -128,7 +126,6 @@ func ListEventsForObject(
 	}
 
 	selector := fields.SelectorFromSet(selectorSet)
-
 	list, err := clientset.CoreV1().Events(involved.Namespace).List(ctx, metav1.ListOptions{
 		FieldSelector: selector.String(),
 	})

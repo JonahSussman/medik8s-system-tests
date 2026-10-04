@@ -52,7 +52,6 @@ func RunMustGather(
 		"--image="+image,
 		"--dest-dir="+destDir,
 	)
-
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		if childCtx.Err() == context.DeadlineExceeded {

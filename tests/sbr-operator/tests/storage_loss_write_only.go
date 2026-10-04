@@ -93,7 +93,6 @@ var _ = Describe(
 			By("Checking whether NHC CRD is installed")
 
 			crd := &apiextensionsv1.CustomResourceDefinition{}
-
 			crdErr := APIClient.Get(context.TODO(),
 				types.NamespacedName{Name: sbrparams.NHCCRDName}, crd)
 			if k8serrors.IsNotFound(crdErr) {
@@ -140,7 +139,6 @@ var _ = Describe(
 			testSBRC = buildSBRC(sbrparams.SBRCStorageLossWriteName, map[string]interface{}{
 				"sharedStorageClass": storageClass,
 			})
-
 			createErr := APIClient.Create(context.TODO(), testSBRC)
 			Expect(createErr).ToNot(HaveOccurred(),
 				"Failed to create StorageBasedRemediationConfig %q", sbrparams.SBRCStorageLossWriteName)
@@ -157,18 +155,15 @@ var _ = Describe(
 				Version: sbrparams.NHCAPIVersion,
 				Kind:    "NodeHealthCheck",
 			})
-
 			getErr := APIClient.Get(context.TODO(),
 				types.NamespacedName{Name: sbrparams.NHCWriteLossTestName}, existingNHC)
 
 			switch {
 			case k8serrors.IsNotFound(getErr):
 				nhcCR = buildWriteLossNHCUnstructured()
-
 				nhcCreateErr := APIClient.Create(context.TODO(), nhcCR)
 				Expect(nhcCreateErr).ToNot(HaveOccurred(),
 					"Failed to create NodeHealthCheck CR %q", sbrparams.NHCWriteLossTestName)
-
 				nhcCreatedByUs = true
 
 			case getErr != nil:
@@ -178,7 +173,6 @@ var _ = Describe(
 			default:
 				nhcCR = existingNHC
 				nhcCreatedByUs = false
-
 				GinkgoWriter.Printf("NodeHealthCheck %q already exists; using it as-is\n",
 					sbrparams.NHCWriteLossTestName)
 			}
@@ -186,7 +180,6 @@ var _ = Describe(
 			By("Selecting a target worker node (schedulable, not hosting SBR controller pods)")
 
 			controllerNodes := controllerPodNodes()
-
 			nodeList, err := APIClient.CoreV1Interface.Nodes().List(context.TODO(), metav1.ListOptions{
 				LabelSelector: "node-role.kubernetes.io/worker",
 			})
@@ -226,7 +219,6 @@ var _ = Describe(
 			}
 
 			injectorPodName = strings.TrimRight(injectorPodName, "-")
-
 			GinkgoWriter.Printf("Target node: %q | injector pod: %q\n", targetNodeName, injectorPodName)
 		})
 
@@ -356,7 +348,6 @@ var _ = Describe(
 					WithHostPid(true).
 					WithPrivilegedFlag().
 					CreateAndWaitUntilRunning(medik8sparams.DefaultTimeout)
-
 				Expect(createErr).ToNot(HaveOccurred(),
 					"Failed to create injector pod on node %q", targetNodeName)
 
@@ -369,14 +360,12 @@ var _ = Describe(
 					"Failed to read boot ID from node %q before injection", targetNodeName)
 				Expect(preRebootBootID).ToNot(BeEmpty(),
 					"Boot ID must not be empty on node %q", targetNodeName)
-
 				GinkgoWriter.Printf("Pre-injection boot ID on node %q: %q\n", targetNodeName, preRebootBootID)
 
 				// Block only the write/OUTPUT path to CephFS storage.
 				// INPUT traffic is intentionally left open so the target node can still read
 				// the fence message written by peers into shared storage, which triggers self-fencing.
 				injectCephFSRejectOutput(injectorPod, targetNodeName)
-
 				GinkgoWriter.Printf("CephFS OUTPUT REJECT rules applied on node %q "+
 					"(INPUT kept open for fence-message-read path)\n", targetNodeName)
 
@@ -477,7 +466,6 @@ var _ = Describe(
 					"Node %q boot ID must change after reboot (pre=%q, post=%q) — "+
 						"node did not actually reboot",
 					targetNodeName, preRebootBootID, postRebootBootID)
-
 				GinkgoWriter.Printf("Boot ID changed on node %q: %q to %q\n",
 					targetNodeName, preRebootBootID, postRebootBootID)
 

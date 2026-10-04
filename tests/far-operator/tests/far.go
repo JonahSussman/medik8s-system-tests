@@ -48,7 +48,6 @@ var _ = Describe(
 
 			infraConfig, infraErr := infrastructure.Pull(APIClient)
 			Expect(infraErr).ToNot(HaveOccurred(), "Failed to pull infrastructure configuration")
-
 			controlPlaneTopology = infraConfig.Object.Status.ControlPlaneTopology
 		})
 		It("Verify Fence Agents Remediation Operator pod is running",
@@ -70,9 +69,7 @@ var _ = Describe(
 				Eventually(func(assertion Gomega) {
 					farPods, err := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
 					assertion.Expect(err).ToNot(HaveOccurred(), "Failed to list FAR pods")
-
 					runningPods := helpers.FilterRunningPods(farPods)
-
 					assertion.Expect(int32(len(runningPods))).To(Equal(expectedCount),
 						"Expected %d running FAR pod(s), found %d", expectedCount, len(runningPods))
 				}, medik8sparams.DefaultTimeout, farparams.DefaultPollInterval).Should(Succeed())
@@ -178,7 +175,6 @@ var _ = Describe(
 					listOptions := metav1.ListOptions{
 						LabelSelector: farparams.OperatorControllerPodLabelSelector,
 					}
-
 					farPods, listErr := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
 					if listErr != nil {
 						return listErr
@@ -222,7 +218,6 @@ var _ = Describe(
 				listOptions := metav1.ListOptions{
 					LabelSelector: farparams.OperatorControllerPodLabelSelector,
 				}
-
 				_, err := pod.WaitForAllPodsInNamespaceRunning(
 					APIClient,
 					medik8sparams.OperatorNs,
@@ -235,10 +230,8 @@ var _ = Describe(
 
 				farPods, err := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
 				Expect(err).ToNot(HaveOccurred(), "Failed to get FAR controller pods")
-
 				runningPods := helpers.FilterRunningPods(farPods)
 				Expect(runningPods).ToNot(BeEmpty(), "No running FAR controller pods found")
-
 				errorMessages := helpers.ValidateNonRootSecurityContext(
 					runningPods, farparams.ManagerContainerName, true)
 
@@ -313,7 +306,6 @@ var _ = Describe(
 				listOptions := metav1.ListOptions{
 					LabelSelector: farparams.OperatorControllerPodLabelSelector,
 				}
-
 				_, err := pod.WaitForAllPodsInNamespaceRunning(
 					APIClient,
 					medik8sparams.OperatorNs,
@@ -326,7 +318,6 @@ var _ = Describe(
 
 				farPods, err := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
 				Expect(err).ToNot(HaveOccurred(), "Failed to list FAR pods")
-
 				runningPods := helpers.FilterRunningPods(farPods)
 				Expect(runningPods).ToNot(BeEmpty(), "No running FAR controller pods found")
 
@@ -391,7 +382,6 @@ var _ = Describe(
 				listOptions := metav1.ListOptions{
 					LabelSelector: farparams.OperatorControllerPodLabelSelector,
 				}
-
 				_, err := pod.WaitForAllPodsInNamespaceRunning(
 					APIClient,
 					medik8sparams.OperatorNs,
@@ -404,7 +394,6 @@ var _ = Describe(
 
 				farPods, err := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
 				Expect(err).ToNot(HaveOccurred(), "Failed to list FAR pods")
-
 				runningPods := helpers.FilterRunningPods(farPods)
 				Expect(runningPods).ToNot(BeEmpty(), "No running FAR controller pods found")
 
@@ -418,7 +407,6 @@ var _ = Describe(
 					)
 					Expect(err).ToNot(HaveOccurred(),
 						"Failed to exec in FAR controller pod %s", targetPod.Object.Name)
-
 					output := buf.String()
 
 					var availableAgents []string

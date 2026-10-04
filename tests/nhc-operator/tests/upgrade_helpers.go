@@ -75,11 +75,9 @@ func waitForNHCUpgradeCSV(namespace, expectedVersion, expectedImage, phase strin
 		csv, err := helpers.FindSucceededCSV(APIClient, nhcparams.CSVNamePattern, namespace)
 		assertion.Expect(err).NotTo(HaveOccurred())
 		assertion.Expect(csv.Object.Spec.Version.String()).To(Equal(expectedVersion))
-
 		controller, err := deployment.Pull(APIClient, nhcparams.OperatorDeploymentName, namespace)
 		assertion.Expect(err).NotTo(HaveOccurred())
 		assertion.Expect(controller.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue())
-
 		pods := &corev1.PodList{}
 		assertion.Expect(APIClient.List(context.Background(), pods, client.InNamespace(namespace),
 			client.MatchingLabels(controller.Object.Spec.Selector.MatchLabels))).To(Succeed())
@@ -88,13 +86,11 @@ func waitForNHCUpgradeCSV(namespace, expectedVersion, expectedImage, phase strin
 		for _, pod := range pods.Items {
 			// Even a terminating old controller must be gone before the probe.
 			assertion.Expect(pod.DeletionTimestamp).To(BeNil())
-
 			managerFound := false
 
 			for _, container := range pod.Spec.Containers {
 				if container.Name == nhcparams.ManagerContainerName {
 					managerFound = true
-
 					assertion.Expect(container.Image).To(Equal(expectedImage))
 				}
 			}
@@ -114,7 +110,6 @@ func waitForUpgradeAPI(ctx context.Context, object *unstructured.Unstructured) e
 		ctx, nhcparams.DefaultPollInterval, medik8sparams.DefaultTimeout, true, func(ctx context.Context) (bool, error) {
 			list := &unstructured.UnstructuredList{}
 			list.SetGroupVersionKind(object.GroupVersionKind().GroupVersion().WithKind(object.GetKind() + "List"))
-
 			err := APIClient.List(ctx, list, client.InNamespace(object.GetNamespace()))
 			if nhcutils.MissingAPI(err) {
 				return false, nil

@@ -66,7 +66,6 @@ var _ = Describe(
 						GinkgoWriter.Printf(
 							"Warning: node %s missing from or probe-failed in watchdog inventory; skipping\n",
 							node.Name)
-
 						nodeWatchdogDevices[node.Name] = nil
 
 						continue
@@ -261,7 +260,6 @@ var _ = Describe(
 					}
 
 					hwCheckCmd := []string{"sh", "-c", strings.Join(testCmds, "; ")}
-
 					hwPod, createErr := pod.NewBuilder(
 						APIClient, podName, medik8sparams.OperatorNs, sbrparams.WatchdogDebugImage).
 						DefineOnNode(nodeName).
@@ -361,7 +359,6 @@ var _ = Describe(
 							"&& echo available && exit 0;" +
 							"echo missing",
 					}
-
 					softdogPod, createErr := pod.NewBuilder(
 						APIClient, podName, medik8sparams.OperatorNs, sbrparams.WatchdogDebugImage).
 						DefineOnNode(nodeName).
@@ -447,7 +444,6 @@ func watchdogProbeLogs(podName, namespace string, builder *pod.Builder) (string,
 	}
 
 	req := client.CoreV1().Pods(namespace).GetLogs(podName, &corev1.PodLogOptions{Container: "test"})
-
 	streamCtx, streamCancel := context.WithTimeout(context.Background(), sbrparams.WatchdogProbeLogTimeout)
 	defer streamCancel()
 

@@ -77,21 +77,15 @@ func init() {
 	klog.InitFlags(nil)
 	klog.EnableContextualLogging(true)
 	logf.SetLogger(logr.Discard())
-
 	_ = flag.Set("logtostderr", "true")
-
 	flag.BoolVar(&help, "help", defaultHelp, helpUsage)
 	flag.BoolVar(&help, "h", defaultHelp, helpUsage+shorthand)
-
 	flag.StringVar(&actionURL, "action-url", defaultActionURL, actionURLUsage)
 	flag.StringVar(&actionURL, "a", defaultActionURL, actionURLUsage+shorthand)
-
 	flag.StringVar(&branch, "branch", defaultBranch, branchUsage)
 	flag.StringVar(&branch, "b", defaultBranch, branchUsage+shorthand)
-
 	flag.BoolVar(&clean, "clean", defaultClean, cleanUsage)
 	flag.BoolVar(&clean, "c", defaultClean, cleanUsage+shorthand)
-
 	flag.StringVar(&output, "output", defaultOutput, outputUsage)
 	flag.StringVar(&output, "o", defaultOutput, outputUsage+shorthand)
 }
@@ -109,7 +103,6 @@ func main() {
 		err := CleanCache()
 		if err != nil {
 			klog.Errorf("Failed to clean cache: %v", err)
-
 			os.Exit(1)
 		}
 
@@ -119,7 +112,6 @@ func main() {
 	treeMap, err := getTrees(branch)
 	if err != nil {
 		klog.Errorf("Failed to get suite trees when branch=\"%s\": %v", branch, err)
-
 		os.Exit(1)
 	}
 
@@ -129,7 +121,6 @@ func main() {
 		err := templateTreeMap(treeMap, output)
 		if err != nil {
 			klog.Errorf("Failed to template tree map and save to %s: %v", output, err)
-
 			os.Exit(1)
 		}
 	}
@@ -197,7 +188,6 @@ func templateTreeMap(treeMap map[CacheKey]*SuiteTree, output string) error {
 		}
 		outputFileName := fmt.Sprintf("report_%s.html", key.Branch)
 		outputFilePath := filepath.Join(output, outputFileName)
-
 		err := TemplateTree(config, outputFilePath)
 		if err != nil {
 			return err
@@ -220,7 +210,6 @@ func templateTreeMap(treeMap map[CacheKey]*SuiteTree, output string) error {
 		TimeFormat:    time.RFC3339,
 	}
 	outputFilePath := filepath.Join(output, "report.html")
-
 	err = TemplateReport(config, outputFilePath)
 	if err != nil {
 		return err

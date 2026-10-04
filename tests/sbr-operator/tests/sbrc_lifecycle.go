@@ -62,7 +62,6 @@ var _ = Describe(
 
 			for _, staleName := range []string{sbrparams.SBRCLifecycleTestNameA, sbrparams.SBRCLifecycleTestNameB} {
 				staleRef := buildSBRC(staleName, map[string]interface{}{})
-
 				deleteErr := APIClient.Delete(context.TODO(), staleRef)
 				if deleteErr != nil && !k8serrors.IsNotFound(deleteErr) {
 					GinkgoT().Logf("Warning: pre-test cleanup of stale SBRC %s failed: %v", staleName, deleteErr)
@@ -148,7 +147,6 @@ var _ = Describe(
 
 				Expect(APIClient.Create(context.TODO(), sbrcA)).To(Succeed(),
 					"StorageBasedRemediationConfig %q must be created successfully", sbrparams.SBRCLifecycleTestNameA)
-
 				waitForSBRCReady(sbrparams.SBRCLifecycleTestNameA)
 
 				By("Step 2: Patching StorageBasedRemediationConfig A (updating sbrTimeoutSeconds) " +
@@ -160,16 +158,12 @@ var _ = Describe(
 					},
 				})
 				Expect(marshalErr).ToNot(HaveOccurred(), "Failed to marshal patch payload for SBRC A")
-
 				dsNameA := sbrparams.SBRAgentDaemonSetPrefix + sbrparams.SBRCLifecycleTestNameA
-
 				prePatchDS, prePatchErr := APIClient.DaemonSets(medik8sparams.OperatorNs).Get(
 					context.TODO(), dsNameA, metav1.GetOptions{})
 				Expect(prePatchErr).ToNot(HaveOccurred(),
 					"Failed to get DaemonSet %s before patch", dsNameA)
-
 				prePatchGen := prePatchDS.Generation
-
 				patchErr := APIClient.Patch(
 					context.TODO(),
 					sbrcA.DeepCopy(),
@@ -213,23 +207,19 @@ var _ = Describe(
 
 				Expect(APIClient.Delete(context.TODO(), sbrcA.DeepCopy())).To(Succeed(),
 					"StorageBasedRemediationConfig %q must be deleted successfully", sbrparams.SBRCLifecycleTestNameA)
-
 				waitForDaemonSetGC(dsNameA)
 
 				By("Step 4: Creating StorageBasedRemediationConfig B and verifying its DaemonSet becomes ready")
 
 				dsNameB := sbrparams.SBRAgentDaemonSetPrefix + sbrparams.SBRCLifecycleTestNameB
-
 				Expect(APIClient.Create(context.TODO(), sbrcB)).To(Succeed(),
 					"StorageBasedRemediationConfig %q must be created successfully", sbrparams.SBRCLifecycleTestNameB)
-
 				waitForSBRCReady(sbrparams.SBRCLifecycleTestNameB)
 
 				By("Step 5: Deleting StorageBasedRemediationConfig B and verifying its DaemonSet is removed")
 
 				Expect(APIClient.Delete(context.TODO(), sbrcB.DeepCopy())).To(Succeed(),
 					"StorageBasedRemediationConfig %q must be deleted successfully", sbrparams.SBRCLifecycleTestNameB)
-
 				waitForDaemonSetGC(dsNameB)
 			})
 	})

@@ -142,7 +142,6 @@ var _ = Describe("NHC Template Management -- Custom Remediation",
 
 			targetNode, err := helpers.SelectWorkerNode(ctx, APIClient)
 			Expect(err).ToNot(HaveOccurred(), "Failed to select worker node")
-
 			targetWorkerName = targetNode.Name
 			GinkgoWriter.Printf("Target worker node: %s\n", targetWorkerName)
 
@@ -222,7 +221,6 @@ var _ = Describe("NHC Template Management -- Custom Remediation",
 
 				workerCount, err := helpers.CountReadyWorkerNodes(ctx, APIClient)
 				Expect(err).ToNot(HaveOccurred())
-
 				expectedWorkers := int64(workerCount)
 
 				By("Creating NHC with TestRemediation template")
@@ -236,7 +234,6 @@ var _ = Describe("NHC Template Management -- Custom Remediation",
 				Expect(waitForNHCPhase(ctx, nhcName, nhcparams.NHCPhaseEnabled,
 					medik8sparams.DefaultTimeout)).To(Succeed(),
 					"NHC %q should be Enabled", nhcName)
-
 				verifyNHCNodeCount(ctx, getNHCHealthyNodes, expectedWorkers,
 					"healthyNodes should match worker count before remediation")
 				verifyNHCNodeCount(ctx, getNHCObservedNodes, expectedWorkers,
@@ -252,7 +249,6 @@ var _ = Describe("NHC Template Management -- Custom Remediation",
 				Expect(waitForNHCPhase(ctx, nhcName, nhcparams.NHCPhaseRemediating,
 					nhcparams.NodeNotReadyTimeout)).To(Succeed(),
 					"NHC %q should enter Remediating after kubelet stop", nhcName)
-
 				verifyNHCNodeCount(ctx, getNHCHealthyNodes, expectedWorkers-1,
 					"healthyNodes should be workers-1 during remediation")
 				verifyNHCNodeCount(ctx, getNHCObservedNodes, expectedWorkers,
@@ -297,7 +293,6 @@ var _ = Describe("NHC Template Management -- Custom Remediation",
 				Expect(waitForNHCPhase(ctx, nhcName, nhcparams.NHCPhaseEnabled,
 					nhcparams.RemediationCompletionTimeout)).To(Succeed(),
 					"NHC %q should return to Enabled after recovery", nhcName)
-
 				verifyNHCNodeCount(ctx, getNHCHealthyNodes, expectedWorkers,
 					"healthyNodes should be restored after recovery")
 				verifyNHCNodeCount(ctx, getNHCObservedNodes, expectedWorkers,

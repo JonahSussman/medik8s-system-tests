@@ -108,7 +108,6 @@ var _ = Describe(
 
 				firstNode, err := helpers.SelectControlPlaneNode(ctx, APIClient)
 				Expect(err).ToNot(HaveOccurred(), "Failed to select a control-plane node")
-
 				firstNodeName := firstNode.Name
 				firstNMName := fmt.Sprintf("quorum-first-%s", firstNodeName)
 
@@ -142,7 +141,6 @@ var _ = Describe(
 				By("Waiting for the first NodeMaintenance to reach Succeeded phase")
 				Eventually(func() (nmov1beta1.MaintenancePhase, error) {
 					current := &nmov1beta1.NodeMaintenance{}
-
 					getErr := APIClient.Get(ctx, client.ObjectKey{Name: firstNMName}, current)
 					if errors.IsNotFound(getErr) {
 						// The CR we just created is gone -- no point retrying, fail immediately.
@@ -183,7 +181,6 @@ var _ = Describe(
 
 				secondNode, err := helpers.SelectControlPlaneNode(ctx, APIClient, firstNodeName)
 				Expect(err).ToNot(HaveOccurred(), "Failed to select a second control-plane node")
-
 				secondNodeName := secondNode.Name
 				secondNMName := fmt.Sprintf("quorum-second-%s", secondNodeName)
 
@@ -233,7 +230,6 @@ var _ = Describe(
 					}
 
 					observedSecondNode = true
-
 					assertion.Expect(node.Object.Spec.Unschedulable).To(BeFalse(),
 						"second control-plane node must not be cordoned after a rejected maintenance")
 				}, nmoparams.ScheduleCheckTimeout, nmoparams.DefaultPollInterval).Should(Succeed())
@@ -266,10 +262,8 @@ func getEtcdQuorumPDB(ctx context.Context) (*policyv1.PodDisruptionBudget, error
 // control-plane quorum reporting step.
 func logEtcdQuorumPDB(ctx context.Context) {
 	GinkgoHelper()
-
 	pdb, err := getEtcdQuorumPDB(ctx)
 	Expect(err).ToNot(HaveOccurred(), "Failed to read etcd quorum PDB")
-
 	GinkgoWriter.Printf(
 		"etcd quorum PDB %q: DisruptionsAllowed=%d, DesiredHealthy=%d, ExpectedPods=%d\n",
 		pdb.Name, pdb.Status.DisruptionsAllowed, pdb.Status.DesiredHealthy, pdb.Status.ExpectedPods)
@@ -281,10 +275,8 @@ func logEtcdQuorumPDB(ctx context.Context) {
 // Unknown -- the same states the webhook treats as "still a voting member".
 func assertEtcdGuardPodReady(ctx context.Context, nodeName string) {
 	GinkgoHelper()
-
 	pdb, err := getEtcdQuorumPDB(ctx)
 	Expect(err).ToNot(HaveOccurred(), "Failed to read etcd quorum PDB")
-
 	selector, err := metav1.LabelSelectorAsSelector(pdb.Spec.Selector)
 	Expect(err).ToNot(HaveOccurred(), "Failed to parse etcd PDB selector")
 	Expect(selector.Empty()).To(BeFalse(),
@@ -332,11 +324,9 @@ func assertEtcdGuardPodReady(ctx context.Context, nodeName string) {
 // independent of the operator's webhook configuration naming across versions.
 func assertNodeMaintenanceWebhookPresent(ctx context.Context) {
 	GinkgoHelper()
-
 	vwcList := &admissionregistrationv1.ValidatingWebhookConfigurationList{}
 	Expect(APIClient.List(ctx, vwcList)).To(Succeed(),
 		"Failed to list ValidatingWebhookConfigurations")
-
 	found := false
 
 	for i := range vwcList.Items {
@@ -362,7 +352,6 @@ func assertNodeMaintenanceWebhookPresent(ctx context.Context) {
 // the target node (from an aborted run) would otherwise mask the quorum error.
 func deleteNMsForNode(ctx context.Context, nodeName string, timeout time.Duration) {
 	GinkgoHelper()
-
 	nmList := &nmov1beta1.NodeMaintenanceList{}
 	Expect(APIClient.List(ctx, nmList)).To(Succeed(), "Failed to list NodeMaintenance CRs")
 

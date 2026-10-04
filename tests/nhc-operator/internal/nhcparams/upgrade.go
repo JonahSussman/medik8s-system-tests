@@ -161,7 +161,6 @@ func LoadUpgradeClusterInputs() (UpgradeClusterInputs, error) {
 	}
 
 	candidateNHC := candidateNHCFromEnvironment()
-
 	candidateCatalog := os.Getenv("NHC_UPGRADE_CANDIDATE_NHC_CATALOG")
 	for key, value := range map[string]string{
 		"NHC_UPGRADE_CANDIDATE_NHC_BUNDLE":  candidateNHC.Bundle,

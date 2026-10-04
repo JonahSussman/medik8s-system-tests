@@ -47,7 +47,6 @@ var _ = Describe(
 				By("Getting SelfNodeRemediationConfig CRD")
 
 				snrCRD := &apiextensionsv1.CustomResourceDefinition{}
-
 				err := APIClient.Get(context.TODO(),
 					client.ObjectKey{Name: snrparams.SNRCRDName},
 					snrCRD)
@@ -88,7 +87,6 @@ var _ = Describe(
 
 				nonDefaultSNRC := buildSNRCR("SelfNodeRemediationConfig",
 					"non-default-snr-config-1", map[string]interface{}{})
-
 				err := APIClient.Create(context.TODO(), nonDefaultSNRC)
 				if err == nil {
 					deferDeleteCR(nonDefaultSNRC)
@@ -112,7 +110,6 @@ var _ = Describe(
 						"apiServerTimeout": "foo",
 						"apiCheckInterval": "string",
 					})
-
 				err := APIClient.Create(context.TODO(), invalidStringSNRC)
 				if err == nil {
 					deferDeleteCR(invalidStringSNRC)
@@ -133,7 +130,6 @@ var _ = Describe(
 						"peerRequestTimeout":   "0.003ms",
 						"peerUpdateInterval":   "0ms",
 					})
-
 				err = APIClient.Create(context.TODO(), invalidDurationSNRC)
 				if err == nil {
 					deferDeleteCR(invalidDurationSNRC)
@@ -189,11 +185,9 @@ var _ = Describe(
 				By("Creating SNR with non-existent node name")
 
 				snrCR := buildSNRCR("SelfNodeRemediation", snrparams.SNRTestNodeName, nil)
-
 				err := APIClient.Create(context.TODO(), snrCR)
 				Expect(err).ToNot(HaveOccurred(),
 					"Failed to create SNR for non-existent node")
-
 				deferDeleteCR(snrCR)
 
 				By("Verifying lastError field is populated")

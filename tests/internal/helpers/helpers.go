@@ -84,7 +84,6 @@ func ValidateNonRootSecurityContext(
 
 	for _, targetPod := range pods {
 		podName := targetPod.Object.Name
-
 		errorMessages = append(errorMessages,
 			validatePodLevelSecurity(targetPod, podName)...)
 		errorMessages = append(errorMessages,

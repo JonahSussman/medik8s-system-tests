@@ -68,7 +68,6 @@ func ApplyIDMSFromSharedDir(
 	defer cancel()
 
 	cmd := exec.CommandContext(childCtx, "oc", "apply", "-f", idmsPath)
-
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return false, fmt.Errorf("oc apply -f %s failed: %w\nOutput: %s", idmsPath, err, output)
@@ -94,7 +93,6 @@ func GetMCPGenerations(ctx context.Context) ([]MCPGeneration, error) {
 
 	cmd := exec.CommandContext(childCtx, "oc", "get", "mcp", "-o",
 		"jsonpath={range .items[*]}{.metadata.name}{\" \"}{.metadata.generation}{\"\\n\"}{end}")
-
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get MCP generations: %w\nOutput: %s", err, output)
@@ -163,7 +161,6 @@ func WaitForMCPRollout(
 	cmd := exec.CommandContext(mcpCtx, "oc", "wait", "mcp", "--all",
 		"--for=condition=Updated",
 		fmt.Sprintf("--timeout=%ds", int(rolloutTimeout.Seconds())))
-
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("MCP rollout did not complete: %w\nOutput: %s", err, output)

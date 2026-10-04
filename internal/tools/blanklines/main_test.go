@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -17,6 +18,8 @@ func TestRun(t *testing.T) {
 		filename string
 		source   string
 		fails    bool
+		args     []string
+		expected string
 	}{
 		{
 			name: "test files are checked", filename: "example_test.go",
@@ -33,6 +36,12 @@ func TestRun(t *testing.T) {
 			source: "package example\nvar value = missing\n",
 			fails:  true,
 		},
+		{
+			name: "fix mode removes gaps", filename: "example.go",
+			source:   "package example\nfunc example() {\nprintln(\"first\")\n\nprintln(\"second\")\n}\n",
+			args:     []string{"--fix"},
+			expected: "package example\nfunc example() {\nprintln(\"first\")\nprintln(\"second\")\n}\n",
+		},
 	}
 	for _, scenario := range cases {
 		t.Run(scenario.name, func(t *testing.T) {
@@ -46,9 +55,23 @@ func TestRun(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			err := run(context.Background(), nil)
+			err := run(context.Background(), scenario.args)
 			if (err != nil) != scenario.fails {
 				t.Fatalf("run error = %v, want failure %v", err, scenario.fails)
+			}
+
+			written, err := os.ReadFile(scenario.filename)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			expected := scenario.expected
+			if expected == "" {
+				expected = scenario.source
+			}
+
+			if string(written) != expected {
+				t.Fatalf("unexpected source after check:\n%s", written)
 			}
 		})
 	}
@@ -102,12 +125,14 @@ func TestCheckFile(t *testing.T) {
 			lines: []string{
 				`m := make(map[string]int)`, `n := make(map[string]int)`, "", `delete(m, "key")`, `_ = n`,
 			},
+			match: true,
 		},
 		{
 			name: "intervening statement",
 			lines: []string{
 				`m := make(map[string]int)`, `println("phase")`, "", `delete(m, "key")`,
 			},
+			match: true,
 		},
 		{
 			name: "comment boundary",
@@ -126,6 +151,7 @@ func TestCheckFile(t *testing.T) {
 			lines: []string{
 				`delete := func(map[string]int, string) {}`, `m := make(map[string]int)`, "", `delete(m, "key")`,
 			},
+			match: true,
 		},
 		{
 			name: "nested block",
@@ -154,11 +180,46 @@ func TestCheckFile(t *testing.T) {
 				"m := map[string]string{\"key\": `first\n\nlast`}", `delete(m, "key")`,
 			},
 		},
+		{
+			name:  "consecutive assignments",
+			lines: []string{`first := 1`, "", `second := first`, `_ = second`},
+			match: true,
+		},
+		{
+			name:  "consecutive calls",
+			lines: []string{`println("first")`, "", `println("second")`},
+			match: true,
+		},
+		{
+			name:  "call then assignment",
+			lines: []string{`println("first")`, "", `second := 1`, `_ = second`},
+			match: true,
+		},
+		{
+			name:  "increment then assignment",
+			lines: []string{`count := 1`, `count++`, "", `total := count`, `_ = total`},
+			match: true,
+		},
+		{
+			name:  "control flow boundary",
+			lines: []string{`if true { println("first") }`, "", `println("second")`},
+		},
+		{
+			name:  "return boundary",
+			lines: []string{`println("first")`, "", `return`},
+		},
+		{
+			name:  "callback boundary",
+			lines: []string{`println("first")`, "", `func() {}()`},
+		},
+		{
+			name:  "nested callback boundary",
+			lines: []string{`println("first")`, "", `callback := []func(){func() {}}`, `_ = callback`},
+		},
 	}
 	for _, scenario := range cases {
 		t.Run(scenario.name, func(t *testing.T) {
 			source := "package example\nfunc example() {\n" + strings.Join(scenario.lines, "\n") + "\n}\n"
-
 			findings := checkSource(t, source)
 			if (len(findings) != 0) != scenario.match {
 				t.Fatalf("match = %v, want %v; positions: %v", len(findings) != 0, scenario.match, findings)
@@ -187,9 +248,7 @@ func TestPhysicalPositions(t *testing.T) {
 
 func checkSource(t *testing.T, source string) []token.Position {
 	t.Helper()
-
 	fset := token.NewFileSet()
-
 	file, err := parser.ParseFile(fset, "example.go", source, parser.ParseComments)
 	if err != nil {
 		t.Fatal(err)
@@ -199,11 +258,71 @@ func checkSource(t *testing.T, source string) []token.Position {
 		Defs: make(map[*ast.Ident]types.Object),
 		Uses: make(map[*ast.Ident]types.Object),
 	}
-	config := &types.Config{}
+	config := &types.Config{Importer: stepImporter{}}
 
 	if _, err := config.Check("example", fset, []*ast.File{file}, info); err != nil {
 		t.Fatal(err)
 	}
 
 	return checkFile(fset, file, info, []byte(source))
+}
+
+func TestGinkgoStepBoundary(t *testing.T) {
+	for _, importStyle := range []string{".", "ginkgo"} {
+		call := "By"
+		if importStyle != "." {
+			call = "ginkgo.By"
+		}
+
+		source := "package example\nimport " + importStyle + " \"github.com/onsi/ginkgo/v2\"\n" +
+			"func example() {\nprintln(\"first\")\n\n(" + call + ")(\"step\")\n\nprintln(\"second\")\n}\n"
+		if findings := checkSource(t, source); len(findings) != 0 {
+			t.Fatalf("Ginkgo step separators should remain with import %q: %v", importStyle, findings)
+		}
+	}
+
+	source := "package example\nfunc By(string) {}\n" +
+		"func example() {\nprintln(\"first\")\n\nBy(\"not Ginkgo\")\n}\n"
+	if findings := checkSource(t, source); len(findings) != 1 {
+		t.Fatalf("local By function must follow normal call spacing: %v", findings)
+	}
+}
+
+// stepImporter supplies a typed Ginkgo By symbol without loading its runtime in unit checks.
+type stepImporter struct{}
+
+// Import resolves the fixture's By symbol by package identity, not identifier spelling.
+func (stepImporter) Import(path string) (*types.Package, error) {
+	if path != "github.com/onsi/ginkgo/v2" {
+		return nil, fmt.Errorf("unexpected fixture import %q", path)
+	}
+
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "step.go", "package ginkgo\nfunc By(string) {}", parser.ParseComments)
+	if err != nil {
+		return nil, fmt.Errorf("parse fixture: %w", err)
+	}
+
+	config := &types.Config{}
+
+	return config.Check(path, fset, []*ast.File{file}, nil)
+}
+
+func TestFixPreservesSource(t *testing.T) {
+	source := "package example\nfunc example() {\n" +
+		"value := `first\n\nlast`\n\n\t \nprintln(value)\n\nprintln(\"last\")\n}\n"
+	expected := "package example\nfunc example() {\n" +
+		"value := `first\n\nlast`\nprintln(value)\nprintln(\"last\")\n}\n"
+	for _, ending := range []string{"\n", "\r\n"} {
+		input := strings.ReplaceAll(source, "\n", ending)
+		findings := checkSource(t, input)
+		fixed := removeBlankLines([]byte(input), findings)
+		if string(fixed) != strings.ReplaceAll(expected, "\n", ending) {
+			t.Fatalf("unexpected fix for ending %q:\n%s", ending, fixed)
+		}
+
+		if remaining := checkSource(t, string(fixed)); len(remaining) != 0 {
+			t.Fatalf("fix is not idempotent: %v", remaining)
+		}
+	}
 }

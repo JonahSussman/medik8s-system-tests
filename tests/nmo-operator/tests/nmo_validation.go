@@ -116,7 +116,6 @@ var _ = Describe("NMO Negative Validation",
 
 					nodeMaintenance := buildNMUnstructured(
 						nmoparams.InvalidNodeNMName, nmoparams.InvalidNodeName, nmoparams.ValidReason)
-
 					err := APIClient.Create(ctx, nodeMaintenance)
 					Expect(err).To(HaveOccurred(),
 						"NodeMaintenance creation for a non-existent node should fail")
@@ -145,7 +144,6 @@ var _ = Describe("NMO Negative Validation",
 
 					wrongTypeNM := buildNMUnstructured(
 						nmoparams.IncorrectFormatNMName, nmoparams.InvalidNodeName, nmoparams.IncorrectFormatReason)
-
 					wrongTypeErr := APIClient.Create(ctx, wrongTypeNM)
 					Expect(wrongTypeErr).To(HaveOccurred(),
 						"NodeMaintenance creation with an integer reason should fail")
@@ -163,7 +161,6 @@ var _ = Describe("NMO Negative Validation",
 
 					badNameNM := buildNMUnstructured(
 						nmoparams.MalformedNMName, nmoparams.InvalidNodeName, nmoparams.ValidReason)
-
 					badNameErr := APIClient.Create(ctx, badNameNM)
 					Expect(badNameErr).To(HaveOccurred(),
 						"NodeMaintenance creation with a malformed name should fail")

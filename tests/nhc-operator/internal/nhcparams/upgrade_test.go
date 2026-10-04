@@ -7,7 +7,6 @@ import (
 
 func setRequiredCandidateInputs(t *testing.T) {
 	t.Helper()
-
 	t.Setenv("NHC_UPGRADE_CANDIDATE_NHC_BUNDLE", "registry.test/nhc-bundle:candidate")
 	t.Setenv("NHC_UPGRADE_CANDIDATE_NHC_VERSION", "5.8.0")
 	t.Setenv("NHC_UPGRADE_CANDIDATE_NHC_IMAGE", "registry.test/nhc:candidate")
@@ -21,7 +20,6 @@ func TestLoadUpgradeOperatorInputsUsesFixedIdentity(t *testing.T) {
 	t.Setenv("NHC_UPGRADE_PACKAGE", "ignored-nhc")
 	t.Setenv("NHC_UPGRADE_SNR_PACKAGE", "ignored-snr")
 	t.Setenv("NHC_UPGRADE_NAMESPACE", "ignored-namespace")
-
 	inputs, err := LoadUpgradeOperatorInputs()
 	if err != nil {
 		t.Fatal(err)
@@ -39,7 +37,6 @@ func TestLoadUpgradeOperatorInputsUsesFixedIdentity(t *testing.T) {
 
 func TestLoadUpgradeClusterInputsUsesRenamedVariables(t *testing.T) {
 	setRequiredCandidateInputs(t)
-
 	inputs, err := LoadUpgradeClusterInputs()
 	if err != nil {
 		t.Fatal(err)
@@ -54,7 +51,6 @@ func TestLoadUpgradeClusterInputsUsesRenamedVariables(t *testing.T) {
 
 func TestLoadFreshInstallInputsContainsOnlyCandidateArtifacts(t *testing.T) {
 	setRequiredCandidateInputs(t)
-
 	inputs, err := LoadFreshInstallInputs()
 	if err != nil {
 		t.Fatal(err)
@@ -90,7 +86,6 @@ func TestLoadUpgradeOperatorInputsRequiresOnlyCandidateNHCAndSDK(t *testing.T) {
 func TestLoadUpgradeClusterInputsRequiresCandidateCatalog(t *testing.T) {
 	setRequiredCandidateInputs(t)
 	t.Setenv("NHC_UPGRADE_CANDIDATE_NHC_CATALOG", "")
-
 	_, err := LoadUpgradeClusterInputs()
 	if err == nil || !strings.Contains(err.Error(), "NHC_UPGRADE_CANDIDATE_NHC_CATALOG") {
 		t.Fatalf("missing candidate catalog was not reported: %v", err)

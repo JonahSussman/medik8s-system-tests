@@ -34,19 +34,14 @@ var _ = Describe("NHC Fresh Install", Serial,
 
 			inputs, err = nhcparams.LoadFreshInstallInputs()
 			Expect(err).NotTo(HaveOccurred())
-
 			inputs, err = nhcutils.ResolveAndVerifyFreshInstallInputs(ctx, inputs)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(inputs.Namespace).To(Equal(medik8sparams.OperatorNs))
-
 			AddReportEntry("nhc-fresh-install-inputs", inputs)
-
 			clusterVersion := &configv1.ClusterVersion{}
 			Expect(APIClient.Get(ctx, client.ObjectKey{Name: "version"}, clusterVersion)).To(Succeed())
 			Expect(clusterVersion.Status.Desired.Version).To(HavePrefix("5.0."), "requires an OpenShift 5.0 cluster")
-
 			Expect(nhcutils.CheckClean(ctx, APIClient, inputs.Namespace)).To(Succeed())
-
 			owned = &nhcutils.OwnedRun{
 				API:            APIClient,
 				Namespace:      inputs.Namespace,
@@ -100,7 +95,6 @@ var _ = Describe("NHC Fresh Install", Serial,
 			GinkgoWriter.Printf("operator-sdk run bundle (candidate NHC) output:\n%s\n", output)
 			Expect(err).NotTo(HaveOccurred())
 			waitForNHCUpgradeCSV(inputs.Namespace, inputs.CandidateNHC.Version, inputs.CandidateNHC.Image, "fresh candidate")
-
 			candidateImage, err := nhcutils.GetNHCControllerImage(APIClient)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(candidateImage).To(Equal(inputs.CandidateNHC.Image))
