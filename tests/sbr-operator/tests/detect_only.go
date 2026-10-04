@@ -173,11 +173,13 @@ var _ = Describe(
 						DefineOnNode(nodeName).
 						WithHostPid(true).
 						WithPrivilegedFlag().
-						RedefineDefaultCMD([]string{"/bin/bash", "-c",
+						RedefineDefaultCMD([]string{
+							"/bin/bash", "-c",
 							"nsenter --target 1 --mount -- sh -c " +
 								"'exec 200>/dev/watchdog 2>/dev/null; " +
 								"while true; do printf V >&200 2>/dev/null; sleep 10; done' " +
-								"|| sleep 999999"}).
+								"|| sleep 999999",
+						}).
 						CreateAndWaitUntilRunning(sbrparams.WatchdogKeepaliveTimeout)
 					if createErr != nil {
 						GinkgoT().Logf("Warning: keepalive pod %s on node %s: %v; "+
@@ -341,8 +343,10 @@ var _ = Describe(
 				} else {
 					Eventually(func() error {
 						getErr := APIClient.Get(context.TODO(),
-							types.NamespacedName{Name: sbrparams.SBRCDetectOnlyTestName,
-								Namespace: medik8sparams.OperatorNs},
+							types.NamespacedName{
+								Name:      sbrparams.SBRCDetectOnlyTestName,
+								Namespace: medik8sparams.OperatorNs,
+							},
 							detectOnlySBRC.DeepCopy())
 
 						if k8serrors.IsNotFound(getErr) {

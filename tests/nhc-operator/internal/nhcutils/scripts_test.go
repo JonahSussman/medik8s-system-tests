@@ -49,8 +49,8 @@ spec:
               initContainers:
               - name: init
                 image: init
-`, 0600)
-	writeScriptFixture(t, filepath.Join(dir, "annotations.yaml"), "annotations:\n  operators.operatorframework.io.bundle.package.v1: node-healthcheck-operator\n", 0600)
+`, 0o600)
+	writeScriptFixture(t, filepath.Join(dir, "annotations.yaml"), "annotations:\n  operators.operatorframework.io.bundle.package.v1: node-healthcheck-operator\n", 0o600)
 	writeScriptFixture(t, filepath.Join(dir, "oc"), `#!/usr/bin/env bash
 set -euo pipefail
 if [[ $2 == extract ]]; then
@@ -72,7 +72,7 @@ elif [[ $2 == info ]]; then
     printf '{"digest":"sha256:%064d"}\n' 1
   fi
 else exit 99; fi
-`, 0700)
+`, 0o700)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 	t.Setenv("FIXTURE_DIR", dir)
 
@@ -100,7 +100,7 @@ func TestFindLatestGABundleUsesOnlyPlainSemverTags(t *testing.T) {
 set -euo pipefail
 [[ $1 == list-tags && $2 == docker://registry.test/bundles ]]
 printf '{"Tags":["latest","v0.12.0","v0.13.0-rc.1","v0.12.1-a9feb15","v0.12.1","v0.12.10","v1.0.0-beta.1"]}\n'
-`, 0700)
+`, 0o700)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 
 	pullspec, err := findLatestGABundle(context.Background(), "registry.test/bundles")
@@ -131,7 +131,7 @@ func TestDownstreamGAVersionRejectsSuffixedTags(t *testing.T) {
 func TestBundleCommandsSetTimeout(t *testing.T) {
 	dir := t.TempDir()
 	binary := filepath.Join(dir, "operator-sdk")
-	writeScriptFixture(t, binary, "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> \"$COMMAND_LOG\"\n", 0700)
+	writeScriptFixture(t, binary, "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> \"$COMMAND_LOG\"\n", 0o700)
 	t.Setenv("COMMAND_LOG", filepath.Join(dir, "commands"))
 
 	if _, err := InstallBundle(context.Background(), binary, "test-namespace", "baseline-bundle"); err != nil {
@@ -170,7 +170,7 @@ mkdir -p "$ECO_REPORTS_DUMP_DIR"
 printf '<report/>\n' > "$ECO_REPORTS_DUMP_DIR/nhc_testrun.xml"
 printf 'Ran 1 of 24 Specs\noriginal test failure\n'
 exit 7
-`, 0700)
+`, 0o700)
 	t.Setenv("GINKGO", ginkgo)
 	t.Setenv("ECO_TEST_FEATURES", "nhc-operator")
 	t.Setenv("ECO_TEST_LABELS", "tier:upgrade-operator")
@@ -233,9 +233,9 @@ printf 'git %s\n' "$*" >> "$COMMAND_LOG"
 if [[ $1 == clone ]]; then mkdir -p "$4/.git";
 elif [[ $3 == rev-parse ]]; then printf '%s\n' "$NHC_EXPECTED_SOURCE_COMMIT";
 fi
-`, 0700)
-	writeScriptFixture(t, filepath.Join(dir, "podman"), "#!/usr/bin/env bash\nprintf 'podman %s\\n' \"$*\" >> \"$COMMAND_LOG\"\n", 0700)
-	writeScriptFixture(t, filepath.Join(dir, "make"), "#!/usr/bin/env bash\nprintf 'make %s\\n' \"$*\" >> \"$COMMAND_LOG\"\nmkdir -p \"$NHC_BUILD_DIR/bundle\"\n", 0700)
+`, 0o700)
+	writeScriptFixture(t, filepath.Join(dir, "podman"), "#!/usr/bin/env bash\nprintf 'podman %s\\n' \"$*\" >> \"$COMMAND_LOG\"\n", 0o700)
+	writeScriptFixture(t, filepath.Join(dir, "make"), "#!/usr/bin/env bash\nprintf 'make %s\\n' \"$*\" >> \"$COMMAND_LOG\"\nmkdir -p \"$NHC_BUILD_DIR/bundle\"\n", 0o700)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 	t.Setenv("COMMAND_LOG", filepath.Join(dir, "commands"))
 	t.Setenv("NHC_SOURCE_REPOSITORY", filepath.Join(dir, "source"))

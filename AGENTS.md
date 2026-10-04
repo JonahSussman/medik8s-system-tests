@@ -11,6 +11,7 @@ See [SKILLS.md](.agents/SKILLS.md) for the full behavioral guidelines that apply
 - **Keep the repository root clean.** Do not add new files to the root unless strictly required by a tool or standard (e.g. `go.mod`, `Makefile`, `LICENSE`). Documentation, guidelines, and agent-specific files belong in subdirectories.
 - **No agent-proprietary directories or files.** Do not create tool-specific directories (e.g. `.claude/`, `.cursor/`) or files unless the tool itself requires it and there is no neutral alternative. Use `.agents/` for cross-agent content.
 - **Prefer `AGENTS.md` over `CLAUDE.md`.** All project guidance goes in `AGENTS.md`. `CLAUDE.md` exists only as a redirect stub; do not add content to it.
+- **Keep whitespace changes scoped.** Do not add or remove blank lines in code you are not otherwise modifying. In modified code, follow gofumpt, goimports, `wsl_v5`, and `nlreturn` rather than personal whitespace preferences. Run `make fmt` after Go changes; repository-wide formatting belongs in a dedicated mechanical change.
 
 ---
 
@@ -21,7 +22,8 @@ See [SKILLS.md](.agents/SKILLS.md) for the full behavioral guidelines that apply
 ## Commands
 
 ```bash
-make lint                        # golangci-lint v2.11.4 (auto-installed if missing)
+make lint                        # golangci-lint version pinned in scripts/golangci-lint.sh
+make fmt                         # apply gofumpt and goimports using the same pinned tool
 make test                        # unit tests — no cluster needed
 make vet                         # go vet all non-vendor packages
 make deps-update                 # go mod tidy && go mod vendor

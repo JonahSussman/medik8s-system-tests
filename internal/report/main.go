@@ -179,7 +179,7 @@ func printTreeMap(treeMap map[CacheKey]*SuiteTree) {
 }
 
 func templateTreeMap(treeMap map[CacheKey]*SuiteTree, output string) error {
-	err := os.MkdirAll(output, 0755)
+	err := os.MkdirAll(output, 0o755)
 	if err != nil {
 		return err
 	}

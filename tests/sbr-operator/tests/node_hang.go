@@ -191,8 +191,10 @@ var _ = Describe(
 				}, probePodName)
 
 				buf, execErr := probePod.ExecCommand(
-					[]string{"nsenter", "-t", "1", "--pid", "--mnt", "--",
-						"cat", "/proc/sys/kernel/sysrq"})
+					[]string{
+						"nsenter", "-t", "1", "--pid", "--mnt", "--",
+						"cat", "/proc/sys/kernel/sysrq",
+					})
 
 				if _, delErr := probePod.Delete(); delErr != nil {
 					GinkgoWriter.Printf("Warning: failed to delete sysrq probe pod: %v\n", delErr)
@@ -230,8 +232,10 @@ var _ = Describe(
 
 				Eventually(func() error {
 					getErr := APIClient.Get(context.TODO(),
-						types.NamespacedName{Name: sbrparams.SBRCNodeHangTestName,
-							Namespace: medik8sparams.OperatorNs},
+						types.NamespacedName{
+							Name:      sbrparams.SBRCNodeHangTestName,
+							Namespace: medik8sparams.OperatorNs,
+						},
 						setupSBRC.DeepCopy())
 
 					if k8serrors.IsNotFound(getErr) {

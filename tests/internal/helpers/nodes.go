@@ -113,7 +113,8 @@ func CountControlPlaneNodes(ctx context.Context, k8sClient client.Client) (int, 
 // SelectControlPlaneNode returns a random Ready, schedulable control-plane
 // node that is not in the excludeNodes list.
 func SelectControlPlaneNode(
-	ctx context.Context, k8sClient client.Client, excludeNodes ...string) (*corev1.Node, error) {
+	ctx context.Context, k8sClient client.Client, excludeNodes ...string,
+) (*corev1.Node, error) {
 	nodeList := &corev1.NodeList{}
 	if err := k8sClient.List(ctx, nodeList); err != nil {
 		return nil, fmt.Errorf("failed to list nodes: %w", err)

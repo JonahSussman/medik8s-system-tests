@@ -109,12 +109,14 @@ func TestRejectedNamespaceNeverRunsCleanup(t *testing.T) {
 		t.Fatal("accepted existing namespace")
 	}
 
-	run := &OwnedRun{API: api, Namespace: namespace.Name, Token: "new-run", Packages: []string{"nhc", "snr"},
+	run := &OwnedRun{
+		API: api, Namespace: namespace.Name, Token: "new-run", Packages: []string{"nhc", "snr"},
 		CleanupPackage: func(context.Context, string, string, string) (string, error) {
 			t.Fatal("cleanup ran after rejection")
 
 			return "", nil
-		}}
+		},
+	}
 	if err := run.Cleanup(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -173,12 +175,14 @@ func TestCleanupPreservesReplacedNamespace(t *testing.T) {
 	namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "owned", UID: "replacement", Labels: map[string]string{RunLabel: "run"}}}
 	api := testClient(namespace)
 
-	run := &OwnedRun{API: api, Namespace: namespace.Name, NamespaceUID: "original", Token: "run", Packages: []string{"nhc"},
+	run := &OwnedRun{
+		API: api, Namespace: namespace.Name, NamespaceUID: "original", Token: "run", Packages: []string{"nhc"},
 		CleanupPackage: func(context.Context, string, string, string) (string, error) {
 			t.Fatal("cleaned replaced namespace")
 
 			return "", nil
-		}}
+		},
+	}
 	if err := run.Cleanup(context.Background()); err == nil {
 		t.Fatal("did not report identity conflict")
 	}
@@ -194,12 +198,14 @@ func TestPartialInstallCleanupContinuesAfterFailure(t *testing.T) {
 
 	var attempted []string
 
-	run := &OwnedRun{API: api, Namespace: namespace.Name, NamespaceUID: namespace.UID, Token: "run", Packages: []string{"snr", "nhc"},
+	run := &OwnedRun{
+		API: api, Namespace: namespace.Name, NamespaceUID: namespace.UID, Token: "run", Packages: []string{"snr", "nhc"},
 		CleanupPackage: func(_ context.Context, _, _, pkg string) (string, error) {
 			attempted = append(attempted, pkg)
 
 			return "failure evidence", errors.New("partial install")
-		}}
+		},
+	}
 
 	err := run.Cleanup(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "failure evidence") || len(attempted) != 2 {

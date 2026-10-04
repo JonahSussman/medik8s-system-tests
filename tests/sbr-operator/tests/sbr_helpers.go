@@ -38,56 +38,92 @@ func getNodeBootID(nodeName string) (string, error) {
 // cephFSRejectBidirectional defines nsenter + iptables REJECT rules for both INPUT and OUTPUT
 // chains covering all CephFS port groups: 3300 (msgr2), 6789 (msgr1 mon), 6800-7300 (OSD/MDS).
 var cephFSRejectBidirectional = [][]string{
-	{"nsenter", "--target", "1", "--net", "--mount", "--",
-		"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "3300", "-j", "REJECT"},
-	{"nsenter", "--target", "1", "--net", "--mount", "--",
-		"iptables", "-I", "INPUT", "-p", "tcp", "--sport", "3300", "-j", "REJECT"},
-	{"nsenter", "--target", "1", "--net", "--mount", "--",
-		"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "6789", "-j", "REJECT"},
-	{"nsenter", "--target", "1", "--net", "--mount", "--",
-		"iptables", "-I", "INPUT", "-p", "tcp", "--sport", "6789", "-j", "REJECT"},
-	{"nsenter", "--target", "1", "--net", "--mount", "--",
-		"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "6800:7300", "-j", "REJECT"},
-	{"nsenter", "--target", "1", "--net", "--mount", "--",
-		"iptables", "-I", "INPUT", "-p", "tcp", "--sport", "6800:7300", "-j", "REJECT"},
+	{
+		"nsenter", "--target", "1", "--net", "--mount", "--",
+		"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "3300", "-j", "REJECT",
+	},
+	{
+		"nsenter", "--target", "1", "--net", "--mount", "--",
+		"iptables", "-I", "INPUT", "-p", "tcp", "--sport", "3300", "-j", "REJECT",
+	},
+	{
+		"nsenter", "--target", "1", "--net", "--mount", "--",
+		"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "6789", "-j", "REJECT",
+	},
+	{
+		"nsenter", "--target", "1", "--net", "--mount", "--",
+		"iptables", "-I", "INPUT", "-p", "tcp", "--sport", "6789", "-j", "REJECT",
+	},
+	{
+		"nsenter", "--target", "1", "--net", "--mount", "--",
+		"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "6800:7300", "-j", "REJECT",
+	},
+	{
+		"nsenter", "--target", "1", "--net", "--mount", "--",
+		"iptables", "-I", "INPUT", "-p", "tcp", "--sport", "6800:7300", "-j", "REJECT",
+	},
 }
 
 // cephFSFlushBidirectional defines the corresponding -D (delete) rules for cephFSRejectBidirectional.
 var cephFSFlushBidirectional = [][]string{
-	{"nsenter", "--target", "1", "--net", "--mount", "--",
-		"iptables", "-D", "OUTPUT", "-p", "tcp", "--dport", "3300", "-j", "REJECT"},
-	{"nsenter", "--target", "1", "--net", "--mount", "--",
-		"iptables", "-D", "INPUT", "-p", "tcp", "--sport", "3300", "-j", "REJECT"},
-	{"nsenter", "--target", "1", "--net", "--mount", "--",
-		"iptables", "-D", "OUTPUT", "-p", "tcp", "--dport", "6789", "-j", "REJECT"},
-	{"nsenter", "--target", "1", "--net", "--mount", "--",
-		"iptables", "-D", "INPUT", "-p", "tcp", "--sport", "6789", "-j", "REJECT"},
-	{"nsenter", "--target", "1", "--net", "--mount", "--",
-		"iptables", "-D", "OUTPUT", "-p", "tcp", "--dport", "6800:7300", "-j", "REJECT"},
-	{"nsenter", "--target", "1", "--net", "--mount", "--",
-		"iptables", "-D", "INPUT", "-p", "tcp", "--sport", "6800:7300", "-j", "REJECT"},
+	{
+		"nsenter", "--target", "1", "--net", "--mount", "--",
+		"iptables", "-D", "OUTPUT", "-p", "tcp", "--dport", "3300", "-j", "REJECT",
+	},
+	{
+		"nsenter", "--target", "1", "--net", "--mount", "--",
+		"iptables", "-D", "INPUT", "-p", "tcp", "--sport", "3300", "-j", "REJECT",
+	},
+	{
+		"nsenter", "--target", "1", "--net", "--mount", "--",
+		"iptables", "-D", "OUTPUT", "-p", "tcp", "--dport", "6789", "-j", "REJECT",
+	},
+	{
+		"nsenter", "--target", "1", "--net", "--mount", "--",
+		"iptables", "-D", "INPUT", "-p", "tcp", "--sport", "6789", "-j", "REJECT",
+	},
+	{
+		"nsenter", "--target", "1", "--net", "--mount", "--",
+		"iptables", "-D", "OUTPUT", "-p", "tcp", "--dport", "6800:7300", "-j", "REJECT",
+	},
+	{
+		"nsenter", "--target", "1", "--net", "--mount", "--",
+		"iptables", "-D", "INPUT", "-p", "tcp", "--sport", "6800:7300", "-j", "REJECT",
+	},
 }
 
 // cephFSRejectOutput defines nsenter + iptables REJECT rules for the OUTPUT chain only.
 var cephFSRejectOutput = [][]string{
-	{"nsenter", "--target", "1", "--net", "--mount", "--",
-		"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "3300", "-j", "REJECT"},
-	{"nsenter", "--target", "1", "--net", "--mount", "--",
-		"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "6789", "-j", "REJECT"},
-	{"nsenter", "--target", "1", "--net", "--mount", "--",
+	{
+		"nsenter", "--target", "1", "--net", "--mount", "--",
+		"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "3300", "-j", "REJECT",
+	},
+	{
+		"nsenter", "--target", "1", "--net", "--mount", "--",
+		"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "6789", "-j", "REJECT",
+	},
+	{
+		"nsenter", "--target", "1", "--net", "--mount", "--",
 		"iptables", "-I", "OUTPUT", "-p", "tcp", "--match", "multiport",
-		"--dports", "6800:7300", "-j", "REJECT"},
+		"--dports", "6800:7300", "-j", "REJECT",
+	},
 }
 
 // cephFSFlushOutput defines the corresponding -D (delete) rules for cephFSRejectOutput.
 var cephFSFlushOutput = [][]string{
-	{"nsenter", "--target", "1", "--net", "--mount", "--",
-		"iptables", "-D", "OUTPUT", "-p", "tcp", "--dport", "3300", "-j", "REJECT"},
-	{"nsenter", "--target", "1", "--net", "--mount", "--",
-		"iptables", "-D", "OUTPUT", "-p", "tcp", "--dport", "6789", "-j", "REJECT"},
-	{"nsenter", "--target", "1", "--net", "--mount", "--",
+	{
+		"nsenter", "--target", "1", "--net", "--mount", "--",
+		"iptables", "-D", "OUTPUT", "-p", "tcp", "--dport", "3300", "-j", "REJECT",
+	},
+	{
+		"nsenter", "--target", "1", "--net", "--mount", "--",
+		"iptables", "-D", "OUTPUT", "-p", "tcp", "--dport", "6789", "-j", "REJECT",
+	},
+	{
+		"nsenter", "--target", "1", "--net", "--mount", "--",
 		"iptables", "-D", "OUTPUT", "-p", "tcp", "--match", "multiport",
-		"--dports", "6800:7300", "-j", "REJECT"},
+		"--dports", "6800:7300", "-j", "REJECT",
+	},
 }
 
 // injectCephFSRejectBidirectional inserts iptables REJECT rules on both INPUT and OUTPUT chains

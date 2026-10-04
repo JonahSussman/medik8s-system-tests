@@ -19,9 +19,7 @@ const (
 	cacheDir = "system-tests"
 )
 
-var (
-	errCacheMiss = fmt.Errorf("cache miss")
-)
+var errCacheMiss = fmt.Errorf("cache miss")
 
 // IsMiss returns true if the given error is a cache miss error and false otherwise.
 func IsMiss(err error) bool {
@@ -145,7 +143,7 @@ func (cache *Cache) Save() error {
 
 	klog.V(100).Infof("Saving cache with %d trees to %s", len(cache.Trees), cachePath)
 
-	err = os.MkdirAll(cachePath, 0755)
+	err = os.MkdirAll(cachePath, 0o755)
 	if err != nil {
 		return err
 	}

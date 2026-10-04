@@ -136,8 +136,10 @@ var _ = Describe(
 					chk.SetKind("StorageBasedRemediationConfig")
 
 					getErr := APIClient.Get(context.TODO(),
-						types.NamespacedName{Name: sbrparams.SBRCTransientTestName,
-							Namespace: medik8sparams.OperatorNs}, chk)
+						types.NamespacedName{
+							Name:      sbrparams.SBRCTransientTestName,
+							Namespace: medik8sparams.OperatorNs,
+						}, chk)
 
 					return k8serrors.IsNotFound(getErr)
 				}, medik8sparams.DefaultTimeout, sbrparams.DefaultPollInterval).Should(BeTrue(),
@@ -222,8 +224,10 @@ var _ = Describe(
 				} else {
 					Eventually(func() error {
 						getErr := APIClient.Get(context.TODO(),
-							types.NamespacedName{Name: sbrparams.SBRCTransientTestName,
-								Namespace: medik8sparams.OperatorNs},
+							types.NamespacedName{
+								Name:      sbrparams.SBRCTransientTestName,
+								Namespace: medik8sparams.OperatorNs,
+							},
 							transientSBRC.DeepCopy())
 
 						if k8serrors.IsNotFound(getErr) {

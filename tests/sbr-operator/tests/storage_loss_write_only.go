@@ -122,8 +122,10 @@ var _ = Describe(
 			Eventually(func() error {
 				check := buildSBRC(sbrparams.SBRCStorageLossWriteName, map[string]interface{}{})
 				if getErr := APIClient.Get(context.TODO(),
-					types.NamespacedName{Name: sbrparams.SBRCStorageLossWriteName,
-						Namespace: medik8sparams.OperatorNs}, check); k8serrors.IsNotFound(getErr) {
+					types.NamespacedName{
+						Name:      sbrparams.SBRCStorageLossWriteName,
+						Namespace: medik8sparams.OperatorNs,
+					}, check); k8serrors.IsNotFound(getErr) {
 					return nil
 				}
 

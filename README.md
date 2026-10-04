@@ -179,6 +179,8 @@ The project uses a development method - forking workflow
 #### Lint
 Push requested are tested in a pipeline with golangci-lint. It is advised to add [Golangci-lint integration](https://golangci-lint.run/usage/integrations/) to your development editor. It's recommended to run `make lint` before uploading a PR.
 
+Run `make fmt` after Go changes to apply gofumpt and goimports using the golangci-lint version pinned in `scripts/golangci-lint.sh`. The existing `make lint` check enforces this formatting along with `wsl_v5` and `nlreturn`. Do not add or remove cosmetic blank lines in unrelated code; gofumpt does not remove every optional blank line between statements.
+
 #### Commit Message Guidelines
 There are two main components of a Git commit message: the title or summary, and the description. The commit message title is limited to 72 characters, and the description has no character limit.
 
