@@ -46,10 +46,8 @@ func InstallGAOperatorSubscription(
 	sub := olm.NewSubscriptionBuilder(
 		apiClient, subName, namespace, catalog, catalogNs, pkg,
 	)
-
 	sub.WithChannel(channel).
 		WithInstallPlanApproval(olmV1alpha1.ApprovalAutomatic)
-
 	sub, err := sub.Create()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GA Subscription: %w", err)
@@ -68,7 +66,6 @@ func EnsureOperatorGroup(apiClient *clients.Settings, namespace string) error {
 	}
 
 	operatorGroup.Definition.Spec.TargetNamespaces = nil
-
 	_, err := operatorGroup.Create()
 	if err != nil {
 		return fmt.Errorf("failed to create OperatorGroup: %w", err)
@@ -124,7 +121,6 @@ func SwitchSubscriptionCatalog(
 
 	sub.Definition.Spec.CatalogSource = catalogName
 	sub.Definition.Spec.Channel = channel
-
 	sub, err = sub.Update()
 	if err != nil {
 		return nil, fmt.Errorf("failed to update Subscription to target catalog: %w", err)
@@ -217,7 +213,6 @@ func GetControllerImage(
 	listOptions := metav1.ListOptions{
 		LabelSelector: labelSelector,
 	}
-
 	pods, err := pod.List(apiClient, namespace, listOptions)
 	if err != nil {
 		return "", fmt.Errorf("failed to list controller pods: %w", err)
@@ -246,7 +241,6 @@ func LogOLMDiagnostics(
 	logf func(string, ...interface{}),
 ) {
 	logf("=== OLM Diagnostics for namespace %s ===\n", namespace)
-
 	operatorGroup, ogErr := olm.PullOperatorGroup(apiClient, "medik8s-og", namespace)
 	if ogErr != nil {
 		logf("  OperatorGroup medik8s-og: not found (%v)\n", ogErr)

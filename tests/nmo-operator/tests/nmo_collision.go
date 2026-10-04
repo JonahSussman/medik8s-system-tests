@@ -110,7 +110,6 @@ var _ = Describe(
 
 				duplicateNM := newNodeMaintenance(nmoparams.DuplicateNMName, secondNodeName)
 				createErr := APIClient.Create(ctx, duplicateNM)
-
 				Expect(createErr).To(MatchError(ContainSubstring(
 					fmt.Sprintf("%s %q already exists", nmoparams.NMResourceQualified, nmoparams.DuplicateNMName))),
 					"Second create with a duplicate name should be rejected with an already-exists error")

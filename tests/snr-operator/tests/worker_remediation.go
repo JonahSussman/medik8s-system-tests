@@ -57,7 +57,6 @@ var _ = Describe("SNR Functional - Worker Remediation",
 
 			targetNode, err := helpers.SelectWorkerNode(ctx, APIClient)
 			Expect(err).ToNot(HaveOccurred(), "Failed to select worker node")
-
 			targetWorkerName = targetNode.Name
 			GinkgoWriter.Printf("Target worker node: %s\n", targetWorkerName)
 		})
@@ -81,19 +80,16 @@ var _ = Describe("SNR Functional - Worker Remediation",
 			oldBootID, err = helpers.GetNodeBootIDFromAPI(ctx, APIClient, targetWorkerName)
 			Expect(err).ToNot(HaveOccurred(),
 				"Must read boot ID from node %s", targetWorkerName)
-
 			node := &corev1.Node{}
 			Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetWorkerName}, node)).To(Succeed())
 			Expect(helpers.IsNodeReady(node)).To(BeTrue(),
 				"Target node %s is not Ready before test", targetWorkerName)
-
 			creationTS = node.CreationTimestamp
 
 			By("Pre-cleaning any stale CRs from previous runs")
 
 			cleanupSNRCR(targetWorkerName)
 			cleanupNHCCR(snrparams.NHCTestName)
-
 			GinkgoWriter.Printf("Pre-remediation boot ID: %s\n", oldBootID)
 		})
 
@@ -180,7 +176,6 @@ var _ = Describe("SNR Functional - Worker Remediation",
 				nhcCR := buildNHCForWorkers(snrparams.NHCTestName, snrparams.SNRTemplateName)
 				Expect(APIClient.Create(ctx, nhcCR)).To(Succeed(),
 					"Failed to create NHC CR %s", snrparams.NHCTestName)
-
 				currentNHCName = snrparams.NHCTestName
 
 				By(fmt.Sprintf("Stopping kubelet on worker node %s", targetWorkerName))
@@ -250,7 +245,6 @@ var _ = Describe("SNR Functional - Worker Remediation",
 				snrt := buildSNRT(snrtName, strategyName)
 				Expect(APIClient.Create(ctx, snrt)).To(Succeed(),
 					"Failed to create %s SNRT", strategyName)
-
 				currentSNRTName = snrtName
 
 				By(fmt.Sprintf("Creating test workload pod on node %s", targetWorkerName))
@@ -262,13 +256,11 @@ var _ = Describe("SNR Functional - Worker Remediation",
 				nhcCR := buildNHCForWorkers(snrparams.NHCTestName, snrtName)
 				Expect(APIClient.Create(ctx, nhcCR)).To(Succeed(),
 					"Failed to create NHC CR")
-
 				currentNHCName = snrparams.NHCTestName
 
 				By(fmt.Sprintf("Stopping kubelet on worker node %s", targetWorkerName))
 
 				Expect(stopKubeletForRemediation(ctx, targetWorkerName)).To(Succeed())
-
 				verifyRemediationAndRecovery()
 
 				By("Verifying workload pod was evicted from remediated node")
@@ -280,7 +272,6 @@ var _ = Describe("SNR Functional - Worker Remediation",
 
 				cleanupNHCCR(currentNHCName)
 				currentNHCName = ""
-
 				cleanupSNRT(currentSNRTName)
 				currentSNRTName = ""
 			}

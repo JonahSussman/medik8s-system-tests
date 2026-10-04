@@ -21,18 +21,23 @@ GINKGO = $(GINKGO_DIR)/$(GINKGO_VERSION)/ginkgo
 
 GO_PACKAGES=$(shell go list ./... | grep -v vendor)
 .PHONY: lint \
+        lint-blanklines \
         fmt \
         deps-update \
         vet
 vet:
 	go vet ${GO_PACKAGES}
 
-lint:
+lint: lint-blanklines
 	@echo "Running go lint"
 	scripts/golangci-lint.sh
 
+lint-blanklines:
+	go run ./internal/tools/blanklines ./...
+
 fmt:
 	scripts/golangci-lint.sh fmt
+	go run ./internal/tools/blanklines --fix ./...
 
 deps-update:
 	go mod tidy && \
@@ -85,7 +90,11 @@ run-internal-pkg-unit-tests:
 	UNIT_TEST=true go test -v ./tests/internal/...
 
 # Note: To add more unit tests for more packages, add corresponding targets here
-test: run-internal-pkg-unit-tests run-nhc-upgrade-unit-tests run-sbr-upgrade-unit-tests
+test: run-internal-pkg-unit-tests run-nhc-upgrade-unit-tests run-sbr-upgrade-unit-tests run-blanklines-unit-tests
+
+.PHONY: run-blanklines-unit-tests
+run-blanklines-unit-tests:
+	go test ./internal/tools/blanklines
 
 .PHONY: run-nhc-upgrade-unit-tests
 run-nhc-upgrade-unit-tests:

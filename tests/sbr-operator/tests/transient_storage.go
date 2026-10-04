@@ -115,7 +115,6 @@ var _ = Describe(
 			By("Discovering a CephFS StorageClass for the transient storage test")
 
 			storageClassName = findTransientRWXStorageClass()
-
 			GinkgoWriter.Printf("Using StorageClass %q for transient storage test\n", storageClassName)
 
 			By(fmt.Sprintf("Pre-cleaning stale SBRC %q if present", sbrparams.SBRCTransientTestName))
@@ -134,7 +133,6 @@ var _ = Describe(
 					chk := &unstructured.Unstructured{}
 					chk.SetAPIVersion(sbrparams.CRDGroup + "/" + sbrparams.CRDVersion)
 					chk.SetKind("StorageBasedRemediationConfig")
-
 					getErr := APIClient.Get(context.TODO(),
 						types.NamespacedName{
 							Name:      sbrparams.SBRCTransientTestName,
@@ -169,7 +167,6 @@ var _ = Describe(
 				"sharedStorageClass": storageClassName,
 				"sbrTimeoutSeconds":  int64(sbrparams.SBRCTimeoutSecondsMin),
 			})
-
 			createErr := APIClient.Create(context.TODO(), transientSBRC)
 			Expect(createErr).ToNot(HaveOccurred(),
 				"StorageBasedRemediationConfig %q must be created for the transient storage test",
@@ -183,7 +180,6 @@ var _ = Describe(
 			By("Selecting a schedulable worker node that does not host an SBR controller pod")
 
 			controllerNodes := controllerPodNodes()
-
 			nodeList, nodeListErr := APIClient.CoreV1Interface.Nodes().List(
 				context.TODO(),
 				metav1.ListOptions{LabelSelector: "node-role.kubernetes.io/worker"})
@@ -293,10 +289,8 @@ func verifyTransientStorageSelfHealing(targetNodeName *string, injectorPod **pod
 		WithRestartPolicy(corev1.RestartPolicyNever).
 		RedefineDefaultCMD([]string{"sleep", "3600"}).
 		CreateAndWaitUntilRunning(medik8sparams.DefaultTimeout)
-
 	Expect(createErr).ToNot(HaveOccurred(),
 		"Injector pod must start running on node %q", *targetNodeName)
-
 	*injectorPod = built
 
 	// Capture the pod value now; the test body may nil *injectorPod before DeferCleanup fires.
@@ -329,7 +323,6 @@ func verifyTransientStorageSelfHealing(targetNodeName *string, injectorPod **pod
 
 	baselineCount, baselineErr := transientSBRCRCount()
 	Expect(baselineErr).ToNot(HaveOccurred(), "Failed to get baseline SBR CR count")
-
 	Consistently(transientSBRCRCount,
 		sbrparams.NoNewDaemonSetCheckDuration, sbrparams.NoNewDaemonSetCheckInterval).Should(
 		Equal(baselineCount), "No new StorageBasedRemediation CR must appear while storage is transiently lost")

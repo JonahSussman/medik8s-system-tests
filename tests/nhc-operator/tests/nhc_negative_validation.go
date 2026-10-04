@@ -107,7 +107,6 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 					nhcList.SetGroupVersionKind(nhcGVK)
 					Expect(APIClient.List(ctx, nhcList)).To(Succeed(),
 						"Failed to list NHC CRs")
-
 					count := 0
 
 					for i := range nhcList.Items {
@@ -135,13 +134,10 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 					nhc := buildNHCForWorkers(nhcName)
 					spec := nhcSpec(nhc)
 					spec["minHealthy"] = "-30%"
-
 					conditions := nhcUnhealthyConditions(spec)
 					cond, isMap := conditions[0].(map[string]interface{})
 					Expect(isMap).To(BeTrue(), "unhealthyConditions[0] is not a map")
-
 					cond["duration"] = "-30s"
-
 					err := APIClient.Create(ctx, nhc)
 					Expect(err).To(HaveOccurred(), "NHC creation with negative values should fail")
 					Expect(err).To(MatchError(ContainSubstring("spec.minHealthy")),
@@ -158,13 +154,10 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 					nhcStr := buildNHCForWorkers(nhcName)
 					specStr := nhcSpec(nhcStr)
 					specStr["minHealthy"] = "string"
-
 					conditionsStr := nhcUnhealthyConditions(specStr)
 					condStr, ok := conditionsStr[0].(map[string]interface{})
 					Expect(ok).To(BeTrue(), "unhealthyConditions[0] is not a map")
-
 					condStr["duration"] = "string"
-
 					err = APIClient.Create(ctx, nhcStr)
 					Expect(err).To(HaveOccurred(), "NHC creation with string values should fail")
 					Expect(err).To(MatchError(ContainSubstring("spec.minHealthy")),
@@ -191,7 +184,6 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 					nhcSpec(nhc)["selector"] = map[string]interface{}{
 						"matchExpressions": []interface{}{},
 					}
-
 					err := APIClient.Create(ctx, nhc)
 					Expect(err).To(HaveOccurred(), "NHC creation with empty selector should fail")
 					Expect(err).To(MatchError(ContainSubstring("Selector is mandatory")),
@@ -220,9 +212,7 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 					spec := nhcSpec(nhc)
 					tmpl, ok := spec["remediationTemplate"].(map[string]interface{})
 					Expect(ok).To(BeTrue(), "NHC spec has no remediationTemplate map")
-
 					tmpl["name"] = "non-existent-template"
-
 					Expect(APIClient.Create(ctx, nhc)).To(Succeed(),
 						"NHC creation should succeed even with a non-existent template")
 
@@ -246,7 +236,6 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 						"name":       "poison-pill-default-template",
 						"namespace":  medik8sparams.OperatorNs,
 					}
-
 					Expect(APIClient.Create(ctx, nhcPP)).To(Succeed(),
 						"NHC creation should succeed even with a non-existent API group")
 
@@ -274,7 +263,6 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 					tmpl, ok := spec["remediationTemplate"].(map[string]interface{})
 					Expect(ok).To(BeTrue(), "NHC spec has no remediationTemplate map")
 					delete(tmpl, "namespace")
-
 					Expect(APIClient.Create(ctx, nhc)).To(Succeed(),
 						"NHC creation should succeed without namespace in template ref")
 
@@ -334,7 +322,6 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 						"kind":       "TestRemediationTemplate",
 						"name":       nhcparams.TestRemediationTemplateName,
 					}
-
 					Expect(APIClient.Create(ctx, nhcTRT)).To(Succeed(),
 						"NHC creation with cluster-scoped TestRemediationTemplate should succeed without namespace")
 
@@ -392,7 +379,6 @@ var _ = Describe("NHC Negative -- Zero Healthy Nodes",
 
 			targetNode, err := helpers.SelectWorkerNode(ctx, APIClient)
 			Expect(err).ToNot(HaveOccurred(), "Failed to select worker node")
-
 			targetWorkerName = targetNode.Name
 			GinkgoWriter.Printf("Target worker node: %s\n", targetWorkerName)
 		})
@@ -423,7 +409,6 @@ var _ = Describe("NHC Negative -- Zero Healthy Nodes",
 
 			cleanupNHCCR(ctx, nhcparams.NHCZeroHealthyTestName)
 			cleanupSNRCR(ctx, targetWorkerName)
-
 			GinkgoWriter.Printf("Pre-remediation boot ID: %s\n", oldBootID)
 		})
 

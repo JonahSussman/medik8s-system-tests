@@ -25,7 +25,6 @@ func DeleteRemediationCR(
 ) {
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(gvk)
-
 	key := client.ObjectKey{Name: name, Namespace: namespace}
 
 	if waitErr := wait.PollUntilContextTimeout(
@@ -82,7 +81,6 @@ func GetLeaderPodName(
 	}
 
 	identity = *lease.Spec.HolderIdentity
-
 	podName, _, ok := strings.Cut(identity, "_")
 	if !ok || podName == "" {
 		return "", "", fmt.Errorf("unexpected leader holderIdentity format: %q", identity)

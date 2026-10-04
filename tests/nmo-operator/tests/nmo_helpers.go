@@ -130,7 +130,6 @@ func waitForMaintenanceSucceeded(ctx context.Context, name string) {
 // selectSchedulableWorker deterministically pick a different node for a name-collision test.
 func assertMaintenanceSucceeded(ctx context.Context, name, nodeName string) {
 	GinkgoHelper()
-
 	waitForMaintenanceSucceeded(ctx, name)
 	assertNodeCordonAndTaint(nodeName, true, nmoparams.MaintenanceTimeout)
 	assertDrainCompleted(ctx, name)

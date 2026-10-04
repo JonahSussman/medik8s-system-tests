@@ -40,7 +40,6 @@ func CheckClean(ctx context.Context, api client.Client, namespace string) error 
 	}
 
 	prior := &OwnedRun{API: api, Namespace: namespace}
-
 	clusterObjects, err := prior.clusterObjects(ctx)
 	if err != nil {
 		return err
@@ -116,7 +115,6 @@ func DeleteOrphanConsolePlugin(ctx context.Context, api client.Client, namespace
 
 	backendNamespace, _, _ := unstructured.NestedString(
 		plugin.Object, "spec", "backend", "service", "namespace")
-
 	backendName, _, _ := unstructured.NestedString(
 		plugin.Object, "spec", "backend", "service", "name")
 
@@ -126,7 +124,6 @@ func DeleteOrphanConsolePlugin(ctx context.Context, api client.Client, namespace
 	}
 
 	service := &corev1.Service{}
-
 	err := api.Get(ctx, client.ObjectKey{Namespace: backendNamespace, Name: backendName}, service)
 	if err == nil {
 		return fmt.Errorf("refusing to delete ConsolePlugin %s while backend service %s/%s exists",
@@ -160,7 +157,6 @@ func (run *OwnedRun) CreateNamespace(ctx context.Context) error {
 		"security.openshift.io/scc.podSecurityLabelSync": "false",
 		"pod-security.kubernetes.io/enforce":             "privileged",
 	}}}
-
 	err := run.API.Create(ctx, namespace)
 	if err == nil {
 		run.NamespaceUID = namespace.UID
@@ -207,7 +203,6 @@ func (run *OwnedRun) Cleanup(ctx context.Context) error {
 
 	for i := len(run.Objects) - 1; i >= 0; i-- {
 		object := run.Objects[i]
-
 		current := object.DeepCopy()
 		if err := run.API.Get(ctx, client.ObjectKeyFromObject(current), current); err != nil {
 			if !MissingAPI(err) {
@@ -243,7 +238,6 @@ func (run *OwnedRun) Cleanup(ctx context.Context) error {
 	}
 
 	namespace := &corev1.Namespace{}
-
 	err := run.API.Get(ctx, client.ObjectKey{Name: run.Namespace}, namespace)
 	if apierrors.IsNotFound(err) {
 		return errors.Join(failures...)
@@ -327,7 +321,6 @@ func (run *OwnedRun) clusterObjects(ctx context.Context) ([]*unstructured.Unstru
 	plugin := consolePlugin()
 	if err := run.API.Get(ctx, client.ObjectKeyFromObject(plugin), plugin); err == nil {
 		namespace, _, _ := unstructured.NestedString(plugin.Object, "spec", "backend", "service", "namespace")
-
 		service, _, _ := unstructured.NestedString(plugin.Object, "spec", "backend", "service", "name")
 		if namespace == run.Namespace && service == "node-healthcheck-node-remediation-console-plugin" {
 			objects = append(objects, plugin)

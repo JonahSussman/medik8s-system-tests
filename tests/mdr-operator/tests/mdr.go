@@ -70,7 +70,6 @@ var _ = Describe(
 
 			infraConfig, infraErr := infrastructure.Pull(APIClient)
 			Expect(infraErr).ToNot(HaveOccurred(), "Failed to pull infrastructure configuration")
-
 			controlPlaneTopology = infraConfig.Object.Status.ControlPlaneTopology
 		})
 

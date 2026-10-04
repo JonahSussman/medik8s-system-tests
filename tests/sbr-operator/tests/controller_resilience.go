@@ -27,7 +27,6 @@ import (
 // setNodeUnschedulable patches a node's spec.unschedulable field.
 func setNodeUnschedulable(ctx context.Context, nodeName string, unschedulable bool) error {
 	patch := []byte(fmt.Sprintf(`{"spec":{"unschedulable":%t}}`, unschedulable))
-
 	_, err := APIClient.CoreV1Interface.Nodes().Patch(
 		ctx, nodeName, types.MergePatchType, patch, metav1.PatchOptions{})
 
@@ -184,7 +183,6 @@ var _ = Describe(
 						"expected %d running controller pods", sbrparams.ExpectedReplicas)
 					assertion.Expect(len(uniqueNodeNames(pods))).To(Equal(int(sbrparams.ExpectedReplicas)),
 						"controller pods must run on different nodes for HA")
-
 					initialPods = pods
 				}, medik8sparams.DefaultTimeout, sbrparams.DefaultPollInterval).Should(Succeed(),
 					"SBR controller did not stabilize at %d ready replicas on distinct nodes",
@@ -277,10 +275,8 @@ var _ = Describe(
 
 					podName := controllerPod.Object.Name
 					podNode := controllerPod.Object.Spec.NodeName
-
 					GinkgoWriter.Printf("Deleting controller pod %s from cordoned node %s\n",
 						podName, podNode)
-
 					delErr := APIClient.CoreV1Interface.Pods(medik8sparams.OperatorNs).Delete(
 						ctx, podName, metav1.DeleteOptions{})
 					Expect(delErr).ToNot(HaveOccurred(),
@@ -304,7 +300,6 @@ var _ = Describe(
 					assertion.Expect(listErr).ToNot(HaveOccurred())
 					assertion.Expect(len(pods)).To(BeNumerically(">=", sbrparams.MinReplicasWhenDegraded),
 						"expected at least %d running controller pod(s)", sbrparams.MinReplicasWhenDegraded)
-
 					hasKeeperPod := false
 
 					for _, p := range pods {
@@ -356,7 +351,6 @@ var _ = Describe(
 					assertion.Expect(pullErr).ToNot(HaveOccurred())
 					assertion.Expect(readyReplicas).To(Equal(sbrparams.ExpectedReplicas),
 						"expected %d ready replicas after uncordoning", sbrparams.ExpectedReplicas)
-
 					pods, listErr := listRunningControllerPods()
 					assertion.Expect(listErr).ToNot(HaveOccurred())
 					assertion.Expect(len(pods)).To(Equal(int(sbrparams.ExpectedReplicas)))
@@ -417,7 +411,6 @@ var _ = Describe(
 						ctx, APIClient, sbrparams.ControllerLeaseName, medik8sparams.OperatorNs)
 					assertion.Expect(leaderErr).ToNot(HaveOccurred(),
 						"Failed to identify SBR controller leader")
-
 					leaderPod, leaderErr = pod.Pull(APIClient, oldLeaderPodName, medik8sparams.OperatorNs)
 					assertion.Expect(leaderErr).ToNot(HaveOccurred(),
 						"Lease names pod %q (identity %q) which is not yet a live pod",
@@ -453,10 +446,8 @@ var _ = Describe(
 					assertion.Expect(leaderErr).ToNot(HaveOccurred())
 					assertion.Expect(newLeaderIdentity).ToNot(Equal(oldLeaderIdentity),
 						"Lease is still held by deleted pod %s", oldLeaderIdentity)
-
 					pods, listErr := listRunningControllerPods()
 					assertion.Expect(listErr).ToNot(HaveOccurred())
-
 					hasNewLeaderPod := false
 
 					for _, runningPod := range pods {

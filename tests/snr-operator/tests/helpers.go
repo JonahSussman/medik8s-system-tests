@@ -120,7 +120,6 @@ func verifyDSPodsRunning() error {
 	dsListOptions := metav1.ListOptions{
 		LabelSelector: snrparams.DaemonSetPodLabelSelector,
 	}
-
 	dsPods, listErr := pod.List(APIClient, medik8sparams.OperatorNs, dsListOptions)
 	if listErr != nil {
 		return fmt.Errorf("failed to list SNR DaemonSet pods: %w", listErr)
@@ -152,7 +151,6 @@ func verifyDSPodsGone() error {
 	dsListOptions := metav1.ListOptions{
 		LabelSelector: snrparams.DaemonSetPodLabelSelector,
 	}
-
 	dsPods, listErr := pod.List(APIClient, medik8sparams.OperatorNs, dsListOptions)
 	if listErr != nil {
 		return fmt.Errorf("failed to list DS pods: %w", listErr)
@@ -171,7 +169,6 @@ func findMessageInDSPodLogs(message string, logWindow time.Duration) error {
 	dsListOptions := metav1.ListOptions{
 		LabelSelector: snrparams.DaemonSetPodLabelSelector,
 	}
-
 	dsPods, listErr := pod.List(APIClient, medik8sparams.OperatorNs, dsListOptions)
 	if listErr != nil {
 		return fmt.Errorf("failed to list SNR DaemonSet pods: %w", listErr)
@@ -446,7 +443,6 @@ func waitForRemediationComplete(
 			// Check if SNR CR exists.
 			obj := &unstructured.Unstructured{}
 			obj.SetGroupVersionKind(snrGVK)
-
 			err := k8sClient.Get(ctx, types.NamespacedName{
 				Name:      nodeName,
 				Namespace: medik8sparams.OperatorNs,
@@ -457,7 +453,6 @@ func waitForRemediationComplete(
 				// SNR CR exists -- remediation in progress.
 				if !snrSeen {
 					GinkgoWriter.Printf("SNR CR %s detected -- remediation in progress\n", nodeName)
-
 					snrSeen = true
 				}
 
@@ -513,7 +508,6 @@ func createWorkloadPodOnNode(ctx context.Context, nodeName string) *corev1.Pod {
 			}},
 		},
 	}
-
 	Expect(APIClient.Create(ctx, workloadPod)).To(Succeed(),
 		"Failed to create test workload pod on node %s", nodeName)
 
@@ -582,7 +576,6 @@ func deleteRemediationCR(
 ) {
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(gvk)
-
 	key := types.NamespacedName{
 		Name:      name,
 		Namespace: medik8sparams.OperatorNs,

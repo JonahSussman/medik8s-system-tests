@@ -41,7 +41,6 @@ func RunOnNode(
 		[]string{"debug", "node/" + nodeName, "-n", "default", "--", "chroot", "/host"},
 		cmd...,
 	)
-
 	childCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -103,7 +102,6 @@ func StopKubelet(
 		`g=%s; [ -f "$g" ] && echo GUARD_SKIP && exit 0; touch "$g" && systemctl stop kubelet || { rm -f "$g"; exit 1; }`,
 		kubeletStopGuardPath,
 	)
-
 	output, err := RunOnNode(ctx, nodeName, timeout, "sh", "-c", cmd)
 	if output == "GUARD_SKIP" {
 		logf("StopKubelet(%s): guard file found, skipping (previous stop still active)\n", nodeName)
@@ -213,7 +211,6 @@ func findSSHKey() (string, error) {
 
 			if err := tmpFile.Chmod(0o600); err != nil {
 				os.Remove(tmpFile.Name())
-
 				errSSHKey = fmt.Errorf("findSSHKey: chmod: %w", err)
 
 				return
@@ -221,7 +218,6 @@ func findSSHKey() (string, error) {
 
 			if _, err := tmpFile.Write(data); err != nil {
 				os.Remove(tmpFile.Name())
-
 				errSSHKey = fmt.Errorf("findSSHKey: write: %w", err)
 
 				return
@@ -229,7 +225,6 @@ func findSSHKey() (string, error) {
 
 			if err := tmpFile.Close(); err != nil {
 				os.Remove(tmpFile.Name())
-
 				errSSHKey = fmt.Errorf("findSSHKey: close: %w", err)
 
 				return
@@ -261,7 +256,6 @@ func readSharedDirFile(name string) string {
 	}
 
 	path := filepath.Join(dir, name)
-
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -346,7 +340,6 @@ func findSSHBastion() string {
 		if err == nil && len(out) > 0 {
 			sshBastionHost = strings.TrimSpace(string(out))
 			sshBastionUser = defaultBastionUser
-
 			fmt.Fprintf(os.Stderr, "findSSHBastion: using in-cluster bastion %s\n", sshBastionHost)
 		}
 	})
@@ -408,7 +401,6 @@ func runSSHWithOutput(
 		"-o", "ServerAliveInterval=5",
 		"-o", "ServerAliveCountMax=2",
 	}
-
 	keyPath, keyErr := findSSHKey()
 	if keyErr != nil {
 		return "", fmt.Errorf("runSSH: %w", keyErr)
@@ -438,11 +430,9 @@ func runSSHWithOutput(
 	for attempt := 0; attempt < sshConnectionAttempts; attempt++ {
 		stdout.Reset()
 		stderr.Reset()
-
 		command := exec.CommandContext(childCtx, "ssh", args...)
 		command.Stdout = &stdout
 		command.Stderr = &stderr
-
 		err = command.Run()
 		if err == nil || !isRetryableSSHConnectionError(stderr.String()) || childCtx.Err() != nil {
 			break

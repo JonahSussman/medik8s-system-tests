@@ -99,7 +99,6 @@ func RemoveWorkloadImage(
 ) {
 	logf("Removing workload image from node %s to prevent corrupt overlay layers\n",
 		nodeName)
-
 	output, err := RunOnNode(
 		ctx, nodeName, timeout,
 		"bash", "-c",

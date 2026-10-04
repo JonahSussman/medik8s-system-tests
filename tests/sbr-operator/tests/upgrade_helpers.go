@@ -52,7 +52,6 @@ func waitForUpgradeAPI(ctx context.Context, object *unstructured.Unstructured) e
 		ctx, sbrparams.DefaultPollInterval, medik8sparams.DefaultTimeout, true, func(ctx context.Context) (bool, error) {
 			list := &unstructured.UnstructuredList{}
 			list.SetGroupVersionKind(object.GroupVersionKind().GroupVersion().WithKind(object.GetKind() + "List"))
-
 			err := APIClient.List(ctx, list, client.InNamespace(object.GetNamespace()))
 			if sbrutils.MissingAPI(err) {
 				return false, nil
@@ -72,11 +71,9 @@ func waitForSBRUpgradeCSV(namespace, expectedVersion, expectedImage, phase strin
 		csv, err := helpers.FindSucceededCSV(APIClient, sbrparams.CSVNamePattern, namespace)
 		assertion.Expect(err).NotTo(HaveOccurred())
 		assertion.Expect(csv.Object.Spec.Version.String()).To(Equal(expectedVersion))
-
 		controller, err := deployment.Pull(APIClient, sbrparams.OperatorDeploymentName, namespace)
 		assertion.Expect(err).NotTo(HaveOccurred())
 		assertion.Expect(controller.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue())
-
 		pods := &corev1.PodList{}
 		assertion.Expect(APIClient.List(context.Background(), pods, client.InNamespace(namespace),
 			client.MatchingLabels(controller.Object.Spec.Selector.MatchLabels))).To(Succeed())
@@ -85,13 +82,11 @@ func waitForSBRUpgradeCSV(namespace, expectedVersion, expectedImage, phase strin
 		for _, pod := range pods.Items {
 			// Even a terminating old controller must be gone before the probe.
 			assertion.Expect(pod.DeletionTimestamp).To(BeNil())
-
 			managerFound := false
 
 			for _, container := range pod.Spec.Containers {
 				if container.Name == sbrparams.ManagerContainerName {
 					managerFound = true
-
 					assertion.Expect(container.Image).To(Equal(expectedImage))
 				}
 			}

@@ -80,7 +80,6 @@ var _ = Describe(
 			By("Listing schedulable worker nodes (need at least 3)")
 
 			controllerNodes := controllerPodNodes()
-
 			nodeList, err := APIClient.CoreV1Interface.Nodes().List(context.TODO(), metav1.ListOptions{
 				LabelSelector: "node-role.kubernetes.io/worker",
 			})
@@ -131,7 +130,6 @@ var _ = Describe(
 			}
 
 			injectorPodName = strings.TrimRight(injectorPodName, "-")
-
 			GinkgoWriter.Printf("Target node: %q\nHealthy witnesses: %v\nInjector pod: %q\n",
 				targetNodeName, healthyNodes, injectorPodName)
 
@@ -147,7 +145,6 @@ var _ = Describe(
 			testSBRC = buildSBRC(sbrparams.SBRCSplitBrainTestName, map[string]interface{}{
 				"sharedStorageClass": storageClass,
 			})
-
 			createErr := APIClient.Create(context.TODO(), testSBRC)
 			Expect(createErr).ToNot(HaveOccurred(),
 				"Failed to create StorageBasedRemediationConfig %q", sbrparams.SBRCSplitBrainTestName)
@@ -164,18 +161,15 @@ var _ = Describe(
 				Version: sbrparams.NHCAPIVersion,
 				Kind:    "NodeHealthCheck",
 			})
-
 			getErr := APIClient.Get(context.TODO(),
 				types.NamespacedName{Name: sbrparams.NHCSplitBrainTestName}, existingNHC)
 
 			switch {
 			case k8serrors.IsNotFound(getErr):
 				nhcCR = buildSplitBrainNHC()
-
 				nhcCreateErr := APIClient.Create(context.TODO(), nhcCR)
 				Expect(nhcCreateErr).ToNot(HaveOccurred(),
 					"Failed to create NodeHealthCheck CR %q", sbrparams.NHCSplitBrainTestName)
-
 				nhcCreatedByUs = true
 
 			case getErr != nil:
@@ -185,7 +179,6 @@ var _ = Describe(
 			default:
 				nhcCR = existingNHC
 				nhcCreatedByUs = false
-
 				GinkgoWriter.Printf("NodeHealthCheck %q already exists; using it as-is\n",
 					sbrparams.NHCSplitBrainTestName)
 			}
@@ -306,14 +299,12 @@ var _ = Describe(
 				targetBootID, targetBootIDErr := getNodeBootID(targetNodeName)
 				Expect(targetBootIDErr).ToNot(HaveOccurred(),
 					"Could not retrieve boot ID for target node %q", targetNodeName)
-
 				healthyBootIDs := make(map[string]string, len(healthyNodes))
 
 				for _, nodeName := range healthyNodes {
 					bid, bidErr := getNodeBootID(nodeName)
 					Expect(bidErr).ToNot(HaveOccurred(),
 						"Could not retrieve boot ID for healthy node %q", nodeName)
-
 					healthyBootIDs[nodeName] = bid
 				}
 
@@ -325,12 +316,9 @@ var _ = Describe(
 					WithHostPid(true).
 					WithPrivilegedFlag().
 					CreateAndWaitUntilRunning(medik8sparams.DefaultTimeout)
-
 				Expect(createErr).ToNot(HaveOccurred(),
 					"Failed to create injector pod on node %q", targetNodeName)
-
 				injectCephFSRejectBidirectional(injectorPod, targetNodeName)
-
 				GinkgoWriter.Printf("CephFS port REJECT rules (INPUT+OUTPUT) applied on node %q only\n",
 					targetNodeName)
 
@@ -469,7 +457,6 @@ var _ = Describe(
 
 					Expect(isNodeSchedulable(node)).To(BeTrue(),
 						"Healthy node %q must remain schedulable after split-brain scenario", nodeName)
-
 					currentBootID := node.Status.NodeInfo.BootID
 					Expect(currentBootID).To(Equal(healthyBootIDs[nodeName]),
 						"Healthy node %q boot ID must NOT change during split-brain scenario "+

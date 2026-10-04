@@ -89,7 +89,6 @@ var _ = Describe("NHC Upgrade Cluster",
 			} else {
 				Expect(medik8sparams.TargetOCPImage).NotTo(BeEmpty(),
 					"OPENSHIFT_UPGRADE_RELEASE_IMAGE_OVERRIDE or RELEASE_IMAGE_LATEST must be set")
-
 				clusterVersion := &configv1.ClusterVersion{}
 				Expect(APIClient.Get(ctx, client.ObjectKey{Name: "version"}, clusterVersion)).To(Succeed())
 				Expect(clusterVersion.Status.Desired.Version).To(HavePrefix("4.22."),
@@ -122,7 +121,6 @@ var _ = Describe("NHC Upgrade Cluster",
 			By("Creating the operator namespace when the clean cluster does not have it")
 
 			namespace := &corev1.Namespace{}
-
 			err = APIClient.Get(ctx, client.ObjectKey{Name: medik8sparams.OperatorNs}, namespace)
 			if apierrors.IsNotFound(err) {
 				namespace = &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{
@@ -133,7 +131,6 @@ var _ = Describe("NHC Upgrade Cluster",
 					},
 				}}
 				Expect(APIClient.Create(ctx, namespace)).To(Succeed())
-
 				namespaceCreated = true
 			} else {
 				Expect(err).NotTo(HaveOccurred())
@@ -155,7 +152,6 @@ var _ = Describe("NHC Upgrade Cluster",
 				"Failed to remove a stale test-owned candidate CatalogSource")
 			Eventually(func() error {
 				catalog := &olmV1alpha1.CatalogSource{}
-
 				err := APIClient.Get(ctx, client.ObjectKey{
 					Name: nhcparams.CandidateCatalogName, Namespace: medik8sparams.GACatalogNamespace,
 				}, catalog)
@@ -206,7 +202,6 @@ var _ = Describe("NHC Upgrade Cluster",
 			if currentTargetNode != "" {
 				nodeName := currentTargetNode
 				currentTargetNode = ""
-
 				cleanupSNRCR(ctx, nodeName)
 
 				if isSSHAvailable() {
@@ -251,13 +246,11 @@ var _ = Describe("NHC Upgrade Cluster",
 
 				sub, err := nhcutils.InstallGAOperator(APIClient)
 				Expect(err).NotTo(HaveOccurred(), "Failed to install GA NHC operator")
-
 				GinkgoWriter.Printf("GA Subscription created: %s (catalog: %s, channel: %s, package: %s)\n",
 					sub.Object.Name,
 					sub.Object.Spec.CatalogSource,
 					sub.Object.Spec.Channel,
 					sub.Object.Spec.Package)
-
 				helpers.LogOLMDiagnostics(ctx, APIClient, medik8sparams.OperatorNs,
 					nhcparams.ClusterUpgradeSubName, medik8sparams.GAOperatorCatalog, GinkgoWriter.Printf)
 
@@ -266,7 +259,6 @@ var _ = Describe("NHC Upgrade Cluster",
 				previousCSV = verifyNHCOperatorReady(
 					medik8sparams.OperatorUpgradeTimeout,
 					medik8sparams.DefaultTimeout, "on OCP N-1")
-
 				preUpgradeImage, err = nhcutils.GetNHCControllerImage(APIClient)
 				Expect(err).NotTo(HaveOccurred())
 				GinkgoWriter.Printf("GA operator image: %s\n", preUpgradeImage)
@@ -342,38 +334,30 @@ var _ = Describe("NHC Upgrade Cluster",
 					clusterVersion := &configv1.ClusterVersion{}
 					Expect(APIClient.Get(ctx, client.ObjectKey{Name: "version"}, clusterVersion)).
 						To(Succeed(), "Failed to get ClusterVersion")
-
 					clusterVersion.Spec.DesiredUpdate = &configv1.Update{
 						Image: medik8sparams.TargetOCPImage,
 						Force: true, // CI release images lack signed update graph metadata
 					}
-
 					Expect(APIClient.Update(ctx, clusterVersion)).
 						To(Succeed(), "Failed to set desired OCP update")
-
 					GinkgoWriter.Printf("OCP upgrade initiated to image: %s\n",
 						medik8sparams.TargetOCPImage)
-
 					Expect(helpers.WaitForClusterVersionCondition(ctx, APIClient,
 						"Progressing", configv1.ConditionTrue,
 						medik8sparams.OCPUpgradeStartTimeout, nhcparams.DefaultPollInterval,
 					)).To(Succeed(), "OCP upgrade did not start progressing")
-
 					Expect(helpers.WaitForClusterVersionCondition(ctx, APIClient,
 						"Progressing", configv1.ConditionFalse,
 						medik8sparams.OCPUpgradeTimeout, nhcparams.DefaultPollInterval,
 					)).To(Succeed(), "OCP upgrade did not complete (still Progressing)")
-
 					Expect(helpers.WaitForClusterVersionCondition(ctx, APIClient,
 						"Available", configv1.ConditionTrue,
 						medik8sparams.PostUpgradeRecoveryTimeout, nhcparams.DefaultPollInterval,
 					)).To(Succeed(), "Cluster not Available after OCP upgrade")
-
 					Expect(helpers.WaitForClusterVersionCondition(ctx, APIClient,
 						"Failing", configv1.ConditionFalse,
 						medik8sparams.PostUpgradeRecoveryTimeout, nhcparams.DefaultPollInterval,
 					)).To(Succeed(), "Cluster is Failing after OCP upgrade")
-
 					Expect(APIClient.Get(ctx, client.ObjectKey{Name: "version"}, clusterVersion)).To(Succeed())
 					Expect(clusterVersion.Status.Desired.Version).To(HavePrefix("5.0."),
 						"cluster upgrade must finish on OpenShift 5.0")
@@ -383,7 +367,6 @@ var _ = Describe("NHC Upgrade Cluster",
 						"version": clusterVersion.Status.Desired.Version,
 						"image":   clusterVersion.Status.Desired.Image,
 					})
-
 					GinkgoWriter.Println("OCP upgrade completed and cluster is healthy")
 				}
 
@@ -395,7 +378,6 @@ var _ = Describe("NHC Upgrade Cluster",
 				Expect(postOCPUpgradeCSV.Object.Name).To(Equal(preOCPUpgradeCSV),
 					"NHC must not silently change versions before the explicit catalog switch")
 				previousCSV = postOCPUpgradeCSV
-
 				preUpgradeImage, err = nhcutils.GetNHCControllerImage(APIClient)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(preUpgradeImage).To(Equal(preOCPUpgradeImage),
@@ -410,7 +392,6 @@ var _ = Describe("NHC Upgrade Cluster",
 					"OpenShift upgrade must preserve the existing NodeHealthCheck")
 				Expect(postOCPSpec).To(Equal(persistentConfigSpec),
 					"OpenShift upgrade must preserve the NodeHealthCheck specification")
-
 				postOCPProbe := persistentConfigToken + "-post-ocp"
 				changeUpgradePause(ctx, types.UID(persistentConfigUID), postOCPProbe)
 				changeUpgradePause(ctx, types.UID(persistentConfigUID), persistentConfigToken)
@@ -429,7 +410,6 @@ var _ = Describe("NHC Upgrade Cluster",
 					ctx, "post-ocp-upgrade", nhcparams.SNRTemplateName)
 				Expect(err).NotTo(HaveOccurred(),
 					"Post-OCP-upgrade remediation failed with GA operator")
-
 				cleanupPostRemediationNHC(ctx, &currentTargetNode, "post-ocp-upgrade")
 
 				if medik8sparams.SkipDownstreamOperatorUpgrade {
@@ -451,7 +431,6 @@ var _ = Describe("NHC Upgrade Cluster",
 
 					_, err = nhcutils.CreateCandidateCatalog(APIClient, candidateInputs.CandidateCatalog)
 					Expect(err).NotTo(HaveOccurred(), "Failed to create candidate CatalogSource")
-
 					candidateCatalogCreated = true
 					targetCatalog = nhcparams.CandidateCatalogName
 
@@ -478,11 +457,9 @@ var _ = Describe("NHC Upgrade Cluster",
 
 					Expect(medik8sparams.SharedDir).NotTo(BeEmpty(),
 						"SHARED_DIR must be set (provided by ci-operator)")
-
 					preIDMSGens, genErr := helpers.GetMCPGenerations(ctx)
 					Expect(genErr).NotTo(HaveOccurred(),
 						"Failed to capture MCP generations before IDMS apply")
-
 					idmsChanged, applyErr := helpers.ApplyIDMSFromSharedDir(ctx,
 						medik8sparams.SharedDir, GinkgoWriter.Printf)
 					Expect(applyErr).NotTo(HaveOccurred(),
@@ -504,7 +481,6 @@ var _ = Describe("NHC Upgrade Cluster",
 				By("Step 8: Switch operator Subscription to candidate CatalogSource")
 
 				switchTime := time.Now()
-
 				_, err = nhcutils.SwitchSubscriptionCatalog(
 					APIClient, targetCatalog)
 				Expect(err).NotTo(HaveOccurred(),
@@ -602,7 +578,6 @@ var _ = Describe("NHC Upgrade Cluster",
 						GinkgoWriter.Printf(
 							"Operator upgraded: new CSV %s (was: %s)\n",
 							currentCSV, previousCSV.Object.Name)
-
 						operatorUpgraded = true
 					} else {
 						GinkgoWriter.Printf(
@@ -621,7 +596,6 @@ var _ = Describe("NHC Upgrade Cluster",
 						"post-public-catalog-switch candidate")
 					Expect(candidateCSV.Object.Name).NotTo(Equal(previousCSV.Object.Name),
 						"the public catalog must produce a new candidate CSV")
-
 					operatorUpgraded = true
 				}
 
@@ -658,7 +632,6 @@ var _ = Describe("NHC Upgrade Cluster",
 					"operator upgrade must preserve the existing NodeHealthCheck")
 				Expect(postCandidateSpec).To(Equal(persistentConfigSpec),
 					"operator upgrade must preserve the NodeHealthCheck specification")
-
 				postCandidateProbe := persistentConfigToken + "-post-candidate"
 				changeUpgradePause(ctx, types.UID(persistentConfigUID), postCandidateProbe)
 				changeUpgradePause(ctx, types.UID(persistentConfigUID), persistentConfigToken)
@@ -677,7 +650,6 @@ var _ = Describe("NHC Upgrade Cluster",
 					ctx, "post-catalog-switch", nhcparams.SNRTemplateName)
 				Expect(err).NotTo(HaveOccurred(),
 					"Post-catalog-switch remediation failed")
-
 				cleanupPostRemediationNHC(ctx, &currentTargetNode, "post-catalog-switch")
 				AddReportEntry("nhc-cluster-catalog-result", map[string]string{
 					"ocpPath": "4.22-to-5.0", "oldCSV": previousCSV.Object.Name,
@@ -753,7 +725,6 @@ func upgradeRunRemediationCycle(ctx context.Context, phase, templateName string)
 	}
 
 	GinkgoWriter.Printf("[%s] Target node: %s\n", phase, nodeName)
-
 	originalBootID, err := helpers.GetNodeBootIDFromAPI(ctx, APIClient, nodeName)
 	if err != nil {
 		return nodeName, fmt.Errorf("[%s] failed to get boot ID for %s: %w", phase, nodeName, err)

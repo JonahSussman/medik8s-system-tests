@@ -91,7 +91,6 @@ func TestCleanPreflight(t *testing.T) {
 
 	ciDaemonSet := testObject("DaemonSet", "openshift-e2e-loki", "loki-promtail")
 	ciDaemonSet.SetAPIVersion("apps/v1")
-
 	ciDaemonSet.Object["spec"] = map[string]interface{}{"job": "storage-based-remediation-upgrade"}
 	if err := CheckClean(context.Background(), testClient(ciDaemonSet), "new-namespace"); err != nil {
 		t.Fatalf("unrelated CI DaemonSet must be accepted: %v", err)
@@ -118,7 +117,6 @@ func TestCleanPreflight(t *testing.T) {
 
 func TestRejectedNamespaceNeverRunsCleanup(t *testing.T) {
 	namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "existing", UID: "existing-uid"}}
-
 	api := testClient(namespace)
 	if err := CheckClean(context.Background(), api, namespace.Name); err == nil {
 		t.Fatal("accepted existing namespace")
@@ -227,7 +225,6 @@ func TestDeleteUsesUIDPrecondition(t *testing.T) {
 
 func TestSafeSpecNeverMatchesARealNode(t *testing.T) {
 	spec := SafeSpec("run-token", "efs-sc")
-
 	nodeSelector, isObject := spec["nodeSelector"].(map[string]interface{})
 	if !isObject {
 		t.Fatal("safe specification nodeSelector is not an object")
@@ -249,7 +246,6 @@ func TestSafeSpecNeverMatchesARealNode(t *testing.T) {
 	// A different run's token must produce a different, equally exclusive selector, so two
 	// concurrent runs (or a run and a stray real node) can never collide.
 	other := SafeSpec("other-token", "efs-sc")
-
 	otherSelector, isObject := other["nodeSelector"].(map[string]interface{})
 	if !isObject || otherSelector[RunLabel] == nodeSelector[RunLabel] {
 		t.Fatal("SafeSpec did not scope the nodeSelector to the given token")

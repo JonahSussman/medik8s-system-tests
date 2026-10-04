@@ -54,7 +54,6 @@ func NewConfig() *GeneralConfig {
 	_, filename, _, _ := runtime.Caller(0)
 	baseDir := filepath.Dir(filename)
 	confFile := filepath.Join(baseDir, PathToDefaultParamsFile)
-
 	err := readFile(&conf, confFile)
 	if err != nil {
 		log.Printf("Error to read config file %s", confFile)
@@ -126,7 +125,6 @@ func readFile(cfg *GeneralConfig, cfgFile string) error {
 	}()
 
 	decoder := yaml.NewDecoder(openedCfgFile)
-
 	err = decoder.Decode(&cfg)
 	if err != nil {
 		return err

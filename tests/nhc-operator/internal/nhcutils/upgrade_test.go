@@ -76,7 +76,6 @@ func TestCleanPreflight(t *testing.T) {
 
 	ciDaemonSet := testObject("DaemonSet", "openshift-e2e-loki", "loki-promtail")
 	ciDaemonSet.SetAPIVersion("apps/v1")
-
 	ciDaemonSet.Object["spec"] = map[string]interface{}{"job": "node-healthcheck-operator-upgrade"}
 	if err := CheckClean(context.Background(), testClient(ciDaemonSet), "new-namespace"); err != nil {
 		t.Fatalf("unrelated CI DaemonSet must be accepted: %v", err)
@@ -103,7 +102,6 @@ func TestCleanPreflight(t *testing.T) {
 
 func TestRejectedNamespaceNeverRunsCleanup(t *testing.T) {
 	namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "existing", UID: "existing-uid"}}
-
 	api := testClient(namespace)
 	if err := CheckClean(context.Background(), api, namespace.Name); err == nil {
 		t.Fatal("accepted existing namespace")
@@ -150,7 +148,6 @@ func TestDeleteOrphanConsolePlugin(t *testing.T) {
 			"namespace": "owned", "name": "node-healthcheck-node-remediation-console-plugin",
 		},
 	}}
-
 	api := testClient(plugin.DeepCopy())
 	if err := DeleteOrphanConsolePlugin(ctx, api, "owned"); err != nil {
 		t.Fatal(err)
@@ -163,7 +160,6 @@ func TestDeleteOrphanConsolePlugin(t *testing.T) {
 	service := &corev1.Service{ObjectMeta: metav1.ObjectMeta{
 		Namespace: "owned", Name: "node-healthcheck-node-remediation-console-plugin",
 	}}
-
 	api = testClient(plugin.DeepCopy(), service)
 
 	if err := DeleteOrphanConsolePlugin(ctx, api, "owned"); err == nil {
@@ -247,7 +243,6 @@ func TestDeleteUsesUIDPrecondition(t *testing.T) {
 
 func TestSafeSelectorAndFreshResponse(t *testing.T) {
 	spec := SafeSpec("template", "namespace", "baseline")
-
 	selectorMap, ok := spec["selector"].(map[string]interface{})
 	if !ok {
 		t.Fatal("safe specification selector is not an object")
@@ -272,7 +267,6 @@ func TestSafeSelectorAndFreshResponse(t *testing.T) {
 	object := testObject("NodeHealthCheck", "", "test")
 	object.SetUID("uid")
 	object.SetResourceVersion("2")
-
 	object.Object["status"] = map[string]interface{}{"phase": "Paused", "reason": "NHC is paused: baseline"}
 	if PauseResponse(object, "uid", "probe", "1") {
 		t.Fatal("accepted persisted status")

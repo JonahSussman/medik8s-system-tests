@@ -46,7 +46,6 @@ var _ = Describe("SBR Upgrade Operator", Serial, Ordered,
 			Expect(err).NotTo(HaveOccurred())
 			Expect(sdkVersion).To(ContainSubstring("v1.42.2"))
 			AddReportEntry("sbr-upgrade-sdk", sdkVersion)
-
 			clusterVersion := &configv1.ClusterVersion{}
 			Expect(APIClient.Get(ctx, client.ObjectKey{Name: "version"}, clusterVersion)).To(Succeed())
 			Expect(clusterVersion.Status.Desired.Version).To(HavePrefix("5.0."), "requires an OpenShift 5.0 cluster")
@@ -93,14 +92,12 @@ var _ = Describe("SBR Upgrade Operator", Serial, Ordered,
 			output, err := sbrutils.InstallBundle(ctx, inputs.OperatorSDK, inputs.Namespace, inputs.BaselineSBR.Bundle)
 			GinkgoWriter.Printf("operator-sdk run bundle (baseline SBR) output:\n%s\n", output)
 			Expect(err).NotTo(HaveOccurred())
-
 			oldCSV = waitForSBRUpgradeCSV(inputs.Namespace, inputs.BaselineSBR.Version, inputs.BaselineSBR.Image, "baseline")
 			oldImage, err := sbrutils.GetSBRControllerImage(APIClient)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(oldImage).To(Equal(inputs.BaselineSBR.Image))
 			By("creating a safe, observable StorageBasedRemediationConfig")
 			Expect(waitForUpgradeAPI(ctx, upgradeSBRC())).To(Succeed())
-
 			storageClass := discoverRWXStorageClass()
 			sbrc := buildSBRC(sbrparams.SBRUpgradeConfigTestName, sbrutils.SafeSpec(owned.Token, storageClass))
 			Expect(owned.Create(ctx, sbrc)).To(Succeed())
@@ -120,7 +117,6 @@ var _ = Describe("SBR Upgrade Operator", Serial, Ordered,
 
 			newCSV := waitForSBRUpgradeCSV(inputs.Namespace, inputs.CandidateSBR.Version, inputs.CandidateSBR.Image, "candidate")
 			Expect(newCSV.Object.Name).NotTo(Equal(oldCSV.Object.Name), "version parity is not an upgrade")
-
 			candidateImage, err := sbrutils.GetSBRControllerImage(APIClient)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(candidateImage).To(Equal(inputs.CandidateSBR.Image))

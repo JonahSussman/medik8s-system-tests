@@ -60,7 +60,6 @@ var _ = Describe(
 			Expect(len(eligible)).To(BeNumerically(">=", nmoparams.MinWorkerNodesForMaintenance),
 				"At least %d schedulable worker nodes are required (one for maintenance, one for cluster health)",
 				nmoparams.MinWorkerNodesForMaintenance)
-
 			targetNodeName = selectSchedulableWorker(context.Background())
 			nmCRName = fmt.Sprintf("test-maintenance-%s", targetNodeName)
 
@@ -69,7 +68,6 @@ var _ = Describe(
 			By("Cleaning up pre-existing schedule test pod if present")
 
 			staleTestPod := &corev1.Pod{}
-
 			err = APIClient.Get(context.Background(),
 				client.ObjectKey{Name: schedulePodName, Namespace: medik8sparams.OperatorNs}, staleTestPod)
 
@@ -90,7 +88,6 @@ var _ = Describe(
 			By("Safety cleanup: removing NodeMaintenance CR if still exists")
 
 			nmCleanup := &nmov1beta1.NodeMaintenance{}
-
 			cleanupErr := APIClient.Get(context.Background(), client.ObjectKey{Name: nmCRName}, nmCleanup)
 
 			switch {
@@ -107,7 +104,6 @@ var _ = Describe(
 			By("Safety cleanup: removing schedule test pod if still exists")
 
 			testPod := &corev1.Pod{}
-
 			cleanupErr = APIClient.Get(context.Background(),
 				client.ObjectKey{Name: schedulePodName, Namespace: medik8sparams.OperatorNs}, testPod)
 
@@ -199,7 +195,6 @@ var _ = Describe(
 				By("Verifying pod stays in Pending state (node is unschedulable)")
 				Consistently(func() corev1.PodPhase {
 					pod := &corev1.Pod{}
-
 					err := APIClient.Get(context.Background(),
 						client.ObjectKey{Name: schedulePodName, Namespace: medik8sparams.OperatorNs}, pod)
 					if err != nil {
@@ -337,7 +332,6 @@ func assertMaintenanceEvent(ctx context.Context, nmCRName, expectedReason string
 	EventuallyWithOffset(1, func(assertion Gomega) {
 		eventList := &corev1.EventList{}
 		assertion.Expect(APIClient.List(ctx, eventList)).To(Succeed())
-
 		found := false
 
 		for i := range eventList.Items {
@@ -389,7 +383,6 @@ func assertMaintenanceLease(ctx context.Context, nodeName string, shouldExist bo
 
 func deleteAndWaitForNMCR(ctx context.Context, name string, timeout time.Duration) {
 	existing := &nmov1beta1.NodeMaintenance{}
-
 	err := APIClient.Get(ctx, client.ObjectKey{Name: name}, existing)
 
 	switch {

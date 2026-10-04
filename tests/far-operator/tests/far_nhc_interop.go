@@ -90,7 +90,6 @@ var _ = Describe("NHC+FAR Interop",
 
 			Expect(nhcDeploy.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(),
 				"NHC deployment is not Ready")
-
 			prereqs := setupAWSFARPrerequisites(ctx, APIClient)
 			fenceAgent = prereqs.fenceAgent
 			leaderNode = prereqs.leaderNode
@@ -101,7 +100,6 @@ var _ = Describe("NHC+FAR Interop",
 
 			defaultNHC := &unstructured.Unstructured{}
 			defaultNHC.SetGroupVersionKind(nhcGVK)
-
 			err = APIClient.Get(ctx, client.ObjectKey{Name: nhcOldDefaultName}, defaultNHC)
 			if err == nil {
 				preservedDefaultNHC = defaultNHC.DeepCopy()
@@ -144,7 +142,6 @@ var _ = Describe("NHC+FAR Interop",
 					message := fmt.Sprintf("failed to delete NHC %s: %v", nhcState.nhcName, err)
 					GinkgoWriter.Printf("WARNING: %s\n", message)
 					AddReportEntry("nhc-cleanup-delete-failed", message)
-
 					nhcRemoved = false
 				} else {
 					nhcState.nhcName = ""
@@ -246,7 +243,6 @@ var _ = Describe("NHC+FAR Interop",
 				if kubeletStopAttempted {
 					By("Cleanup: unmasking and restarting kubelet on " + nodeName)
 					startKubeletAfterRemediation(ctx, nodeName)
-
 					kubeletStopAttempted = false
 				}
 
@@ -317,7 +313,6 @@ var _ = Describe("NHC+FAR Interop",
 			func() {
 				By("Triggering NHC remediation through a FAR template")
 				ensureDestructiveWorkerCapacity(ctx, APIClient)
-
 				nhcState = nhcRemediationState{}
 				triggerNHCRemediation(ctx, APIClient, &nhcState, &kubeletStopAttempted, leaderNode, fenceAgent,
 					"nhc-far", true, sharedParams, nodeParams)
@@ -350,11 +345,9 @@ var _ = Describe("NHC+FAR Interop",
 			Label(labels.TierAcceptance),
 			func() {
 				logStartTime := time.Now()
-
 				nhcState = nhcRemediationState{}
 				triggerNHCRemediation(ctx, APIClient, &nhcState, &kubeletStopAttempted, leaderNode, fenceAgent,
 					"nhc-far-logs", true, sharedParams, nodeParams)
-
 				waitForRemediation(ctx, APIClient, nhcState.targetNode, nhcState.oldBootID)
 
 				By("Fetching FAR controller logs since test start")
@@ -407,7 +400,6 @@ var _ = Describe("NHC+FAR Interop",
 				Eventually(func() error {
 					fresh := &unstructured.Unstructured{}
 					fresh.SetGroupVersionKind(farGVK)
-
 					err := APIClient.Get(ctx, client.ObjectKey{
 						Name: nhcState.farName, Namespace: medik8sparams.OperatorNs,
 					}, fresh)
@@ -436,7 +428,6 @@ var _ = Describe("NHC+FAR Interop",
 					g.Expect(APIClient.Get(ctx, client.ObjectKey{
 						Name: nhcState.targetNode,
 					}, node)).To(Succeed())
-
 					g.Expect(helpers.IsNodeReady(node)).To(BeTrue(),
 						"Node should be Ready after remediation")
 					g.Expect(node.Spec.Unschedulable).To(BeFalse(),
@@ -466,7 +457,6 @@ func triggerNHCRemediation(
 
 	targetNode, err := selectDedicatedWorkerNode(ctx, apiClient, leaderNode)
 	Expect(err).ToNot(HaveOccurred())
-
 	GinkgoWriter.Printf("Selected target node: %s\n", targetNode.Name)
 
 	By("Labeling target node " + targetNode.Name + " for NHC scope")
@@ -474,7 +464,6 @@ func triggerNHCRemediation(
 	labelValue := fmt.Sprintf("%s-%d", testPrefix, time.Now().UnixMilli())
 	state.targetNode = targetNode.Name
 	state.labelValue = labelValue
-
 	node := &corev1.Node{}
 	Expect(apiClient.Get(ctx, client.ObjectKey{Name: targetNode.Name}, node)).To(Succeed())
 
@@ -483,10 +472,8 @@ func triggerNHCRemediation(
 	}
 
 	state.previousLabel, state.hadLabel = node.Labels[farparams.NHCInteropLabelKey]
-
 	node.Labels[farparams.NHCInteropLabelKey] = labelValue
 	Expect(apiClient.Update(ctx, node)).To(Succeed())
-
 	state.labelApplied = true
 
 	By("Cleaning CRI-O overlay on " + targetNode.Name)
@@ -496,7 +483,6 @@ func triggerNHCRemediation(
 
 	oldBootID, err := farutils.GetNodeBootIDFromAPI(ctx, apiClient, targetNode.Name)
 	Expect(err).ToNot(HaveOccurred())
-
 	farTemplateName := fmt.Sprintf("far-template-%s", testPrefix)
 	state.farTemplateName = farTemplateName
 
@@ -515,19 +501,16 @@ func triggerNHCRemediation(
 	Expect(deleteRemediationCR(ctx, apiClient, farTemplateGVK, farTemplateName)).To(Succeed())
 	Expect(apiClient.Create(ctx, farTemplate)).To(Succeed(),
 		"Failed to create FAR template %s", farTemplateName)
-
 	nhcName := fmt.Sprintf("nhc-%s", testPrefix)
 	state.nhcName = nhcName
 
 	By("Creating NHC " + nhcName + " pointing to FAR template " + farTemplateName)
 
 	nhc := buildNHCUnstructured(nhcName, farTemplateName, medik8sparams.OperatorNs, labelValue)
-
 	Expect(deleteRemediationCR(ctx, apiClient, nhcGVK, nhcName)).To(Succeed())
 
 	By("Removing any stale FAR remediation for " + targetNode.Name)
 	Expect(deleteRemediationCR(ctx, apiClient, farGVK, targetNode.Name)).To(Succeed())
-
 	Expect(apiClient.Create(ctx, nhc)).To(Succeed(),
 		"Failed to create NHC %s", nhcName)
 	Expect(apiClient.Get(ctx, client.ObjectKey{Name: nhcName}, nhc)).To(Succeed(),
@@ -539,7 +522,6 @@ func triggerNHCRemediation(
 	By("Stopping kubelet on " + targetNode.Name)
 
 	*kubeletStopAttempted = true
-
 	Expect(stopKubeletForRemediation(
 		ctx, targetNode.Name)).To(Succeed(),
 		"Failed to stop kubelet on %s", targetNode.Name)
@@ -570,10 +552,8 @@ func triggerSecondNHCRemediation(
 
 	targetNode, err := selectDedicatedWorkerNode(ctx, apiClient, leaderNode, firstTargetNode)
 	Expect(err).ToNot(HaveOccurred())
-
 	state.targetNode = targetNode.Name
 	state.labelValue = labelValue
-
 	node := &corev1.Node{}
 	Expect(apiClient.Get(ctx, client.ObjectKey{Name: targetNode.Name}, node)).To(Succeed())
 
@@ -584,21 +564,16 @@ func triggerSecondNHCRemediation(
 	state.previousLabel, state.hadLabel = node.Labels[farparams.NHCInteropLabelKey]
 	node.Labels[farparams.NHCInteropLabelKey] = labelValue
 	Expect(apiClient.Update(ctx, node)).To(Succeed())
-
 	state.labelApplied = true
-
 	removeWorkloadImage(ctx, targetNode.Name)
 	state.oldBootID, err = farutils.GetNodeBootIDFromAPI(ctx, apiClient, targetNode.Name)
 	Expect(err).ToNot(HaveOccurred())
-
 	*kubeletStopAttempted = true
-
 	Expect(stopKubeletForRemediation(ctx, targetNode.Name)).To(Succeed(),
 		"Failed to stop kubelet on %s", targetNode.Name)
 	Expect(farutils.WaitForNodeNotReady(ctx, apiClient, targetNode.Name,
 		farparams.NodeNotReadyTimeout, GinkgoWriter.Printf)).To(Succeed(),
 		"Node %s did not become NotReady after kubelet stop", targetNode.Name)
-
 	nhc := &unstructured.Unstructured{}
 	nhc.SetGroupVersionKind(nhcGVK)
 	Expect(apiClient.Get(ctx, client.ObjectKey{Name: nhcName}, nhc)).To(Succeed())
@@ -736,9 +711,7 @@ func waitForNHCEnabled(ctx context.Context, nhcName string) {
 	Eventually(func(assertion Gomega) {
 		nhcObj := &unstructured.Unstructured{}
 		nhcObj.SetGroupVersionKind(nhcGVK)
-
 		assertion.Expect(APIClient.Get(ctx, client.ObjectKey{Name: nhcName}, nhcObj)).To(Succeed())
-
 		phase, found, err := unstructured.NestedString(nhcObj.Object, "status", "phase")
 		assertion.Expect(err).ToNot(HaveOccurred())
 		assertion.Expect(found).To(BeTrue(), "NHC %s has no status.phase yet", nhcName)
@@ -780,7 +753,6 @@ func logNHCCRStatus(ctx context.Context, nhcName string) {
 
 	phase, _, _ := unstructured.NestedString(nhcObj.Object, "status", "phase")
 	GinkgoWriter.Printf("NHC %s: phase=%s\n", nhcName, phase)
-
 	conditions, found, _ := unstructured.NestedSlice(nhcObj.Object, "status", "conditions")
 	if found {
 		for _, c := range conditions {
@@ -845,7 +817,6 @@ func logNHCControllerLogs(ctx context.Context) {
 
 	rbacCmd := exec.CommandContext(rbacCtx, "oc", "get", "clusterrole",
 		"node-healthcheck-operator-aggregation", "-o", "yaml")
-
 	rbacOut, rbacErr := rbacCmd.CombinedOutput()
 	if rbacErr != nil {
 		GinkgoWriter.Printf("WARNING: failed to get NHC aggregation role: %v\n", rbacErr)
@@ -860,7 +831,6 @@ func logKubeletDiagnostics(ctx context.Context, nodeName string) {
 	}
 
 	GinkgoWriter.Println("=== Kubelet Diagnostics ===")
-
 	diagnosticCommands := []string{
 		"sudo systemctl status kubelet --no-pager",
 		"sudo systemctl is-enabled kubelet",
@@ -917,7 +887,6 @@ func startKubeletAfterRemediation(ctx context.Context, nodeName string) {
 
 func getFARControllerLogsSince(ctx context.Context, since time.Time, nodeName string) string {
 	sinceStr := since.UTC().Format(time.RFC3339Nano)
-
 	logCtx, cancel := context.WithTimeout(ctx, farparams.ControllerLogsTimeout)
 	defer cancel()
 

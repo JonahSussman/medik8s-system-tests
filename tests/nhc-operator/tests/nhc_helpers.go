@@ -133,7 +133,6 @@ func buildNHC(name, selectorKey, selectorOp string, matchLabels map[string]inter
 	nhc := &unstructured.Unstructured{}
 	nhc.SetGroupVersionKind(nhcGVK)
 	nhc.SetName(name)
-
 	spec := map[string]interface{}{
 		"remediationTemplate": map[string]interface{}{
 			"apiVersion": nhcparams.SNRCRDGroup + "/" + nhcparams.SNRCRDVersion,
@@ -179,7 +178,6 @@ func buildNHC(name, selectorKey, selectorOp string, matchLabels map[string]inter
 // isSNRCRDInstalled checks whether the SelfNodeRemediation CRD is registered.
 func isSNRCRDInstalled(ctx context.Context) bool {
 	crd := &apiextensionsv1.CustomResourceDefinition{}
-
 	err := APIClient.Get(
 		ctx,
 		types.NamespacedName{Name: nhcparams.SNRCRDName},
@@ -410,7 +408,6 @@ func waitForSNRRemediationComplete(
 					GinkgoWriter.Printf(
 						"SNR CR %s detected for node %s -- remediation in progress\n",
 						items[0].GetName(), nodeName)
-
 					snrSeen = true
 				}
 
@@ -700,7 +697,6 @@ func cleanupTestRemediationResources(ctx context.Context) {
 		Group: nhcparams.TestRemediationGroup, Version: nhcparams.TestRemediationVersion, Kind: "TestRemediationTemplate",
 	})
 	trtCR.SetName(nhcparams.TestRemediationTemplateName)
-
 	deleteWithRetry(trtCR, "TestRemediationTemplate CR")
 
 	// Delete RBAC
@@ -708,7 +704,6 @@ func cleanupTestRemediationResources(ctx context.Context) {
 		ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationClusterRoleBindingName},
 	}
 	deleteWithRetry(crb, "ClusterRoleBinding")
-
 	clusterRole := &rbacv1.ClusterRole{
 		ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationClusterRoleName},
 	}
@@ -719,7 +714,6 @@ func cleanupTestRemediationResources(ctx context.Context) {
 		ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationCRDName},
 	}
 	deleteWithRetry(crd, "TestRemediation CRD")
-
 	templateCRD := &apiextensionsv1.CustomResourceDefinition{
 		ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationTemplateCRDName},
 	}
@@ -739,7 +733,6 @@ func buildNHCWithTestRemediation(name string) *unstructured.Unstructured {
 		"kind":       "TestRemediationTemplate",
 		"name":       nhcparams.TestRemediationTemplateName,
 	}
-
 	spec["unhealthyConditions"] = []interface{}{
 		map[string]interface{}{
 			"type": "Ready", "status": "False", "duration": nhcparams.TestRemediationUnhealthyDuration,
@@ -811,9 +804,7 @@ func testRemediationEscalationStep(order int64, timeout string) escalationStep {
 func buildNHCWithEscalation(name string, steps []escalationStep) *unstructured.Unstructured {
 	nhc := buildNHCForWorkers(name)
 	spec := nhcSpec(nhc)
-
 	delete(spec, "remediationTemplate")
-
 	escalations := make([]interface{}, len(steps))
 	for stepIndex, step := range steps {
 		tmpl := map[string]interface{}{
@@ -833,7 +824,6 @@ func buildNHCWithEscalation(name string, steps []escalationStep) *unstructured.U
 	}
 
 	spec["escalatingRemediations"] = escalations
-
 	spec["unhealthyConditions"] = []interface{}{
 		map[string]interface{}{
 			"type": "Ready", "status": "False", "duration": nhcparams.EscalationUnhealthyDuration,
@@ -852,9 +842,7 @@ func buildNHCWithEscalation(name string, steps []escalationStep) *unstructured.U
 func buildNHCWithEscalationRaw(name string, rawSteps []map[string]interface{}) *unstructured.Unstructured {
 	nhc := buildNHCForWorkers(name)
 	spec := nhcSpec(nhc)
-
 	delete(spec, "remediationTemplate")
-
 	steps := make([]interface{}, len(rawSteps))
 	for i, s := range rawSteps {
 		steps[i] = s
@@ -1036,7 +1024,6 @@ func cleanupTestRemediationCR(ctx context.Context, name string) {
 func testRemediationCRExists(ctx context.Context, nodeName string) (bool, error) {
 	tr := &unstructured.Unstructured{}
 	tr.SetGroupVersionKind(testRemediationGVK)
-
 	err := APIClient.Get(ctx, client.ObjectKey{Name: nodeName}, tr)
 	if err == nil {
 		return true, nil
@@ -1101,7 +1088,6 @@ func snrCRExists(ctx context.Context, nodeName string) (bool, error) {
 // local builders. It fails the test if the shape is unexpected.
 func nhcSpec(nhc *unstructured.Unstructured) map[string]interface{} {
 	GinkgoHelper()
-
 	spec, ok := nhc.Object["spec"].(map[string]interface{})
 	Expect(ok).To(BeTrue(), "NHC object has no map spec")
 
@@ -1111,7 +1097,6 @@ func nhcSpec(nhc *unstructured.Unstructured) map[string]interface{} {
 // nhcUnhealthyConditions returns the unhealthyConditions slice from an NHC spec.
 func nhcUnhealthyConditions(spec map[string]interface{}) []interface{} {
 	GinkgoHelper()
-
 	conditions, ok := spec["unhealthyConditions"].([]interface{})
 	Expect(ok).To(BeTrue(), "NHC spec has no unhealthyConditions slice")
 
@@ -1126,7 +1111,6 @@ func verifyNHCNodeCount(
 	expected int64, msg string,
 ) {
 	GinkgoHelper()
-
 	nhcName := nhcparams.NHCCustomTemplateTestName
 
 	Eventually(func(g Gomega) {
@@ -1140,7 +1124,6 @@ func verifyNHCNodeCount(
 // verifyNHCDeploymentReady checks that the NHC controller deployment exists and is ready.
 func verifyNHCDeploymentReady() {
 	GinkgoHelper()
-
 	nhcDeployment, err := deployment.Pull(
 		APIClient, nhcparams.OperatorDeploymentName, medik8sparams.OperatorNs)
 	Expect(err).ToNot(HaveOccurred(), "Failed to get NHC deployment")
@@ -1154,7 +1137,6 @@ func verifyNHCDeploymentReady() {
 func verifyNHCNotCreated(ctx context.Context, nhcName string) {
 	notCreated := &unstructured.Unstructured{}
 	notCreated.SetGroupVersionKind(nhcGVK)
-
 	getErr := APIClient.Get(ctx, client.ObjectKey{Name: nhcName}, notCreated)
 	if getErr == nil {
 		Fail(fmt.Sprintf("NHC CR %q exists but should not have been created", nhcName))
@@ -1168,7 +1150,6 @@ func verifyNHCNotCreated(ctx context.Context, nhcName string) {
 // verifies the status.reason contains the expected substring.
 func verifyNHCPhaseAndReason(ctx context.Context, nhcName, phase, expectedReason string, timeout time.Duration) {
 	GinkgoHelper()
-
 	Expect(waitForNHCPhase(ctx, nhcName, phase, timeout)).To(Succeed(),
 		"NHC %q should reach phase %s", nhcName, phase)
 
@@ -1198,7 +1179,6 @@ func waitForNHCGone(ctx context.Context, nhcName string) {
 	Eventually(ctx, func() (bool, error) {
 		obj := &unstructured.Unstructured{}
 		obj.SetGroupVersionKind(nhcGVK)
-
 		err := APIClient.Get(ctx, client.ObjectKey{Name: nhcName}, obj)
 		if k8serrors.IsNotFound(err) {
 			return true, nil

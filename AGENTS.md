@@ -12,6 +12,7 @@ See [SKILLS.md](.agents/SKILLS.md) for the full behavioral guidelines that apply
 - **No agent-proprietary directories or files.** Do not create tool-specific directories (e.g. `.claude/`, `.cursor/`) or files unless the tool itself requires it and there is no neutral alternative. Use `.agents/` for cross-agent content.
 - **Prefer `AGENTS.md` over `CLAUDE.md`.** All project guidance goes in `AGENTS.md`. `CLAUDE.md` exists only as a redirect stub; do not add content to it.
 - **Keep whitespace changes scoped.** Do not add or remove blank lines in code you are not otherwise modifying. In modified code, follow gofumpt, goimports, `wsl_v5`, and `nlreturn` rather than personal whitespace preferences. Run `make fmt` after Go changes; repository-wide formatting belongs in a dedicated mechanical change.
+- **Keep straight-line code compact.** Do not insert blank lines between consecutive assignments, calls, or increments/decrements. Separators are allowed at comments, Ginkgo `By` steps, control-flow boundaries, returns, and inline callbacks. Use a comment or named step to mark a separate logical phase. `make lint-blanklines`, included in `make lint`, enforces the rule; `make fmt` removes violations.
 
 ---
 
@@ -23,7 +24,8 @@ See [SKILLS.md](.agents/SKILLS.md) for the full behavioral guidelines that apply
 
 ```bash
 make lint                        # golangci-lint version pinned in scripts/golangci-lint.sh
-make fmt                         # apply gofumpt and goimports using the same pinned tool
+make fmt                         # apply gofumpt/goimports and compact straight-line spacing
+make lint-blanklines              # check compact spacing without modifying files
 make test                        # unit tests — no cluster needed
 make vet                         # go vet all non-vendor packages
 make deps-update                 # go mod tidy && go mod vendor

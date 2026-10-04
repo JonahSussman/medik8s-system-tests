@@ -7,7 +7,6 @@ import (
 
 func setRequiredCandidateInputs(t *testing.T) {
 	t.Helper()
-
 	t.Setenv("SBR_UPGRADE_CANDIDATE_SBR_BUNDLE", "registry.test/sbr-bundle:candidate")
 	t.Setenv("SBR_UPGRADE_CANDIDATE_SBR_VERSION", "5.8.0")
 	t.Setenv("SBR_UPGRADE_CANDIDATE_SBR_IMAGE", "registry.test/sbr:candidate")
@@ -19,7 +18,6 @@ func TestLoadUpgradeOperatorInputsUsesFixedIdentity(t *testing.T) {
 	setRequiredCandidateInputs(t)
 	t.Setenv("SBR_UPGRADE_PACKAGE", "ignored-sbr")
 	t.Setenv("SBR_UPGRADE_NAMESPACE", "ignored-namespace")
-
 	inputs, err := LoadUpgradeOperatorInputs()
 	if err != nil {
 		t.Fatal(err)
@@ -77,7 +75,6 @@ func TestLoadUpgradeOperatorInputsRejectsNonBooleanSkipCleanup(t *testing.T) {
 
 func TestLoadFreshInstallInputsContainsOnlyCandidateArtifact(t *testing.T) {
 	setRequiredCandidateInputs(t)
-
 	inputs, err := LoadFreshInstallInputs()
 	if err != nil {
 		t.Fatal(err)

@@ -53,7 +53,6 @@ var _ = Describe("SNR Functional - Master Remediation",
 
 			masterNode, err := selectMasterNode(ctx, APIClient)
 			Expect(err).ToNot(HaveOccurred(), "Failed to select master node")
-
 			targetMasterName = masterNode.Name
 			GinkgoWriter.Printf("Target master node: %s\n", targetMasterName)
 		})
@@ -123,12 +122,9 @@ var _ = Describe("SNR Functional - Master Remediation",
 				oldBootID, err := helpers.GetNodeBootIDFromAPI(ctx, APIClient, targetMasterName)
 				Expect(err).ToNot(HaveOccurred(),
 					"Must read boot ID from master node %s", targetMasterName)
-
 				node := &corev1.Node{}
 				Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetMasterName}, node)).To(Succeed())
-
 				creationTimestamp := node.CreationTimestamp
-
 				GinkgoWriter.Printf("Pre-remediation master boot ID: %s\n", oldBootID)
 
 				By("Pre-cleaning any stale CRs from previous runs")
@@ -141,7 +137,6 @@ var _ = Describe("SNR Functional - Master Remediation",
 				nhcCR := buildNHCForMasters(snrparams.NHCMasterTestName, snrparams.SNRTemplateName)
 				Expect(APIClient.Create(ctx, nhcCR)).To(Succeed(),
 					"Failed to create NHC CR for masters")
-
 				currentNHCNames = []string{snrparams.NHCMasterTestName}
 
 				By(fmt.Sprintf("Stopping kubelet on master node %s", targetMasterName))
@@ -183,7 +178,6 @@ var _ = Describe("SNR Functional - Master Remediation",
 				By("Cleaning up NHC CR")
 
 				cleanupNHCCR(snrparams.NHCMasterTestName)
-
 				currentNHCNames = nil
 			})
 
@@ -205,7 +199,6 @@ var _ = Describe("SNR Functional - Master Remediation",
 
 				targetWorkerNode, err := helpers.SelectWorkerNode(ctx, APIClient)
 				Expect(err).ToNot(HaveOccurred(), "Failed to select worker node")
-
 				targetWorkerName := targetWorkerNode.Name
 				GinkgoWriter.Printf("Target worker node: %s\n", targetWorkerName)
 
@@ -219,20 +212,14 @@ var _ = Describe("SNR Functional - Master Remediation",
 
 				oldMasterBootID, err := helpers.GetNodeBootIDFromAPI(ctx, APIClient, targetMasterName)
 				Expect(err).ToNot(HaveOccurred())
-
 				oldWorkerBootID, err := helpers.GetNodeBootIDFromAPI(ctx, APIClient, targetWorkerName)
 				Expect(err).ToNot(HaveOccurred())
-
 				masterNode := &corev1.Node{}
 				Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetMasterName}, masterNode)).To(Succeed())
-
 				masterCreationTS := masterNode.CreationTimestamp
-
 				workerNode := &corev1.Node{}
 				Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetWorkerName}, workerNode)).To(Succeed())
-
 				workerCreationTS := workerNode.CreationTimestamp
-
 				GinkgoWriter.Printf("Pre-remediation boot IDs: master=%s, worker=%s\n",
 					oldMasterBootID, oldWorkerBootID)
 
@@ -259,7 +246,6 @@ var _ = Describe("SNR Functional - Master Remediation",
 				nhcWorker := buildNHCForWorkers(snrparams.NHCTestName, snrparams.SNRTemplateName)
 				Expect(APIClient.Create(ctx, nhcWorker)).To(Succeed(),
 					"Failed to create NHC CR for workers")
-
 				currentNHCNames = []string{snrparams.NHCMasterTestName, snrparams.NHCTestName}
 
 				// Note: stops are sequential (each oc debug can take up to
@@ -280,7 +266,6 @@ var _ = Describe("SNR Functional - Master Remediation",
 					ctx, APIClient, targetMasterName, oldMasterBootID,
 				)).To(Succeed(),
 					"SNR remediation did not complete for master %s", targetMasterName)
-
 				Expect(waitForRemediationComplete(
 					ctx, APIClient, targetWorkerName, oldWorkerBootID,
 				)).To(Succeed(),
@@ -293,7 +278,6 @@ var _ = Describe("SNR Functional - Master Remediation",
 					snrparams.DefaultPollInterval, snrparams.NodeReadyTimeout,
 					GinkgoWriter.Printf,
 				)).To(Succeed(), "Master %s did not become Ready", targetMasterName)
-
 				Expect(helpers.WaitForNodeReady(
 					ctx, APIClient, targetWorkerName,
 					snrparams.DefaultPollInterval, snrparams.NodeReadyTimeout,
@@ -306,12 +290,10 @@ var _ = Describe("SNR Functional - Master Remediation",
 				Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetMasterName}, updatedMaster)).To(Succeed())
 				Expect(updatedMaster.CreationTimestamp.Equal(&masterCreationTS)).To(BeTrue(),
 					"Master creation timestamp changed -- node was re-created instead of rebooted")
-
 				updatedWorker := &corev1.Node{}
 				Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetWorkerName}, updatedWorker)).To(Succeed())
 				Expect(updatedWorker.CreationTimestamp.Equal(&workerCreationTS)).To(BeTrue(),
 					"Worker creation timestamp changed -- node was re-created instead of rebooted")
-
 				GinkgoWriter.Printf("Both nodes rebooted and recovered: master=%s, worker=%s\n",
 					targetMasterName, targetWorkerName)
 

@@ -45,12 +45,10 @@ type Cache struct {
 // not exist, a new cache will be created but not saved until Save is called.
 func NewCacheContext(ctx context.Context) (*Cache, error) {
 	klog.V(100).Info("Instantiating new Cache and attempting to load")
-
 	cache := &Cache{
 		Trees: make(map[CacheKey]*SuiteTree),
 		ctx:   ctx,
 	}
-
 	err := cache.Load()
 	if err != nil {
 		return nil, err
@@ -62,14 +60,12 @@ func NewCacheContext(ctx context.Context) (*Cache, error) {
 // CleanCache cleans the existing cache on disk by removing the entire system-tests cache directory.
 func CleanCache() error {
 	cache := &Cache{ctx: context.TODO()}
-
 	cachePath, err := cache.getDirectory()
 	if err != nil {
 		return err
 	}
 
 	klog.V(100).Infof("Deleting cache directory at %s", cachePath)
-
 	err = os.RemoveAll(cachePath)
 	if err != nil {
 		return err
@@ -142,7 +138,6 @@ func (cache *Cache) Save() error {
 	}
 
 	klog.V(100).Infof("Saving cache with %d trees to %s", len(cache.Trees), cachePath)
-
 	err = os.MkdirAll(cachePath, 0o755)
 	if err != nil {
 		return err
@@ -185,7 +180,6 @@ func (cache *Cache) GetRemotePatterns(patterns []string) (map[CacheKey]*SuiteTre
 
 	for branch, revision := range revisions {
 		key := CacheKey{Branch: branch, Revision: revision}
-
 		tree, ok := cache.Trees[key]
 		if !ok {
 			cachedTrees[key] = nil
@@ -226,7 +220,6 @@ func (cache *Cache) Get(repoPath string) (*SuiteTree, error) {
 // the create function will always be called, but the result will not be added to the cache.
 func (cache *Cache) GetOrCreate(repoPath string) (*SuiteTree, error) {
 	klog.V(100).Infof("Getting or creating cache for repo %s", repoPath)
-
 	tree, err := cache.Get(repoPath)
 	if err == nil {
 		return tree, nil
@@ -237,7 +230,6 @@ func (cache *Cache) GetOrCreate(repoPath string) (*SuiteTree, error) {
 	}
 
 	klog.V(100).Infof("Cache miss for repo %s, dry running on repo", repoPath)
-
 	reportPath, err := DryRun(cache.ctx, repoPath)
 	if err != nil {
 		klog.V(100).Infof("Failed to run system-tests dry-run: %v", err)
@@ -253,7 +245,6 @@ func (cache *Cache) GetOrCreate(repoPath string) (*SuiteTree, error) {
 	}
 
 	_ = os.Remove(reportPath)
-
 	key, err := cache.GetKeyFromPath(repoPath)
 	if err == nil {
 		cache.Trees[key] = tree
@@ -273,7 +264,6 @@ func (cache *Cache) Update() error {
 	if sourceCodeSum == "" {
 		klog.V(100).Info(
 			"Unable to retrieve source code sum. All cache entries will be removed as their validity cannot be verified.")
-
 		cache.Trees = make(map[CacheKey]*SuiteTree)
 
 		return nil
@@ -306,7 +296,6 @@ func (cache *Cache) Update() error {
 // the repo has uncommitted changes and a different error if no source code sum is available.
 func (cache *Cache) GetKeyFromPath(repoPath string) (CacheKey, error) {
 	klog.V(100).Infof("Getting cache key for repo %s", repoPath)
-
 	changes, err := HasLocalChanges(cache.ctx, repoPath)
 	if err != nil {
 		return CacheKey{}, err
@@ -357,7 +346,6 @@ func (cache *Cache) deleteExpiredFiles() error {
 	}
 
 	klog.V(100).Infof("Deleting expired cache files from %s", cachePath)
-
 	cacheDirEntries, err := os.ReadDir(cachePath)
 	if err != nil {
 		return err
@@ -370,7 +358,6 @@ func (cache *Cache) deleteExpiredFiles() error {
 		}
 
 		key, sum := parseCacheFileName(dirEntry.Name())
-
 		_, keyFound := cache.Trees[key]
 		if keyFound && sum == sourceCodeSum {
 			continue
@@ -388,7 +375,6 @@ func (cache *Cache) deleteExpiredFiles() error {
 // saveCacheFile saves the tree at the path provided by cacheFileName, truncating if the file already exists.
 func saveCacheFile(cacheFileName string, tree *SuiteTree) error {
 	klog.V(100).Infof("Saving cached tree to %s", cacheFileName)
-
 	file, err := os.Create(cacheFileName)
 	if err != nil {
 		return err
@@ -414,7 +400,6 @@ func saveCacheFile(cacheFileName string, tree *SuiteTree) error {
 // loadCacheFile attempts to load a SuiteTree from cacheFileName.
 func loadCacheFile(cacheFileName string) (*SuiteTree, error) {
 	klog.V(100).Infof("Loading cached tree from %s", cacheFileName)
-
 	file, err := os.Open(cacheFileName)
 	if err != nil {
 		return nil, err
@@ -428,7 +413,6 @@ func loadCacheFile(cacheFileName string) (*SuiteTree, error) {
 	}
 
 	tree := &SuiteTree{}
-
 	err = json.NewDecoder(decompressor).Decode(tree)
 	if err != nil {
 		return nil, err

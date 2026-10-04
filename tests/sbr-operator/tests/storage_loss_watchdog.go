@@ -82,17 +82,14 @@ var _ = Describe(
 			testSBRC = buildSBRC(sbrparams.SBRCWatchdogPathTestName, map[string]interface{}{
 				"sharedStorageClass": rwxStorageClass,
 			})
-
 			createErr := APIClient.Create(context.TODO(), testSBRC)
 			Expect(createErr).ToNot(HaveOccurred(),
 				"StorageBasedRemediationConfig %q must be created", sbrparams.SBRCWatchdogPathTestName)
-
 			waitForSBRCReady(sbrparams.SBRCWatchdogPathTestName)
 
 			By("Ensuring NodeHealthCheck CR exists for SBR storage-loss detection")
 
 			nhcObj := buildNHCForSBRStorageLoss(sbrparams.NHCSBRTestName)
-
 			createNHCErr := APIClient.Create(context.TODO(), nhcObj)
 			if createNHCErr != nil && !k8serrors.IsAlreadyExists(createNHCErr) {
 				Fail(fmt.Sprintf("Failed to create NodeHealthCheck CR %q: %v",
@@ -104,7 +101,6 @@ var _ = Describe(
 			By("Selecting target worker node (schedulable, not controller pod host)")
 
 			controllerNodes := controllerPodNodes()
-
 			nodeList, listErr := APIClient.CoreV1Interface.Nodes().List(context.TODO(), metav1.ListOptions{
 				LabelSelector: "node-role.kubernetes.io/worker",
 			})
@@ -196,7 +192,6 @@ var _ = Describe(
 				bootIDBeforeTest, bootIDErr = getNodeBootID(targetNodeName)
 				Expect(bootIDErr).ToNot(HaveOccurred(),
 					"Failed to get boot ID for node %s before injection", targetNodeName)
-
 				GinkgoWriter.Printf("Node %s boot ID before test: %s\n", targetNodeName, bootIDBeforeTest)
 
 				By("Creating privileged injector pod on target node")
@@ -248,7 +243,6 @@ var _ = Describe(
 								"iptables -D OUTPUT -p tcp -m multiport --dports 6800:7300 -j REJECT 2>/dev/null; " +
 								"true",
 						})
-
 						_, _ = existing.Delete()
 					}
 				})
@@ -271,7 +265,6 @@ var _ = Describe(
 				})
 				Expect(execErr).ToNot(HaveOccurred(),
 					"Failed to inject CephFS REJECT rules on node %s", targetNodeName)
-
 				GinkgoWriter.Printf("CephFS REJECT rules injected on node %s\n", targetNodeName)
 
 				By("Waiting for SBRStorageUnhealthy=True on target node (~18s with CephFS)")
@@ -370,11 +363,9 @@ var _ = Describe(
 				newBootID, newBootIDErr := getNodeBootID(targetNodeName)
 				Expect(newBootIDErr).ToNot(HaveOccurred(),
 					"Failed to get boot ID for node %s after reboot", targetNodeName)
-
 				Expect(newBootID).ToNot(Equal(bootIDBeforeTest),
 					"Node %s boot ID must change after watchdog reboot (before=%s, after=%s)",
 					targetNodeName, bootIDBeforeTest, newBootID)
-
 				GinkgoWriter.Printf("Node %s rebooted: boot ID %s -> %s\n",
 					targetNodeName, bootIDBeforeTest, newBootID)
 

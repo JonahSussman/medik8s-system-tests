@@ -75,48 +75,38 @@ var _ = Describe("NHC Escalation -- Validation and Webhook",
 					By("Attempting to create NHC with missing order field")
 
 					nhcName := nhcparams.NHCEscalationValidationPrefix + "-order"
-
 					step := validEscalationStepRaw(0, nhcparams.EscalationFirstStepTimeout)
 					delete(step, "order") // intentionally omit required field
 
 					nhc := buildNHCWithEscalationRaw(nhcName, []map[string]interface{}{step})
-
 					err := APIClient.Create(ctx, nhc)
 					Expect(err).To(HaveOccurred(), "NHC creation should fail when order is omitted")
 					Expect(err.Error()).To(ContainSubstring(nhcparams.EscalationWebhookOrderRequired),
 						"Error should mention missing order field")
-
 					verifyNHCNotCreated(ctx, nhcName)
 
 					By("Attempting to create NHC with duplicate order values")
 
 					nhcName = nhcparams.NHCEscalationValidationPrefix + "-dup-order"
-
 					step1 := validEscalationStepRaw(0, nhcparams.EscalationFirstStepTimeout)
 					step2 := testRemediationStepRaw(0, "120s") // same order=0 as step1
 
 					nhc = buildNHCWithEscalationRaw(nhcName, []map[string]interface{}{step1, step2})
-
 					err = APIClient.Create(ctx, nhc)
 					Expect(err).To(HaveOccurred(), "NHC creation should fail with duplicate order values")
 					Expect(err.Error()).To(ContainSubstring(nhcparams.EscalationWebhookDuplicateOrder),
 						"Error should mention duplicate order")
-
 					verifyNHCNotCreated(ctx, nhcName)
 
 					By("Creating NHC with escalation order values exceeding int32 max (accepted)")
 
 					nhcName = nhcparams.NHCEscalationValidationPrefix + "-big-order"
-
 					step1 = testRemediationStepRaw(9999999998, nhcparams.EscalationFirstStepTimeout)
 					step2 = validEscalationStepRaw(9999999999, "180s")
-
 					nhc = buildNHCWithEscalationRaw(nhcName, []map[string]interface{}{step1, step2})
-
 					err = APIClient.Create(ctx, nhc)
 					Expect(err).ToNot(HaveOccurred(),
 						"NHC creation should succeed with very large order values")
-
 					created := &unstructured.Unstructured{}
 					created.SetGroupVersionKind(nhcGVK)
 					Expect(APIClient.Get(ctx, client.ObjectKey{Name: nhcName}, created)).To(Succeed(),
@@ -130,32 +120,26 @@ var _ = Describe("NHC Escalation -- Validation and Webhook",
 					By("Attempting to create NHC with missing timeout field")
 
 					nhcName := nhcparams.NHCEscalationValidationPrefix + "-timeout"
-
 					step := validEscalationStepRaw(0, nhcparams.EscalationFirstStepTimeout)
 					delete(step, "timeout") // intentionally omit required field
 
 					nhc := buildNHCWithEscalationRaw(nhcName, []map[string]interface{}{step})
-
 					err := APIClient.Create(ctx, nhc)
 					Expect(err).To(HaveOccurred(), "NHC creation should fail when timeout is omitted")
 					Expect(err.Error()).To(ContainSubstring(nhcparams.EscalationWebhookTimeoutRequired),
 						"Error should mention missing timeout field")
-
 					verifyNHCNotCreated(ctx, nhcName)
 
 					By("Attempting to create NHC with timeout below minimum (30s < 60s)")
 
 					nhcName = nhcparams.NHCEscalationValidationPrefix + "-short-timeout"
-
 					step = validEscalationStepRaw(0, "30s") // below 60s minimum
 
 					nhc = buildNHCWithEscalationRaw(nhcName, []map[string]interface{}{step})
-
 					err = APIClient.Create(ctx, nhc)
 					Expect(err).To(HaveOccurred(), "NHC creation should fail when timeout is below 60s")
 					Expect(err.Error()).To(ContainSubstring(nhcparams.EscalationWebhookTimeoutMinimum),
 						"Error should mention minimum timeout requirement")
-
 					verifyNHCNotCreated(ctx, nhcName)
 				})
 
@@ -171,13 +155,11 @@ var _ = Describe("NHC Escalation -- Validation and Webhook",
 					step2 := testRemediationStepRaw(1, "120s") // same Kind as step1
 
 					nhc := buildNHCWithEscalationRaw(nhcName, []map[string]interface{}{step1, step2})
-
 					err := APIClient.Create(ctx, nhc)
 					Expect(err).To(HaveOccurred(),
 						"NHC creation should fail with duplicate remediator Kind")
 					Expect(err.Error()).To(ContainSubstring(nhcparams.EscalationWebhookDuplicateKind),
 						"Error should mention duplicate template kind")
-
 					verifyNHCNotCreated(ctx, nhcName)
 				})
 
@@ -199,11 +181,9 @@ var _ = Describe("NHC Escalation -- Validation and Webhook",
 					step2 := multiTemplateStepRaw(tmpl2, 1, "120s") // same Kind as step1, annotation supported
 
 					nhc := buildNHCWithEscalationRaw(nhcName, []map[string]interface{}{step1, step2})
-
 					err := APIClient.Create(ctx, nhc)
 					Expect(err).ToNot(HaveOccurred(),
 						"NHC creation should succeed when duplicate-kind templates support multiple templates")
-
 					created := &unstructured.Unstructured{}
 					created.SetGroupVersionKind(nhcGVK)
 					Expect(APIClient.Get(ctx, client.ObjectKey{Name: nhcName}, created)).To(Succeed(),
@@ -264,7 +244,6 @@ var _ = Describe("NHC Escalation -- Edit During Remediation",
 					testRemediationEscalationStep(0, nhcparams.EscalationFirstStepTimeout),
 					snrEscalationStep(1, nhcparams.EscalationSNRStepTimeout),
 				})
-
 				err := APIClient.Create(ctx, nhc)
 				Expect(err).ToNot(HaveOccurred(), "Failed to create NHC with escalation")
 				DeferCleanup(func() { cleanupNHCCR(ctx, nhcName) })
@@ -273,9 +252,7 @@ var _ = Describe("NHC Escalation -- Edit During Remediation",
 
 				targetNode, nodeErr := helpers.SelectWorkerNode(ctx, APIClient)
 				Expect(nodeErr).ToNot(HaveOccurred(), "Failed to select worker node")
-
 				GinkgoWriter.Printf("Target worker node: %s\n", targetNode.Name)
-
 				Expect(stopKubeletForRemediation(ctx, targetNode.Name)).To(Succeed(),
 					"Failed to stop kubelet on %s", targetNode.Name)
 				DeferCleanup(func() {
@@ -319,22 +296,17 @@ var _ = Describe("NHC Escalation -- Edit During Remediation",
 				current := &unstructured.Unstructured{}
 				current.SetGroupVersionKind(nhcGVK)
 				Expect(APIClient.Get(ctx, client.ObjectKey{Name: nhcName}, current)).To(Succeed())
-
 				spec := nhcSpec(current)
 				escalations, ok := spec["escalatingRemediations"].([]interface{})
 				Expect(ok).To(BeTrue(), "NHC spec should have escalatingRemediations slice")
 				Expect(escalations).To(HaveLen(2),
 					"NHC should have exactly the 2 escalation steps it was created with")
-
 				step0, ok0 := escalations[0].(map[string]interface{})
 				Expect(ok0).To(BeTrue(), "escalation step 0 should be a map")
-
 				step1, ok1 := escalations[1].(map[string]interface{})
 				Expect(ok1).To(BeTrue(), "escalation step 1 should be a map")
-
 				step0["order"] = int64(1)
 				step1["order"] = int64(0)
-
 				updateErr := APIClient.Update(ctx, current)
 				Expect(updateErr).To(HaveOccurred(),
 					"Updating escalation order should be rejected during active remediation")

@@ -63,9 +63,7 @@ var _ = Describe("FAR Destructive Tests",
 		BeforeAll(func() {
 			ctx = context.Background()
 			pendingFARDeleteNames = make(map[string]struct{})
-
 			ensureDestructiveWorkerCapacity(ctx, APIClient)
-
 			prereqs := setupAWSFARPrerequisites(ctx, APIClient)
 			fenceAgent = prereqs.fenceAgent
 			leaderNode = prereqs.leaderNode
@@ -324,9 +322,7 @@ var _ = Describe("FAR Destructive Tests",
 
 						farCR := buildFARUnstructured(targetNode.Name, fenceAgent, sharedParams, nodeParams)
 						createFARCR(ctx, APIClient, farCR)
-
 						currentFARName = targetNode.Name
-
 						waitForRemediation(ctx, APIClient, targetNode.Name, oldBootID)
 
 						By("Verifying node was rebooted, not re-created")
@@ -376,7 +372,6 @@ var _ = Describe("FAR Destructive Tests",
 
 						farCR := buildFARUnstructured(targetNode.Name, fenceAgent, sharedParams, nodeParams)
 						createFARCR(ctx, APIClient, farCR)
-
 						currentFARName = targetNode.Name
 
 						By("Verifying FAR NoSchedule taint is applied to the node")
@@ -384,7 +379,6 @@ var _ = Describe("FAR Destructive Tests",
 						Eventually(func(assertion Gomega) {
 							node := &corev1.Node{}
 							assertion.Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetNode.Name}, node)).To(Succeed())
-
 							found := false
 
 							for _, taint := range node.Spec.Taints {
@@ -412,9 +406,7 @@ var _ = Describe("FAR Destructive Tests",
 
 						farCR := buildFARUnstructured(targetNode.Name, fenceAgent, sharedParams, nodeParams)
 						createFARCR(ctx, APIClient, farCR)
-
 						currentFARName = targetNode.Name
-
 						waitForRemediation(ctx, APIClient, targetNode.Name, oldBootID)
 
 						By("Verifying FAR CR status conditions")
@@ -431,7 +423,6 @@ var _ = Describe("FAR Destructive Tests",
 							assertion.Expect(APIClient.Get(ctx, client.ObjectKey{
 								Name: targetNode.Name, Namespace: medik8sparams.OperatorNs,
 							}, farObj)).To(Succeed())
-
 							conditions, found, condErr := unstructured.NestedSlice(
 								farObj.Object, "status", "conditions")
 							assertion.Expect(condErr).ToNot(HaveOccurred())
@@ -448,7 +439,6 @@ var _ = Describe("FAR Destructive Tests",
 
 									if condMap["type"] == condType {
 										condFound = true
-
 										assertion.Expect(condMap["status"]).To(Equal(expectedStatus),
 											"Condition %s has unexpected status", condType)
 
@@ -480,9 +470,7 @@ var _ = Describe("FAR Destructive Tests",
 
 							farCR := buildFARUnstructured(targetNode.Name, fenceAgent, noActionParams, nodeParams)
 							createFARCR(ctx, APIClient, farCR)
-
 							currentFARName = targetNode.Name
-
 							waitForRemediation(ctx, APIClient, targetNode.Name, oldBootID)
 						})
 				})
@@ -500,7 +488,6 @@ var _ = Describe("FAR Destructive Tests",
 						activeLeader, err := farutils.GetActiveFARControllerNode(ctx, APIClient)
 						Expect(err).ToNot(HaveOccurred())
 						Expect(activeLeader).ToNot(BeEmpty())
-
 						node := &corev1.Node{}
 						Expect(APIClient.Get(ctx, client.ObjectKey{Name: activeLeader}, node)).To(Succeed())
 						targetNode = node
@@ -533,9 +520,7 @@ var _ = Describe("FAR Destructive Tests",
 
 						farCR := buildFARUnstructured(targetNode.Name, fenceAgent, sharedParams, nodeParams)
 						createFARCR(ctx, APIClient, farCR)
-
 						currentFARName = targetNode.Name
-
 						waitForRemediation(ctx, APIClient, targetNode.Name, oldBootID)
 
 						By("Verifying FAR controller replicas recovered")
@@ -568,7 +553,6 @@ var _ = Describe("FAR Destructive Tests",
 
 						node = &corev1.Node{}
 						Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetNode.Name}, node)).To(Succeed())
-
 						Expect(helpers.WaitForEvents(ctx, EventsClient,
 							helpers.InvolvedObjectRef{
 								Kind:      "FenceAgentsRemediation",
@@ -644,7 +628,6 @@ var _ = Describe("FAR Destructive Tests",
 
 						cpTarget, err := farutils.SelectControlPlaneNode(ctx, APIClient)
 						Expect(err).ToNot(HaveOccurred())
-
 						targetNode = cpTarget
 						GinkgoWriter.Printf("CP remediation target: %s\n", targetNode.Name)
 
@@ -664,9 +647,7 @@ var _ = Describe("FAR Destructive Tests",
 
 						farCR := buildFARUnstructured(targetNode.Name, fenceAgent, sharedParams, nodeParams)
 						createFARCR(ctx, APIClient, farCR)
-
 						currentFARName = targetNode.Name
-
 						waitForRemediationWithTimeouts(ctx, APIClient, targetNode.Name, oldBootID,
 							farparams.CPRebootTimeout, farparams.CPNodeReadyTimeout)
 
@@ -711,7 +692,6 @@ var _ = Describe("FAR Destructive Tests",
 							assertion.Expect(APIClient.Get(ctx, client.ObjectKey{
 								Name: targetNode.Name, Namespace: medik8sparams.OperatorNs,
 							}, farObj)).To(Succeed())
-
 							conditions, found, condErr := unstructured.NestedSlice(
 								farObj.Object, "status", "conditions")
 							assertion.Expect(condErr).ToNot(HaveOccurred())
@@ -728,7 +708,6 @@ var _ = Describe("FAR Destructive Tests",
 
 									if condMap["type"] == condType {
 										condFound = true
-
 										assertion.Expect(condMap["status"]).To(Equal(expectedStatus),
 											"Condition %s has unexpected status", condType)
 
@@ -931,7 +910,6 @@ var _ = Describe("FAR Destructive Tests",
 
 						farCR := buildFARUnstructured(targetNode.Name, fenceAgent, sharedParams, nodeParams)
 						createFARCR(ctx, APIClient, farCR)
-
 						currentFARName = targetNode.Name
 
 						// ReadyReplicas is the deployment-level signal that the leader pod became
@@ -1021,7 +999,6 @@ var _ = Describe("FAR Destructive Tests",
 							assertion.Expect(APIClient.Get(ctx, client.ObjectKey{
 								Name: targetNode.Name, Namespace: medik8sparams.OperatorNs,
 							}, farObj)).To(Succeed())
-
 							conditions, found, condErr := unstructured.NestedSlice(
 								farObj.Object, "status", "conditions")
 							assertion.Expect(condErr).ToNot(HaveOccurred())
@@ -1038,7 +1015,6 @@ var _ = Describe("FAR Destructive Tests",
 
 									if condMap["type"] == condType {
 										condFound = true
-
 										assertion.Expect(condMap["status"]).To(Equal(expectedStatus),
 											"Condition %s has unexpected status", condType)
 
@@ -1248,7 +1224,6 @@ func waitForRemediation(
 	nodeName, oldBootID string,
 ) {
 	GinkgoHelper()
-
 	waitForRemediationWithTimeouts(ctx, k8sClient, nodeName, oldBootID,
 		farparams.NodeRebootTimeout, farparams.NodeReadyTimeout)
 }
@@ -1288,7 +1263,6 @@ func createFARCR(
 	// composing across nesting depth like the sibling waitForRemediation
 	// helpers, unlike a fixed EventuallyWithOffset.
 	GinkgoHelper()
-
 	Expect(deleteRemediationCR(ctx, k8sClient, farCR.GroupVersionKind(),
 		farCR.GetName())).To(Succeed(), "Failed to delete existing FAR CR before creation")
 
@@ -1493,7 +1467,6 @@ func logPodDiagnostics(ctx context.Context, k8sClient client.Client, pod *corev1
 	}
 
 	GinkgoWriter.Printf("  Events for pod %s:\n", fresh.Name)
-
 	eventFound := false
 
 	for i := range eventList.Items {
@@ -1505,7 +1478,6 @@ func logPodDiagnostics(ctx context.Context, k8sClient client.Client, pod *corev1
 		}
 
 		eventFound = true
-
 		ts := podEvent.LastTimestamp.Format("15:04:05")
 		GinkgoWriter.Printf("    [%s] %s %s: %s (x%d)\n",
 			ts, podEvent.Type, podEvent.Reason, podEvent.Message, podEvent.Count)
@@ -1534,7 +1506,6 @@ func createWorkloadPod(
 			}},
 		},
 	}
-
 	ExpectWithOffset(1, k8sClient.Create(ctx, workloadPod)).To(Succeed())
 	DeferCleanup(func() {
 		if err := k8sClient.Delete(ctx, workloadPod); err != nil && !k8serrors.IsNotFound(err) {
@@ -1559,7 +1530,6 @@ func createWorkloadPod(
 
 func removeWorkloadImage(ctx context.Context, nodeName string) {
 	GinkgoWriter.Printf("Removing workload image from node %s to prevent corrupt overlay layers\n", nodeName)
-
 	output, err := helpers.RunOnNode(
 		ctx, nodeName, farparams.CrioCleanupTimeout,
 		"bash", "-c",
@@ -1584,7 +1554,6 @@ func deleteRemediationCR(
 ) error {
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(gvk)
-
 	key := client.ObjectKey{Name: name, Namespace: medik8sparams.OperatorNs}
 	if gvk == nhcGVK {
 		key.Namespace = ""

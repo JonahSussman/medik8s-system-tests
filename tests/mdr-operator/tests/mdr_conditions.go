@@ -71,11 +71,9 @@ var _ = Describe(
 						map[string]string{
 							mdrparams.NHCTimedOutAnnotationKey: mdrparams.NHCTimedOutAnnotationValue,
 						})
-
 					err := APIClient.Create(context.Background(), mdrCR)
 					Expect(err).ToNot(HaveOccurred(),
 						"Failed to create MDR with nhc-timed-out annotation")
-
 					deferDeleteMDRCR(mdrparams.MDRConditionTestName)
 
 					By("Waiting for Processing and Succeeded conditions to reflect NHC timed-out state")
@@ -83,7 +81,6 @@ var _ = Describe(
 					Eventually(func() error {
 						liveMDR := &unstructured.Unstructured{}
 						liveMDR.SetGroupVersionKind(mdrGVK)
-
 						getErr := APIClient.Get(context.Background(),
 							client.ObjectKey{
 								Name:      mdrparams.MDRConditionTestName,
@@ -138,11 +135,9 @@ var _ = Describe(
 					By("Creating MDR with non-existent node name")
 
 					mdrCR := buildMDR(mdrparams.MDRNonExistentNodeTestName)
-
 					err := APIClient.Create(context.Background(), mdrCR)
 					Expect(err).ToNot(HaveOccurred(),
 						"Failed to create MDR with non-existent node name")
-
 					deferDeleteMDRCR(mdrparams.MDRNonExistentNodeTestName)
 
 					By("Waiting for Processing and Succeeded conditions to reflect node-not-found state")
@@ -150,7 +145,6 @@ var _ = Describe(
 					Eventually(func() error {
 						liveMDR := &unstructured.Unstructured{}
 						liveMDR.SetGroupVersionKind(mdrGVK)
-
 						getErr := APIClient.Get(context.Background(),
 							client.ObjectKey{
 								Name:      mdrparams.MDRNonExistentNodeTestName,
@@ -206,7 +200,6 @@ var _ = Describe(
 				cpNodes, err := listControlPlaneNodes(context.Background(), APIClient)
 				Expect(err).ToNot(HaveOccurred(), "Failed to list control-plane nodes")
 				Expect(cpNodes.Items).ToNot(BeEmpty(), "No control-plane nodes found")
-
 				controlPlaneNodeName = cpNodes.Items[rand.Intn(len(cpNodes.Items))].Name
 				GinkgoWriter.Printf("Selected control-plane node: %s\n", controlPlaneNodeName)
 
@@ -234,7 +227,6 @@ var _ = Describe(
 					By(fmt.Sprintf("Creating MDR for control-plane node %s", controlPlaneNodeName))
 
 					mdrCR := buildMDR(controlPlaneNodeName)
-
 					err := APIClient.Create(context.Background(), mdrCR)
 					Expect(err).ToNot(HaveOccurred(),
 						"Failed to create MDR for control-plane node %s", controlPlaneNodeName)
@@ -244,7 +236,6 @@ var _ = Describe(
 					Eventually(func() error {
 						liveMDR := &unstructured.Unstructured{}
 						liveMDR.SetGroupVersionKind(mdrGVK)
-
 						getErr := APIClient.Get(context.Background(),
 							client.ObjectKey{
 								Name:      controlPlaneNodeName,
@@ -279,11 +270,9 @@ var _ = Describe(
 					By(fmt.Sprintf("Creating MDR for control-plane node %s", controlPlaneNodeName))
 
 					mdrCR := buildMDR(controlPlaneNodeName)
-
 					err := APIClient.Create(context.Background(), mdrCR)
 					Expect(err).ToNot(HaveOccurred(),
 						"Failed to create MDR for control-plane node %s", controlPlaneNodeName)
-
 					GinkgoWriter.Printf("Expecting PermanentNodeDeletionExpected "+
 						"status=%s reason=%s\n",
 						mdrparams.ConditionStatusFalse, mdrparams.ConditionReasonKeepsNodeName)
@@ -293,7 +282,6 @@ var _ = Describe(
 					Eventually(func() error {
 						liveMDR := &unstructured.Unstructured{}
 						liveMDR.SetGroupVersionKind(mdrGVK)
-
 						getErr := APIClient.Get(context.Background(),
 							client.ObjectKey{
 								Name:      controlPlaneNodeName,
@@ -324,7 +312,6 @@ func verifyMDRControllerRunning() error {
 	listOptions := metav1.ListOptions{
 		LabelSelector: mdrparams.OperatorControllerPodLabelSelector,
 	}
-
 	allPods, listErr := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
 	if listErr != nil {
 		return fmt.Errorf("failed to list MDR pods: %w", listErr)

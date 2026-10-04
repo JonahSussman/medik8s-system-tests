@@ -49,7 +49,6 @@ var _ = Describe(
 					map[string]interface{}{
 						"remediationStrategy": unsupportedStrategy,
 					})
-
 				err := APIClient.Create(context.TODO(), snrCR)
 				if err == nil {
 					deferDeleteCR(snrCR)
@@ -85,7 +84,6 @@ var _ = Describe(
 						},
 					},
 				}
-
 				err := APIClient.Create(context.TODO(), snrtCR)
 				if err == nil {
 					deferDeleteCR(snrtCR)

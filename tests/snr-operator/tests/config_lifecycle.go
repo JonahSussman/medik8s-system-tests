@@ -50,7 +50,6 @@ var _ = Describe(
 
 					snrc := &unstructured.Unstructured{}
 					snrc.SetGroupVersionKind(snrcGVK)
-
 					err := APIClient.Get(context.TODO(),
 						client.ObjectKey{
 							Name:      snrparams.SNRConfigName,
@@ -59,7 +58,6 @@ var _ = Describe(
 						snrc)
 					Expect(err).ToNot(HaveOccurred(),
 						"Failed to get default SNRC %q", snrparams.SNRConfigName)
-
 					originalPath, originalPathFound, fieldErr := unstructured.NestedString(
 						snrc.Object, "spec", "watchdogFilePath")
 					Expect(fieldErr).ToNot(HaveOccurred(),
@@ -74,7 +72,6 @@ var _ = Describe(
 							pathJSON, marshalErr := json.Marshal(originalPath)
 							Expect(marshalErr).ToNot(HaveOccurred(),
 								"Failed to marshal watchdog path for restore patch")
-
 							restorePatch = []byte(
 								fmt.Sprintf(`{"spec":{"watchdogFilePath":%s}}`, pathJSON))
 						} else {
@@ -103,7 +100,6 @@ var _ = Describe(
 					By("Patching SNRC with invalid watchdog path /dev/foo")
 
 					invalidPatch := []byte(`{"spec":{"watchdogFilePath":"/dev/foo"}}`)
-
 					err = APIClient.Patch(context.TODO(),
 						snrcForPatch(snrparams.SNRConfigName),
 						client.RawPatch(types.MergePatchType, invalidPatch))
@@ -137,7 +133,6 @@ var _ = Describe(
 
 					snrc := &unstructured.Unstructured{}
 					snrc.SetGroupVersionKind(snrcGVK)
-
 					err := APIClient.Get(context.TODO(),
 						client.ObjectKey{
 							Name:      snrparams.SNRConfigName,
@@ -146,7 +141,6 @@ var _ = Describe(
 						snrc)
 					Expect(err).ToNot(HaveOccurred(),
 						"Failed to get default SNRC %q", snrparams.SNRConfigName)
-
 					savedSpec, specFound, specErr := unstructured.NestedMap(
 						snrc.Object, "spec")
 					Expect(specErr).ToNot(HaveOccurred(),
@@ -159,7 +153,6 @@ var _ = Describe(
 
 						checkSNRC := &unstructured.Unstructured{}
 						checkSNRC.SetGroupVersionKind(snrcGVK)
-
 						getErr := APIClient.Get(context.TODO(),
 							client.ObjectKey{
 								Name:      snrparams.SNRConfigName,
@@ -213,10 +206,8 @@ var _ = Describe(
 						})
 					Expect(listErr).ToNot(HaveOccurred(), "Failed to list worker nodes")
 					Expect(workerNodes.Items).ToNot(BeEmpty(), "No worker nodes found")
-
 					testNodeName := workerNodes.Items[0].Name
 					snrCR := buildSNRCR("SelfNodeRemediation", testNodeName, nil)
-
 					createErr := APIClient.Create(context.TODO(), snrCR)
 					if createErr == nil {
 						deferDeleteCR(snrCR)
@@ -279,7 +270,6 @@ var _ = Describe(
 					By("Verifying SNR is functionally re-enabled (Disabled condition absent)")
 
 					verifySnrCR := buildSNRCR("SelfNodeRemediation", testNodeName, nil)
-
 					verifyCreateErr := APIClient.Create(context.TODO(), verifySnrCR)
 					if verifyCreateErr == nil {
 						deferDeleteCR(verifySnrCR)
@@ -287,7 +277,6 @@ var _ = Describe(
 
 					Expect(verifyCreateErr).ToNot(HaveOccurred(),
 						"Failed to create verification SNR CR for node %q", testNodeName)
-
 					verifySNR := &unstructured.Unstructured{}
 					verifySNR.SetGroupVersionKind(snrGVK)
 
@@ -390,10 +379,8 @@ func collectDSPodUIDs() map[types.UID]bool {
 	dsListOptions := metav1.ListOptions{
 		LabelSelector: snrparams.DaemonSetPodLabelSelector,
 	}
-
 	dsPods, listErr := pod.List(APIClient, medik8sparams.OperatorNs, dsListOptions)
 	Expect(listErr).ToNot(HaveOccurred(), "Failed to list DS pods for UID snapshot")
-
 	uids := make(map[types.UID]bool, len(dsPods))
 
 	for _, dsPod := range dsPods {
@@ -413,7 +400,6 @@ func verifyDSPodsReplaced(oldUIDs map[types.UID]bool) error {
 	dsListOptions := metav1.ListOptions{
 		LabelSelector: snrparams.DaemonSetPodLabelSelector,
 	}
-
 	dsPods, listErr := pod.List(APIClient, medik8sparams.OperatorNs, dsListOptions)
 	if listErr != nil {
 		return fmt.Errorf("failed to list DS pods: %w", listErr)

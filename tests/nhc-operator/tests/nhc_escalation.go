@@ -38,7 +38,6 @@ func recoverEscalationNode(ctx context.Context, nodeName string) error {
 func deferEscalationNodeRecovery(nodeName string) {
 	DeferCleanup(func() {
 		cleanupCtx := context.Background()
-
 		GinkgoWriter.Printf("Safety-net cleanup: re-enabling kubelet on %s\n", nodeName)
 
 		if err := helpers.EnableKubeletSSH(cleanupCtx, APIClient, nodeName,
@@ -121,7 +120,6 @@ var _ = Describe("NHC Escalation -- Functional E2E",
 
 			targetNode, nodeErr := helpers.SelectWorkerNode(ctx, APIClient)
 			Expect(nodeErr).ToNot(HaveOccurred(), "Failed to select worker node")
-
 			targetWorkerName = targetNode.Name
 			GinkgoWriter.Printf("Target worker node for escalation E2E: %s\n", targetWorkerName)
 
@@ -175,7 +173,6 @@ var _ = Describe("NHC Escalation -- Functional E2E",
 					testRemediationEscalationStep(0, nhcparams.EscalationFirstStepTimeout),
 					snrEscalationStep(1, nhcparams.EscalationSNRStepTimeout),
 				})
-
 				Expect(APIClient.Create(ctx, nhc)).To(Succeed(), "Failed to create NHC with escalation")
 				DeferCleanup(func() { cleanupNHCCR(ctx, nhcName) })
 
@@ -241,7 +238,6 @@ var _ = Describe("NHC Escalation -- Functional E2E",
 					trGone, trCheckErr := testRemediationCRExists(ctx, targetWorkerName)
 					assertion.Expect(trCheckErr).ToNot(HaveOccurred())
 					assertion.Expect(trGone).To(BeFalse(), "TestRemediation CR should be cleaned up")
-
 					snrGone, snrCheckErr := snrCRExists(ctx, targetWorkerName)
 					assertion.Expect(snrCheckErr).ToNot(HaveOccurred())
 					assertion.Expect(snrGone).To(BeFalse(), "SNR CR should be cleaned up")
@@ -261,7 +257,6 @@ var _ = Describe("NHC Escalation -- Functional E2E",
 					snrEscalationStep(0, nhcparams.EscalationSNRStepTimeout),
 					testRemediationEscalationStep(1, nhcparams.EscalationLongTimeout),
 				})
-
 				Expect(APIClient.Create(ctx, nhc)).To(Succeed())
 				DeferCleanup(func() { cleanupNHCCR(ctx, nhcName) })
 
@@ -322,7 +317,6 @@ var _ = Describe("NHC Escalation -- Functional E2E",
 					snrEscalationStep(0, nhcparams.EscalationFirstStepTimeout),
 					testRemediationEscalationStep(1, nhcparams.EscalationLongTimeout),
 				})
-
 				Expect(APIClient.Create(ctx, nhc)).To(Succeed())
 				DeferCleanup(func() { cleanupNHCCR(ctx, nhcName) })
 
@@ -330,7 +324,6 @@ var _ = Describe("NHC Escalation -- Functional E2E",
 
 				oldBootID, err := helpers.GetNodeBootIDFromAPI(ctx, APIClient, targetWorkerName)
 				Expect(err).ToNot(HaveOccurred(), "Failed to get boot ID for %s", targetWorkerName)
-
 				deferEscalationNodeRecovery(targetWorkerName)
 				Expect(helpers.DisableKubeletSSH(ctx, APIClient, targetWorkerName,
 					nhcparams.SSHTimeout, GinkgoWriter.Printf)).To(Succeed())
@@ -389,7 +382,6 @@ var _ = Describe("NHC Escalation -- Functional E2E",
 					trGone, trCheckErr := testRemediationCRExists(ctx, targetWorkerName)
 					assertion.Expect(trCheckErr).ToNot(HaveOccurred())
 					assertion.Expect(trGone).To(BeFalse(), "TestRemediation CR should be cleaned up")
-
 					snrGone, snrCheckErr := snrCRExists(ctx, targetWorkerName)
 					assertion.Expect(snrCheckErr).ToNot(HaveOccurred())
 					assertion.Expect(snrGone).To(BeFalse(), "SNR CR should be cleaned up")

@@ -122,7 +122,6 @@ func createCredentialsSecret(ctx context.Context, apiClient client.Client) {
 
 	if !credentialsSecretManaged {
 		existing := &corev1.Secret{}
-
 		err = apiClient.Get(ctx, client.ObjectKey{
 			Name: farparams.SharedCredentialsSecretName, Namespace: medik8sparams.OperatorNs,
 		}, existing)
@@ -219,7 +218,6 @@ func buildFenceParams(
 
 	awsNodeParams, err := farutils.BuildAWSNodeParameters(ctx, apiClient)
 	Expect(err).ToNot(HaveOccurred())
-
 	nodeParams := make(map[string]interface{})
 
 	for paramName, nodeMap := range awsNodeParams {

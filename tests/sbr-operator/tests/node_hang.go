@@ -98,7 +98,6 @@ var _ = Describe(
 			rwxStorageClass = discoverRWXStorageClass()
 			Expect(rwxStorageClass).ToNot(BeEmpty(),
 				"No RWX storage class found; set SBR_STORAGE_CLASS env or deploy ODF/CephFS before running")
-
 			GinkgoWriter.Printf("Using storage class: %s\n", rwxStorageClass)
 
 			By("Creating SBRC with shared storage class")
@@ -106,17 +105,14 @@ var _ = Describe(
 			setupSBRC = buildSBRC(sbrparams.SBRCNodeHangTestName, map[string]interface{}{
 				"sharedStorageClass": rwxStorageClass,
 			})
-
 			createErr := APIClient.Create(context.TODO(), setupSBRC)
 			Expect(createErr).ToNot(HaveOccurred(),
 				"StorageBasedRemediationConfig %q must be created", sbrparams.SBRCNodeHangTestName)
-
 			waitForSBRCReady(sbrparams.SBRCNodeHangTestName)
 
 			By("Creating NodeHealthCheck CR")
 
 			nhc := buildNHCNodeHang(sbrparams.NHCNodeHangTestName)
-
 			nhcErr := APIClient.Create(context.TODO(), nhc)
 			if nhcErr != nil && !k8serrors.IsAlreadyExists(nhcErr) {
 				Expect(nhcErr).ToNot(HaveOccurred(),
@@ -128,7 +124,6 @@ var _ = Describe(
 			By("Selecting target worker node (schedulable, not controller pod host)")
 
 			controllerNodes := controllerPodNodes()
-
 			nodeList, err := APIClient.CoreV1Interface.Nodes().List(context.TODO(), metav1.ListOptions{
 				LabelSelector: "node-role.kubernetes.io/worker",
 			})
@@ -171,7 +166,6 @@ var _ = Describe(
 			}
 
 			probePodName = strings.TrimRight(probePodName, "-")
-
 			probePod, probeErr := pod.NewBuilder(
 				APIClient, probePodName, medik8sparams.OperatorNs, sbrparams.InjectorImage).
 				DefineOnNode(targetNodeName).
@@ -379,7 +373,6 @@ var _ = Describe(
 				Expect(postCrashBootID).ToNot(Equal(preCrashBootID),
 					"Boot-id must change after reboot: node %s boot-id stayed %q",
 					targetNodeName, preCrashBootID)
-
 				GinkgoWriter.Printf("Boot-id changed: %q -> %q\n", preCrashBootID, postCrashBootID)
 
 				By("Waiting for NHC to create a StorageBasedRemediation CR for the target node")

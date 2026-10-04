@@ -70,6 +70,7 @@ linters:
             - github.com/rh-ecosystem-edge/eco-goinfra
             - github.com/medik8s/system-tests
             - github.com/klauspost/compress
+            - golang.org/x/tools/go/packages
           deny:
             - pkg: github.com/onsi**
     funlen:
@@ -104,8 +105,12 @@ linters:
         - github.com/onsi/ginkgo/v2
         - github.com/medik8s/system-tests/tests/internal/inittools
         - github.com/medik8s/system-tests/tests/internal/medik8sinittools
-    wsl:
-      strict-append: false
+    wsl_v5:
+      default: none
+      enable:
+        - err
+        - leading-whitespace
+        - trailing-whitespace
   exclusions:
     generated: lax
     presets:

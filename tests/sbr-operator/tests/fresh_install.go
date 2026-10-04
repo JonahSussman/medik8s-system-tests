@@ -41,7 +41,6 @@ var _ = Describe("SBR Fresh Install", Serial, Ordered,
 			Expect(err).NotTo(HaveOccurred())
 			Expect(sdkVersion).To(ContainSubstring("v1.42.2"))
 			AddReportEntry("sbr-fresh-install-sdk", sdkVersion)
-
 			clusterVersion := &configv1.ClusterVersion{}
 			Expect(APIClient.Get(ctx, client.ObjectKey{Name: "version"}, clusterVersion)).To(Succeed())
 			Expect(clusterVersion.Status.Desired.Version).To(HavePrefix("5.0."), "requires an OpenShift 5.0 cluster")
@@ -89,21 +88,17 @@ var _ = Describe("SBR Fresh Install", Serial, Ordered,
 				output, err := sbrutils.InstallBundle(ctx, inputs.OperatorSDK, inputs.Namespace, inputs.CandidateSBR.Bundle)
 				GinkgoWriter.Printf("operator-sdk run bundle (candidate SBR) output:\n%s\n", output)
 				Expect(err).NotTo(HaveOccurred())
-
 				waitForSBRUpgradeCSV(inputs.Namespace, inputs.CandidateSBR.Version, inputs.CandidateSBR.Image, "fresh candidate")
-
 				candidateImage, err := sbrutils.GetSBRControllerImage(APIClient)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(candidateImage).To(Equal(inputs.CandidateSBR.Image))
 
 				By("requiring a fresh response from the newly installed controller")
 				Expect(waitForUpgradeAPI(ctx, upgradeSBRC())).To(Succeed())
-
 				storageClass := discoverRWXStorageClass()
 				sbrc := buildSBRC(sbrparams.SBRUpgradeConfigTestName, sbrutils.SafeSpec(owned.Token, storageClass))
 				Expect(owned.Create(ctx, sbrc)).To(Succeed())
 				waitForUpgradeAgentDaemonSetExists(ctx)
-
 				uid, spec := captureSBRCConfiguration(ctx)
 				AddReportEntry("sbr-config-fresh-install", map[string]interface{}{
 					"uid": uid, "spec": spec,

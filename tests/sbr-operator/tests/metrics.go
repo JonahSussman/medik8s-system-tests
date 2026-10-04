@@ -31,7 +31,6 @@ var _ = Describe(
 
 			Eventually(func() error {
 				stale := buildSBRC(sbrparams.SBRCMetricsTestName, map[string]interface{}{})
-
 				deleteErr := APIClient.Delete(context.TODO(), stale)
 				if deleteErr == nil || k8serrors.IsNotFound(deleteErr) {
 					return nil
@@ -45,7 +44,6 @@ var _ = Describe(
 
 			Eventually(func() error {
 				check := buildSBRC(sbrparams.SBRCMetricsTestName, map[string]interface{}{})
-
 				getErr := APIClient.Get(context.TODO(),
 					types.NamespacedName{Name: sbrparams.SBRCMetricsTestName, Namespace: medik8sparams.OperatorNs},
 					check)
@@ -97,7 +95,6 @@ var _ = Describe(
 			DeferCleanup(func() {
 				Eventually(func() error {
 					stale := buildSBRC(sbrparams.SBRCMetricsTestName, map[string]interface{}{})
-
 					deleteErr := APIClient.Delete(context.TODO(), stale)
 					if deleteErr == nil || k8serrors.IsNotFound(deleteErr) {
 						return nil
@@ -125,7 +122,6 @@ var _ = Describe(
 
 			Expect(APIClient.Create(context.TODO(), sbrc)).To(Succeed(),
 				"Failed to create StorageBasedRemediationConfig %s", sbrparams.SBRCMetricsTestName)
-
 			waitForSBRCReady(sbrparams.SBRCMetricsTestName)
 		})
 
@@ -134,7 +130,6 @@ var _ = Describe(
 
 			Eventually(func() error {
 				stale := buildSBRC(sbrparams.SBRCMetricsTestName, map[string]interface{}{})
-
 				deleteErr := APIClient.Delete(context.TODO(), stale)
 				if deleteErr == nil || k8serrors.IsNotFound(deleteErr) {
 					return nil
@@ -179,7 +174,6 @@ var _ = Describe(
 					// Scope to the SBRC-specific DaemonSet by filtering on name prefix so we
 					// don't accidentally exec into a pod owned by a different SBRC's DaemonSet.
 					metricsDSPodPrefix := sbrparams.SBRAgentDaemonSetPrefix + sbrparams.SBRCMetricsTestName + "-"
-
 					freshPods, listErr := pod.List(APIClient, medik8sparams.OperatorNs,
 						metav1.ListOptions{LabelSelector: sbrparams.AgentPodLabelSelector})
 					if listErr != nil {
@@ -209,7 +203,6 @@ var _ = Describe(
 					// Port 8082 is the SBR agent's Prometheus metrics endpoint (agent-metrics);
 					// port 8080 serves controller-runtime's built-in metrics (runtime-metrics).
 					metricsURL := "http://localhost:" + sbrparams.AgentMetricsPort + "/metrics"
-
 					buf, execErr := agentPod.ExecCommand([]string{
 						"sh", "-c",
 						"curl -sf " + metricsURL + " 2>/dev/null || wget -qO- " + metricsURL + " 2>/dev/null",

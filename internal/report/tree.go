@@ -34,7 +34,6 @@ type SuiteTree struct {
 // NewFromReports creates a new SuiteTree from a list of reports. The root of the tree will be `/`.
 func NewFromReports(reports []types.Report) *SuiteTree {
 	klog.V(100).Infof("Creating SuiteTree from %d reports", len(reports))
-
 	root := &SuiteTree{
 		Path: "/",
 		Name: "",
@@ -51,7 +50,6 @@ func NewFromReports(reports []types.Report) *SuiteTree {
 // NewFromFile creates a new SuiteTree from a Ginkgo report file. The root of the tree will be `/`.
 func NewFromFile(path string) (*SuiteTree, error) {
 	klog.V(100).Infof("Creating SuiteTree from Ginkgo JSON report at path %s", path)
-
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -65,7 +63,6 @@ func NewFromFile(path string) (*SuiteTree, error) {
 	}
 
 	reports := []types.Report{}
-
 	err = json.Unmarshal(reportsBytes, &reports)
 	if err != nil {
 		return nil, err
@@ -93,11 +90,9 @@ func (tree *SuiteTree) Insert(suitePath, description string, specs int) *SuiteTr
 
 	for _, elem := range splitPath {
 		currNode.Specs += specs
-
 		child := currNode.findChild(elem)
 		if child == nil {
 			klog.V(100).Infof("Creating child %s in tree with path %s", elem, currNode.Path)
-
 			child = &SuiteTree{
 				Path: path.Join(currNode.Path, elem),
 				Name: elem,
@@ -118,7 +113,6 @@ func (tree *SuiteTree) Insert(suitePath, description string, specs int) *SuiteTr
 // InsertSpecs will add the spec reports to the receiver's children. This assumes that the receiver is a leaf node.
 func (tree *SuiteTree) InsertSpecs(specs types.SpecReports) {
 	klog.V(100).Infof("Inserting specs into suite %s", tree.Path)
-
 	specs = specs.WithLeafNodeType(types.NodeTypeIt)
 	for _, spec := range specs {
 		text := "It " + spec.LeafNodeText

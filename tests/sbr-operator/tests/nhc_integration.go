@@ -84,7 +84,6 @@ var _ = Describe(
 				Version: sbrparams.CRDVersion,
 				Kind:    "StorageBasedRemediationTemplate",
 			})
-
 			templateErr := APIClient.Get(context.TODO(),
 				types.NamespacedName{Name: sbrparams.SBRTemplateName, Namespace: medik8sparams.OperatorNs}, sbrTemplate)
 
@@ -131,7 +130,6 @@ var _ = Describe(
 			testSBRC = buildSBRC(sbrparams.SBRCNHCTestName, map[string]interface{}{
 				"sharedStorageClass": storageClass,
 			})
-
 			createErr := APIClient.Create(context.TODO(), testSBRC)
 			Expect(createErr).ToNot(HaveOccurred(),
 				"Failed to create StorageBasedRemediationConfig %q", sbrparams.SBRCNHCTestName)
@@ -148,18 +146,15 @@ var _ = Describe(
 				Version: sbrparams.NHCAPIVersion,
 				Kind:    "NodeHealthCheck",
 			})
-
 			getErr := APIClient.Get(context.TODO(),
 				types.NamespacedName{Name: sbrparams.NHCTestName}, existingNHC)
 
 			switch {
 			case k8serrors.IsNotFound(getErr):
 				nhcCR = buildNHCUnstructured()
-
 				nhcCreateErr := APIClient.Create(context.TODO(), nhcCR)
 				Expect(nhcCreateErr).ToNot(HaveOccurred(),
 					"Failed to create NodeHealthCheck CR %q", sbrparams.NHCTestName)
-
 				nhcCreatedByUs = true
 
 			case getErr != nil:
@@ -171,7 +166,6 @@ var _ = Describe(
 				// A mismatched remediationTemplate or unhealthyConditions would cause the 5-minute
 				// NHC→SBR CR wait to time out with no actionable error.
 				expectedSpec := buildNHCUnstructured().Object["spec"]
-
 				existingSpec, specFound, specErr := unstructured.NestedFieldNoCopy(
 					existingNHC.Object, "spec")
 				if specErr != nil || !specFound {
@@ -191,7 +185,6 @@ var _ = Describe(
 
 				nhcCR = existingNHC
 				nhcCreatedByUs = false
-
 				GinkgoWriter.Printf("NodeHealthCheck %q already exists with matching spec; reusing it\n",
 					sbrparams.NHCTestName)
 			}
@@ -219,7 +212,6 @@ var _ = Describe(
 			}
 
 			injectorPodName = strings.TrimRight(injectorPodName, "-")
-
 			GinkgoWriter.Printf("Target node: %q | injector pod: %q\n", targetNodeName, injectorPodName)
 		})
 
@@ -253,7 +245,6 @@ var _ = Describe(
 						Version: sbrparams.NHCAPIVersion,
 						Kind:    "NodeHealthCheck",
 					})
-
 					getErr := APIClient.Get(context.TODO(),
 						types.NamespacedName{Name: sbrparams.NHCTestName}, obj)
 					if k8serrors.IsNotFound(getErr) {
@@ -322,7 +313,6 @@ var _ = Describe(
 					context.TODO(), targetNodeName, metav1.GetOptions{})
 				Expect(nodeBootErr).ToNot(HaveOccurred(),
 					"Failed to get node %q to record pre-injection BootID", targetNodeName)
-
 				preRebootBootID = nodeBeforeInject.Status.NodeInfo.BootID
 
 				By(fmt.Sprintf("Creating privileged injector pod on node %q", targetNodeName))
@@ -333,10 +323,8 @@ var _ = Describe(
 					WithHostPid(true).
 					WithPrivilegedFlag().
 					CreateAndWaitUntilRunning(medik8sparams.DefaultTimeout)
-
 				Expect(createErr).ToNot(HaveOccurred(),
 					"Failed to create injector pod on node %q", targetNodeName)
-
 				injectCephFSRejectOutput(injectorPod, targetNodeName)
 
 				By(fmt.Sprintf("Waiting for node %q to acquire SBRStorageUnhealthy=True condition", targetNodeName))
@@ -448,7 +436,6 @@ var _ = Describe(
 					context.TODO(), targetNodeName, metav1.GetOptions{})
 				Expect(nodeErr).ToNot(HaveOccurred(),
 					"Failed to get node %q after reboot", targetNodeName)
-
 				newBootID := nodeAfterReboot.Status.NodeInfo.BootID
 				Expect(newBootID).ToNot(Equal(preRebootBootID),
 					"Node %q BootID %q matches pre-reboot BootID %q — "+

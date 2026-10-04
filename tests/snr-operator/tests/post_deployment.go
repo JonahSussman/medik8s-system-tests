@@ -80,7 +80,6 @@ var _ = Describe(
 					Version: snrparams.CRDVersion,
 					Kind:    "SelfNodeRemediationConfig",
 				})
-
 				err := APIClient.Get(context.TODO(),
 					client.ObjectKey{
 						Name:      snrparams.SNRConfigName,
@@ -134,7 +133,6 @@ var _ = Describe(
 				ctrlListOptions := metav1.ListOptions{
 					LabelSelector: snrparams.OperatorControllerPodLabelSelector,
 				}
-
 				_, err = pod.WaitForAllPodsInNamespaceRunning(
 					APIClient,
 					medik8sparams.OperatorNs,
@@ -157,7 +155,6 @@ var _ = Describe(
 					Version: snrparams.CRDVersion,
 					Kind:    "SelfNodeRemediationTemplate",
 				})
-
 				err := APIClient.Get(context.TODO(),
 					client.ObjectKey{
 						Name:      snrparams.SNRTemplateName,
@@ -187,7 +184,6 @@ var _ = Describe(
 						Version: snrparams.CRDVersion,
 						Kind:    "SelfNodeRemediationTemplate",
 					})
-
 					err := APIClient.Get(context.TODO(),
 						client.ObjectKey{
 							Name:      unsupported,
@@ -212,7 +208,6 @@ var _ = Describe(
 
 				annotations := snrCSV.Object.Annotations
 				Expect(annotations).ToNot(BeNil(), "CSV annotations should not be nil")
-
 				_, hasValidSubscription := annotations["operators.openshift.io/valid-subscription"]
 				Expect(hasValidSubscription).To(BeTrue(),
 					"CSV should have operators.openshift.io/valid-subscription annotation")

@@ -40,7 +40,6 @@ func init() {
 	klog.InitFlags(nil)
 	klog.EnableContextualLogging(true)
 	logf.SetLogger(logr.Discard())
-
 	_ = flag.Set("logtostderr", "true")
 
 	// Skip loading config if running unit tests

@@ -20,7 +20,6 @@ var _, currentFile, _, _ = runtime.Caller(0)
 func TestFAR(t *testing.T) {
 	_, reporterConfig := GinkgoConfiguration()
 	reporterConfig.JUnitReport = Medik8sConfig.GetJunitReportPath(currentFile)
-
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "FAR", Label(farparams.Labels...), reporterConfig)
 }

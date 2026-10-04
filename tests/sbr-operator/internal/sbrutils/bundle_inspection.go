@@ -210,7 +210,7 @@ func compareVersion(left, right [3]int) int {
 	return 0
 }
 
-//nolint:funlen,wsl_v5 // Extraction, parsing, and identity validation form one bounded operation.
+//nolint:funlen // Extraction, parsing, and identity validation form one bounded operation.
 func inspectBundle(ctx context.Context, pullspec string) (inspectedBundle, error) {
 	info, err := inspectImage(ctx, pullspec)
 	if err != nil {
@@ -218,13 +218,11 @@ func inspectBundle(ctx context.Context, pullspec string) (inspectedBundle, error
 	}
 
 	repository := strings.Split(pullspec, "@")[0]
-
 	lastSlash := strings.LastIndex(repository, "/")
 	if colon := strings.LastIndex(repository, ":"); colon > lastSlash {
 		repository = repository[:colon]
 	}
 	resolved := repository + "@" + info.Digest
-
 	dir, err := os.MkdirTemp("", "sbr-bundle-inspection-")
 	if err != nil {
 		return inspectedBundle{}, err
@@ -290,7 +288,6 @@ func inspectBundle(ctx context.Context, pullspec string) (inspectedBundle, error
 	}, nil
 }
 
-//nolint:wsl_v5 // Parsing checks intentionally follow their inputs.
 func inspectImage(ctx context.Context, pullspec string) (imageInfo, error) {
 	output, err := RunCommandStdout(ctx, "oc", "image", "info", "--filter-by-os=linux/amd64", pullspec, "-o", "json")
 	if err != nil {
@@ -307,7 +304,6 @@ func inspectImage(ctx context.Context, pullspec string) (imageInfo, error) {
 	return info, nil
 }
 
-//nolint:wsl_v5 // Package and version checks intentionally remain adjacent.
 func verifyBundle(bundle inspectedBundle, expectedPackage, expectedVersion string) error {
 	if bundle.Package != expectedPackage {
 		return fmt.Errorf("package %q, expected %q", bundle.Package, expectedPackage)
@@ -319,7 +315,6 @@ func verifyBundle(bundle inspectedBundle, expectedPackage, expectedVersion strin
 	return nil
 }
 
-//nolint:wsl_v5 // Digest reads and comparison form one linear check.
 func requireSameImage(ctx context.Context, actual, expected string) error {
 	actualInfo, err := inspectImage(ctx, actual)
 	if err != nil {

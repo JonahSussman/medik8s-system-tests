@@ -26,11 +26,9 @@ func CleanupFARRemediation(
 	logf func(string, ...interface{}),
 ) {
 	waitForFARSucceeded(ctx, k8sClient, farGVK, farName, namespace, logf)
-
 	helpers.DeleteRemediationCR(ctx, k8sClient, farGVK, farName,
 		namespace, farparams.DefaultPollInterval,
 		farparams.RemediationCRDeletionTimeout, logf)
-
 	waitForTaintRemoved(ctx, k8sClient, farName, logf)
 }
 

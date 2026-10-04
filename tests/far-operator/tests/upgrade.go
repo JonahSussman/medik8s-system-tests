@@ -50,7 +50,6 @@ var _ = Describe("FAR Operator Upgrade",
 
 		BeforeAll(func() {
 			ctx = context.Background()
-
 			Expect(medik8sparams.TargetOCPImage).NotTo(BeEmpty(),
 				"OPENSHIFT_UPGRADE_RELEASE_IMAGE_OVERRIDE or RELEASE_IMAGE_LATEST must be set")
 
@@ -75,7 +74,6 @@ var _ = Describe("FAR Operator Upgrade",
 			awsAccessKey, awsSecretKey, credErr := farutils.GetAWSCredentials(
 				ctx, APIClient, medik8sparams.OperatorNs)
 			Expect(credErr).ToNot(HaveOccurred(), "Failed to get AWS credentials")
-
 			credentialsSecret := &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      farparams.SharedCredentialsSecretName,
@@ -86,7 +84,6 @@ var _ = Describe("FAR Operator Upgrade",
 					"--secret-key": awsSecretKey,
 				},
 			}
-
 			Expect(APIClient.Create(ctx, credentialsSecret)).
 				To(Succeed(), "Failed to create credentials Secret")
 
@@ -113,7 +110,6 @@ var _ = Describe("FAR Operator Upgrade",
 
 			if currentFARName != "" {
 				farNodeName := currentFARName
-
 				farutils.CleanupFARRemediation(ctx, APIClient, farGVK, currentFARName,
 					medik8sparams.OperatorNs, GinkgoWriter.Printf)
 				currentFARName = ""
@@ -140,13 +136,11 @@ var _ = Describe("FAR Operator Upgrade",
 
 				sub, err := farutils.InstallGAOperator(APIClient)
 				Expect(err).NotTo(HaveOccurred(), "Failed to install GA FAR operator")
-
 				GinkgoWriter.Printf("GA Subscription created: %s (catalog: %s, channel: %s, package: %s)\n",
 					sub.Object.Name,
 					sub.Object.Spec.CatalogSource,
 					sub.Object.Spec.Channel,
 					sub.Object.Spec.Package)
-
 				helpers.LogOLMDiagnostics(ctx, APIClient, medik8sparams.OperatorNs,
 					farparams.UpgradeSubName, medik8sparams.GAOperatorCatalog, GinkgoWriter.Printf)
 
@@ -155,7 +149,6 @@ var _ = Describe("FAR Operator Upgrade",
 				previousCSV = verifyFAROperatorReady(
 					medik8sparams.OperatorUpgradeTimeout,
 					medik8sparams.DefaultTimeout, "on OCP N-1")
-
 				preUpgradeImage, err = farutils.GetFARControllerImage(APIClient)
 				Expect(err).NotTo(HaveOccurred())
 				GinkgoWriter.Printf("GA operator image: %s\n", preUpgradeImage)
@@ -170,38 +163,30 @@ var _ = Describe("FAR Operator Upgrade",
 				clusterVersion := &configv1.ClusterVersion{}
 				Expect(APIClient.Get(ctx, client.ObjectKey{Name: "version"}, clusterVersion)).
 					To(Succeed(), "Failed to get ClusterVersion")
-
 				clusterVersion.Spec.DesiredUpdate = &configv1.Update{
 					Image: medik8sparams.TargetOCPImage,
 					Force: true, // CI release images lack signed update graph metadata
 				}
-
 				Expect(APIClient.Update(ctx, clusterVersion)).
 					To(Succeed(), "Failed to set desired OCP update")
-
 				GinkgoWriter.Printf("OCP upgrade initiated to image: %s\n",
 					medik8sparams.TargetOCPImage)
-
 				Expect(helpers.WaitForClusterVersionCondition(ctx, APIClient,
 					"Progressing", configv1.ConditionTrue,
 					medik8sparams.OCPUpgradeStartTimeout, farparams.DefaultPollInterval,
 				)).To(Succeed(), "OCP upgrade did not start progressing")
-
 				Expect(helpers.WaitForClusterVersionCondition(ctx, APIClient,
 					"Progressing", configv1.ConditionFalse,
 					medik8sparams.OCPUpgradeTimeout, farparams.DefaultPollInterval,
 				)).To(Succeed(), "OCP upgrade did not complete (still Progressing)")
-
 				Expect(helpers.WaitForClusterVersionCondition(ctx, APIClient,
 					"Available", configv1.ConditionTrue,
 					medik8sparams.PostUpgradeRecoveryTimeout, farparams.DefaultPollInterval,
 				)).To(Succeed(), "Cluster not Available after OCP upgrade")
-
 				Expect(helpers.WaitForClusterVersionCondition(ctx, APIClient,
 					"Failing", configv1.ConditionFalse,
 					medik8sparams.PostUpgradeRecoveryTimeout, farparams.DefaultPollInterval,
 				)).To(Succeed(), "Cluster is Failing after OCP upgrade")
-
 				GinkgoWriter.Println("OCP upgrade completed and cluster is healthy")
 
 				By("Step 5: Verify FAR operator pod survived OCP upgrade and CSV is Succeeded")
@@ -209,7 +194,6 @@ var _ = Describe("FAR Operator Upgrade",
 				previousCSV = verifyFAROperatorReady(
 					medik8sparams.PostUpgradeRecoveryTimeout,
 					medik8sparams.PostUpgradeRecoveryTimeout, "after OCP upgrade")
-
 				preUpgradeImage, err = farutils.GetFARControllerImage(APIClient)
 				Expect(err).NotTo(HaveOccurred())
 				GinkgoWriter.Printf("Post-OCP-upgrade baseline for FBC upgrade: CSV=%s image=%s\n",
@@ -219,23 +203,19 @@ var _ = Describe("FAR Operator Upgrade",
 
 				fenceAgent, sharedParams, nodeParams, leaderNode, err = upgradeProvisionRemediationResources(ctx, platform, region)
 				Expect(err).NotTo(HaveOccurred(), "Failed to set up remediation resources")
-
 				currentFARName, err = upgradeRunRemediationCycle(
 					ctx, fenceAgent, sharedParams, nodeParams, leaderNode, "post-ocp-upgrade")
 				Expect(err).NotTo(HaveOccurred(),
 					"Post-OCP-upgrade remediation failed with GA operator")
-
 				cleanupPostRemediation(ctx, &currentFARName, "post-ocp-upgrade")
 
 				By("Step 7: Apply deferred IDMS for Konflux catalog images")
 
 				Expect(medik8sparams.SharedDir).NotTo(BeEmpty(),
 					"SHARED_DIR must be set (provided by ci-operator)")
-
 				preIDMSGens, genErr := helpers.GetMCPGenerations(ctx)
 				Expect(genErr).NotTo(HaveOccurred(),
 					"Failed to capture MCP generations before IDMS apply")
-
 				idmsChanged, applyErr := helpers.ApplyIDMSFromSharedDir(ctx,
 					medik8sparams.SharedDir, GinkgoWriter.Printf)
 				Expect(applyErr).NotTo(HaveOccurred(),
@@ -340,7 +320,6 @@ var _ = Describe("FAR Operator Upgrade",
 						GinkgoWriter.Printf(
 							"Operator upgraded: new CSV %s (was: %s)\n",
 							currentCSV, previousCSV.Object.Name)
-
 						operatorUpgraded = true
 					} else {
 						GinkgoWriter.Printf(
@@ -383,12 +362,10 @@ var _ = Describe("FAR Operator Upgrade",
 
 				fenceAgent, sharedParams, nodeParams, leaderNode, err = upgradeProvisionRemediationResources(ctx, platform, region)
 				Expect(err).NotTo(HaveOccurred(), "Failed to set up remediation resources")
-
 				currentFARName, err = upgradeRunRemediationCycle(
 					ctx, fenceAgent, sharedParams, nodeParams, leaderNode, "post-catalog-switch")
 				Expect(err).NotTo(HaveOccurred(),
 					"Post-catalog-switch remediation failed")
-
 				cleanupPostRemediation(ctx, &currentFARName, "post-catalog-switch")
 			})
 	})
@@ -407,13 +384,11 @@ func upgradeProvisionRemediationResources(
 	}
 
 	GinkgoWriter.Printf("Fence agent: %s, Region: %s\n", fenceAgent, region)
-
 	sharedParams := map[string]interface{}{
 		"--region":          region,
 		"--action":          "reboot",
 		"--skip-race-check": "",
 	}
-
 	awsNodeParams, err := farutils.BuildAWSNodeParameters(ctx, APIClient)
 	if err != nil {
 		return "", nil, nil, "", fmt.Errorf("failed to build AWS node parameters: %w", err)
@@ -457,7 +432,6 @@ func upgradeRunRemediationCycle(
 
 	nodeName := selectedNode.Name
 	GinkgoWriter.Printf("[%s] Target node: %s (leader: %s)\n", phase, nodeName, leaderNode)
-
 	originalBootID, err := farutils.GetNodeBootIDFromAPI(ctx, APIClient, nodeName)
 	if err != nil {
 		return "", fmt.Errorf("[%s] failed to get boot ID: %w", phase, err)
@@ -492,9 +466,7 @@ func upgradeRunRemediationCycle(
 
 	GinkgoWriter.Printf("[%s] Workload pod %s running on %s\n",
 		phase, workloadPodName, nodeName)
-
 	farObj := buildFARUnstructured(farCRName, fenceAgent, sharedParams, nodeParams)
-
 	GinkgoWriter.Printf("[%s] Creating FAR CR %s\n", phase, farCRName)
 
 	Eventually(func() error {
@@ -511,7 +483,6 @@ func upgradeRunRemediationCycle(
 		"[%s] Failed to create FAR CR %s", phase, farCRName)
 
 	GinkgoWriter.Printf("[%s] Waiting for node %s remediation\n", phase, nodeName)
-
 	waitForRemediation(ctx, APIClient, nodeName, originalBootID)
 
 	By(fmt.Sprintf("[%s] Verifying workload pod %s was evicted", phase, workloadPodName))
@@ -544,7 +515,6 @@ func verifyFAROperatorReady(
 
 	Eventually(func() error {
 		logSubscriptionProgress(&lastSubState)
-
 		succeededCSV, csvErr := findSucceededCSV(&lastCSVPhase)
 		if csvErr != nil {
 			logInstallPlanProgress(&lastIPPhase)

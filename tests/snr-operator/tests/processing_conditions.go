@@ -64,11 +64,9 @@ var _ = Describe(
 					snrCR := buildSNRWithAnnotations(snrName, map[string]string{
 						nhcTimedOutAnnotationKey: nhcTimedOutAnnotationValue,
 					})
-
 					err := APIClient.Create(context.TODO(), snrCR)
 					Expect(err).ToNot(HaveOccurred(),
 						"Failed to create SNR with nhc-timed-out annotation")
-
 					deferDeleteCR(snrCR)
 
 					By("Waiting for Processing and Succeeded conditions to reflect NHC timed-out state")
@@ -76,7 +74,6 @@ var _ = Describe(
 					Eventually(func() error {
 						liveSNR := &unstructured.Unstructured{}
 						liveSNR.SetGroupVersionKind(snrGVK)
-
 						getErr := APIClient.Get(context.TODO(),
 							client.ObjectKey{
 								Name:      snrName,
@@ -125,11 +122,9 @@ var _ = Describe(
 					By("Creating SNR with non-existent node name")
 
 					snrCR := buildSNRWithAnnotations(snrName, nil)
-
 					err := APIClient.Create(context.TODO(), snrCR)
 					Expect(err).ToNot(HaveOccurred(),
 						"Failed to create SNR with non-existent node name")
-
 					deferDeleteCR(snrCR)
 
 					By("Waiting for Processing and Succeeded conditions to reflect node-not-found state")
@@ -137,7 +132,6 @@ var _ = Describe(
 					Eventually(func() error {
 						liveSNR := &unstructured.Unstructured{}
 						liveSNR.SetGroupVersionKind(snrGVK)
-
 						getErr := APIClient.Get(context.TODO(),
 							client.ObjectKey{
 								Name:      snrName,

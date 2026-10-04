@@ -59,10 +59,8 @@ var _ = Describe("FAR Controller Lifecycle Tests",
 					pods, err := farutils.GetFARControllerPods(ctx, APIClient)
 					assertion.Expect(err).ToNot(HaveOccurred())
 					assertion.Expect(pods).ToNot(BeEmpty(), "No running FAR controller pods found")
-
 					leaderNode, err := farutils.GetActiveFARControllerNode(ctx, APIClient)
 					assertion.Expect(err).ToNot(HaveOccurred())
-
 					oldLeaderPod = nil
 
 					for i := range pods {
@@ -113,7 +111,6 @@ var _ = Describe("FAR Controller Lifecycle Tests",
 
 					newPods, err := farutils.GetFARControllerPods(ctx, APIClient)
 					assertion.Expect(err).ToNot(HaveOccurred())
-
 					hasNewRunningPod := false
 
 					for _, p := range newPods {
