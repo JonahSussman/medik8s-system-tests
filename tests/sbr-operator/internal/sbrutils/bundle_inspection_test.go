@@ -34,9 +34,9 @@ spec:
               containers:
               - name: manager
                 image: candidate-manager
-`, 0600)
+`, 0o600)
 	writeScriptFixture(t, filepath.Join(dir, "annotations.yaml"),
-		"annotations:\n  operators.operatorframework.io.bundle.package.v1: storage-based-remediation\n", 0600)
+		"annotations:\n  operators.operatorframework.io.bundle.package.v1: storage-based-remediation\n", 0o600)
 	writeScriptFixture(t, filepath.Join(dir, "oc"), `#!/usr/bin/env bash
 set -euo pipefail
 if [[ $2 == extract ]]; then
@@ -58,7 +58,7 @@ elif [[ $2 == info ]]; then
     printf '{"digest":"sha256:%064d"}\n' 1
   fi
 else exit 99; fi
-`, 0700)
+`, 0o700)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 	t.Setenv("FIXTURE_DIR", dir)
 
@@ -86,7 +86,7 @@ func TestFindLatestGABundleUsesOnlyPlainSemverTags(t *testing.T) {
 set -euo pipefail
 [[ $1 == list-tags && $2 == docker://registry.test/bundles ]]
 printf '{"Tags":["latest","v0.2.0","v0.3.0-rc.1","v0.2.1-a9feb15","v0.2.1","v0.2.10","v1.0.0-beta.1"]}\n'
-`, 0700)
+`, 0o700)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 
 	pullspec, err := findLatestGABundle(context.Background(), "registry.test/bundles")
@@ -109,7 +109,7 @@ func TestInspectImageIgnoresStderrWarnings(t *testing.T) {
 set -euo pipefail
 echo 'W0924 12:04:07.722005 helpers.go:151] Defaulting of registry auth file is deprecated.' >&2
 printf '{"digest":"sha256:%064d"}\n' 3
-`, 0700)
+`, 0o700)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 
 	info, err := inspectImage(context.Background(), "some-image")
@@ -141,7 +141,7 @@ func TestDownstreamGAVersionRejectsSuffixedTags(t *testing.T) {
 func TestBundleCommandsSetTimeout(t *testing.T) {
 	dir := t.TempDir()
 	binary := filepath.Join(dir, "operator-sdk")
-	writeScriptFixture(t, binary, "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> \"$COMMAND_LOG\"\n", 0700)
+	writeScriptFixture(t, binary, "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> \"$COMMAND_LOG\"\n", 0o700)
 	t.Setenv("COMMAND_LOG", filepath.Join(dir, "commands"))
 
 	if _, err := InstallBundle(context.Background(), binary, "test-namespace", "baseline-bundle"); err != nil {

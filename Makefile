@@ -21,6 +21,7 @@ GINKGO = $(GINKGO_DIR)/$(GINKGO_VERSION)/ginkgo
 
 GO_PACKAGES=$(shell go list ./... | grep -v vendor)
 .PHONY: lint \
+        fmt \
         deps-update \
         vet
 vet:
@@ -29,6 +30,9 @@ vet:
 lint:
 	@echo "Running go lint"
 	scripts/golangci-lint.sh
+
+fmt:
+	scripts/golangci-lint.sh fmt
 
 deps-update:
 	go mod tidy && \

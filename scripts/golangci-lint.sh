@@ -53,12 +53,12 @@ function DownloadGolangCiLint() {
 	return 1
 }
 
-# RunGolangCiLint is used to execute the lint command
+# RunGolangCiLint is used to execute the requested golangci-lint command
 function RunGolangCiLint() {
 
 	echo "Running golangci-lint"
 
-	if golangci-lint run -v; then
+	if golangci-lint "$@"; then
 		return 0;
 	fi
 
@@ -67,6 +67,10 @@ function RunGolangCiLint() {
 
 # Main body of shell script
 function Main() {
+
+	if [[ $# -eq 0 ]]; then
+		set -- run -v
+	fi
 
 	# Check whether we need to install golangci-lint
 	local installRequired
@@ -92,9 +96,9 @@ function Main() {
 		echo "golangci-lint already installed and correct version (${GOLANGCI_LINT_VERSION})"
 	fi
 
-	# Execute the linter
-	if ! RunGolangCiLint; then
-		echo "failed to pass linter checks"
+	# Execute the requested command
+	if ! RunGolangCiLint "$@"; then
+		echo "golangci-lint failed"
 		return 1
 	fi
 
@@ -102,7 +106,7 @@ function Main() {
 	return 0
 }
 
-if Main; then
+if Main "$@"; then
 	exit 0
 fi
 

@@ -60,8 +60,10 @@ var _ = Describe("NHC Upgrade Operator", Serial, Ordered,
 		BeforeEach(func() {
 			By("rejecting leftover resources owned by this standalone scenario")
 			Expect(nhcutils.CheckClean(ctx, APIClient, inputs.Namespace)).To(Succeed())
-			owned = &nhcutils.OwnedRun{API: APIClient, Namespace: inputs.Namespace,
-				Token: rand.Text(), SDK: inputs.OperatorSDK, CleanupPackage: nhcutils.CleanupBundle}
+			owned = &nhcutils.OwnedRun{
+				API: APIClient, Namespace: inputs.Namespace,
+				Token: rand.Text(), SDK: inputs.OperatorSDK, CleanupPackage: nhcutils.CleanupBundle,
+			}
 			// Register before CREATE/install, including partial failures. A rejected
 			// preflight never registers or invokes package cleanup.
 			if inputs.SkipCleanup {

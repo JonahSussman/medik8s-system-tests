@@ -217,8 +217,7 @@ var _ = Describe("FAR Operator Upgrade",
 
 				By("Step 6: Validate GA FAR on OCP N (post-OCP-upgrade remediation)")
 
-				fenceAgent, sharedParams, nodeParams, leaderNode, err =
-					upgradeProvisionRemediationResources(ctx, platform, region)
+				fenceAgent, sharedParams, nodeParams, leaderNode, err = upgradeProvisionRemediationResources(ctx, platform, region)
 				Expect(err).NotTo(HaveOccurred(), "Failed to set up remediation resources")
 
 				currentFARName, err = upgradeRunRemediationCycle(
@@ -382,8 +381,7 @@ var _ = Describe("FAR Operator Upgrade",
 
 				By("Step 11: Validate FAR on OCP N (post-catalog-switch remediation)")
 
-				fenceAgent, sharedParams, nodeParams, leaderNode, err =
-					upgradeProvisionRemediationResources(ctx, platform, region)
+				fenceAgent, sharedParams, nodeParams, leaderNode, err = upgradeProvisionRemediationResources(ctx, platform, region)
 				Expect(err).NotTo(HaveOccurred(), "Failed to set up remediation resources")
 
 				currentFARName, err = upgradeRunRemediationCycle(

@@ -148,8 +148,10 @@ var _ = Describe(
 
 				Eventually(func() error {
 					getErr := APIClient.Get(context.TODO(),
-						types.NamespacedName{Name: sbrparams.SBRCWatchdogPathTestName,
-							Namespace: medik8sparams.OperatorNs},
+						types.NamespacedName{
+							Name:      sbrparams.SBRCWatchdogPathTestName,
+							Namespace: medik8sparams.OperatorNs,
+						},
 						testSBRC.DeepCopy())
 
 					if k8serrors.IsNotFound(getErr) {

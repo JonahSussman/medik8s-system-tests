@@ -42,7 +42,8 @@ func newReporter(
 	kubeconfig string,
 	namespacesToDump map[string]string,
 	apiScheme func(scheme *runtime.Scheme) error,
-	cRDs []k8sreporter.CRData) (*k8sreporter.KubernetesReporter, error) {
+	cRDs []k8sreporter.CRData,
+) (*k8sreporter.KubernetesReporter, error) {
 	nsToDumpFilter := func(ns string) bool {
 		_, found := namespacesToDump[ns]
 
@@ -50,7 +51,7 @@ func newReporter(
 	}
 
 	if _, err := os.Stat(reportPath); os.IsNotExist(err) {
-		err := os.MkdirAll(reportPath, 0755)
+		err := os.MkdirAll(reportPath, 0o755)
 		if err != nil {
 			return nil, err
 		}
@@ -69,7 +70,8 @@ func ReportIfFailed(
 	report types.SpecReport,
 	testSuite string,
 	nSpaces map[string]string,
-	cRDs []k8sreporter.CRData) {
+	cRDs []k8sreporter.CRData,
+) {
 	ReportIfFailedOnCluster("", report, testSuite, nSpaces, cRDs)
 }
 
@@ -80,7 +82,8 @@ func ReportIfFailedOnCluster(
 	report types.SpecReport,
 	testSuite string,
 	nSpaces map[string]string,
-	cRDs []k8sreporter.CRData) {
+	cRDs []k8sreporter.CRData,
+) {
 	if !types.SpecStateFailureStates.Is(report.State) {
 		return
 	}

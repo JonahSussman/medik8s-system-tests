@@ -61,8 +61,10 @@ func CollectFailureEvidence(ctx context.Context, namespace string) string {
 	for _, args := range [][]string{
 		{"get", "subscriptions,clusterserviceversions,installplans,catalogsources,pods", "-n", namespace, "-o", "yaml"},
 		{"get", "events", "-n", namespace, "--sort-by=.lastTimestamp"},
-		{"get", "storagebasedremediationconfigs,storagebasedremediations,storagebasedremediationtemplates",
-			"-n", namespace, "-o", "yaml"},
+		{
+			"get", "storagebasedremediationconfigs,storagebasedremediations,storagebasedremediationtemplates",
+			"-n", namespace, "-o", "yaml",
+		},
 		{"logs", "deployment/" + sbrparams.OperatorDeploymentName, "-n", namespace, "--all-containers=true", "--tail=500"},
 	} {
 		output, err := RunCommand(ctx, "oc", args...)

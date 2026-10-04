@@ -173,9 +173,11 @@ func GetNodeInternalIP(
 }
 
 // sshKeyOnce ensures findSSHKey resolves the key once per process.
-var sshKeyOnce sync.Once
-var sshKeyPath string
-var errSSHKey error
+var (
+	sshKeyOnce sync.Once
+	sshKeyPath string
+	errSSHKey  error
+)
 
 // FindSSHKey finds the first available SSH private key, copies it to a
 // temp file with 0600 permissions, and caches the path for reuse.
@@ -300,9 +302,11 @@ func isInvalidSSHUser(user string) bool {
 }
 
 // sshBastionOnce resolves the bastion host once per process.
-var sshBastionOnce sync.Once
-var sshBastionHost string
-var sshBastionUser string
+var (
+	sshBastionOnce sync.Once
+	sshBastionHost string
+	sshBastionUser string
+)
 
 // findSSHBastion checks for an SSH bastion host in order:
 //  1. External bastion from $SHARED_DIR/bastion_public_address

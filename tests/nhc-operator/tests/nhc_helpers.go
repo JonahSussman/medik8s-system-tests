@@ -697,7 +697,8 @@ func cleanupTestRemediationResources(ctx context.Context) {
 	// Delete CRs first
 	trtCR := &unstructured.Unstructured{}
 	trtCR.SetGroupVersionKind(schema.GroupVersionKind{
-		Group: nhcparams.TestRemediationGroup, Version: nhcparams.TestRemediationVersion, Kind: "TestRemediationTemplate"})
+		Group: nhcparams.TestRemediationGroup, Version: nhcparams.TestRemediationVersion, Kind: "TestRemediationTemplate",
+	})
 	trtCR.SetName(nhcparams.TestRemediationTemplateName)
 
 	deleteWithRetry(trtCR, "TestRemediationTemplate CR")

@@ -101,7 +101,7 @@ func (cfg *GeneralConfig) GetReportPath() string {
 func (cfg *GeneralConfig) GetDumpFailedTestReportLocation(file string) string {
 	if cfg.DumpFailedTests {
 		if _, err := os.Stat(cfg.ReportsDirAbsPath); os.IsNotExist(err) {
-			err := os.MkdirAll(cfg.ReportsDirAbsPath, 0744)
+			err := os.MkdirAll(cfg.ReportsDirAbsPath, 0o744)
 			if err != nil {
 				log.Fatalf("panic: Failed to create report dir due to %s", err)
 			}
@@ -153,7 +153,7 @@ func deployReportDir(dirName string) error {
 	_, err := os.Stat(dirName)
 
 	if os.IsNotExist(err) {
-		return os.MkdirAll(dirName, 0777)
+		return os.MkdirAll(dirName, 0o777)
 	}
 
 	return err

@@ -56,8 +56,10 @@ var _ = Describe("SBR Upgrade Operator", Serial, Ordered,
 		BeforeEach(func() {
 			By("rejecting leftover resources owned by this standalone scenario")
 			Expect(sbrutils.CheckClean(ctx, APIClient, inputs.Namespace)).To(Succeed())
-			owned = &sbrutils.OwnedRun{API: APIClient, Namespace: inputs.Namespace,
-				Token: rand.Text(), SDK: inputs.OperatorSDK, CleanupPackage: sbrutils.CleanupBundle}
+			owned = &sbrutils.OwnedRun{
+				API: APIClient, Namespace: inputs.Namespace,
+				Token: rand.Text(), SDK: inputs.OperatorSDK, CleanupPackage: sbrutils.CleanupBundle,
+			}
 			// Register before CREATE/install, including partial failures. A rejected
 			// preflight never registers or invokes package cleanup.
 			if inputs.SkipCleanup {
