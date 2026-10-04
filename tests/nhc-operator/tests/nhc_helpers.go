@@ -811,7 +811,6 @@ func testRemediationEscalationStep(order int64, timeout string) escalationStep {
 func buildNHCWithEscalation(name string, steps []escalationStep) *unstructured.Unstructured {
 	nhc := buildNHCForWorkers(name)
 	spec := nhcSpec(nhc)
-
 	delete(spec, "remediationTemplate")
 
 	escalations := make([]interface{}, len(steps))
@@ -852,7 +851,6 @@ func buildNHCWithEscalation(name string, steps []escalationStep) *unstructured.U
 func buildNHCWithEscalationRaw(name string, rawSteps []map[string]interface{}) *unstructured.Unstructured {
 	nhc := buildNHCForWorkers(name)
 	spec := nhcSpec(nhc)
-
 	delete(spec, "remediationTemplate")
 
 	steps := make([]interface{}, len(rawSteps))

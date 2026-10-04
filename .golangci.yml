@@ -70,6 +70,7 @@ linters:
             - github.com/rh-ecosystem-edge/eco-goinfra
             - github.com/medik8s/system-tests
             - github.com/klauspost/compress
+            - golang.org/x/tools/go/packages
           deny:
             - pkg: github.com/onsi**
     funlen:
