@@ -5,13 +5,31 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"strings"
 	"time"
 
+	configv1 "github.com/openshift/api/config/v1"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/clients"
 
 	"github.com/medik8s/system-tests/tests/internal/helpers"
 	"github.com/medik8s/system-tests/tests/nhc-operator/internal/nhcparams"
 )
+
+// VerifyFBCClusterVersion requires the most recently completed cluster update to be OpenShift 5.0.
+func VerifyFBCClusterVersion(clusterVersion *configv1.ClusterVersion) error {
+	for _, entry := range clusterVersion.Status.History {
+		if entry.State != configv1.CompletedUpdate {
+			continue
+		}
+		if !strings.HasPrefix(entry.Version, "5.0.") {
+			return fmt.Errorf("NHC FBC upgrade requires OpenShift 5.0, got %s", entry.Version)
+		}
+
+		return nil
+	}
+
+	return fmt.Errorf("NHC FBC upgrade requires a completed OpenShift version in cluster history")
+}
 
 // RunOperatorSDK runs one bounded operator-sdk command and preserves its combined output.
 func RunOperatorSDK(ctx context.Context, binary string, args ...string) (string, error) {

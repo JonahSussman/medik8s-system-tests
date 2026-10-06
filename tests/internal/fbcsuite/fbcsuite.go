@@ -40,14 +40,20 @@ type UpgradeOperatorFBCConfig struct {
 	NewUpgradeOperatorFBCTest NewUpgradeOperatorFBCTest
 }
 
+func (cfg UpgradeOperatorFBCConfig) validate() {
+	if cfg.NewUpgradeOperatorFBCTest == nil {
+		panic("DefineFBCUpgradeSuite requires a NewUpgradeOperatorFBCTest")
+	}
+	if (cfg.DeploymentName == "") != (cfg.ContainerName == "") {
+		panic("DefineFBCUpgradeSuite: DeploymentName and ContainerName must both be set or both empty")
+	}
+}
+
 // DefineFBCUpgradeSuite defines the standard Ginkgo test suite for an operator's FBC upgrade.
 //
 //nolint:funlen // Spec registration flows sequentially across all upgrade phases.
 func DefineFBCUpgradeSuite(cfg UpgradeOperatorFBCConfig) bool {
-	if cfg.NewUpgradeOperatorFBCTest == nil {
-		panic("DefineFBCUpgradeSuite requires a NewUpgradeOperatorFBCTest")
-	}
-
+	cfg.validate()
 	reportPrefix := strings.ToLower(cfg.OperatorName)
 
 	defineFBCUpgradeSuite := func() {

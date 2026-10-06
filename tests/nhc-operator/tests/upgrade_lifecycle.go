@@ -3,7 +3,6 @@ package tests
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/medik8s/system-tests/tests/internal/helpers"
 	. "github.com/medik8s/system-tests/tests/internal/medik8sinittools"
@@ -39,9 +38,8 @@ func (hooks *nhcUpgradeOperatorFBCTest) Setup(ctx context.Context) error {
 	if err := APIClient.Get(ctx, client.ObjectKey{Name: "version"}, clusterVersion); err != nil {
 		return err
 	}
-	if !strings.HasPrefix(clusterVersion.Status.Desired.Version, "5.0.") {
-		return fmt.Errorf("NHC FBC upgrade requires OpenShift 5.0, got %s",
-			clusterVersion.Status.Desired.Version)
+	if err := nhcutils.VerifyFBCClusterVersion(clusterVersion); err != nil {
+		return err
 	}
 
 	return hooks.owned.CreateNamespace(ctx)
