@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	configv1 "github.com/openshift/api/config/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -19,6 +20,60 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 )
+
+func TestVerifyFBCClusterVersion(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		desired string
+		history []configv1.UpdateHistory
+		wantErr bool
+	}{
+		{
+			name: "completed 5.0 while targeting 5.1", desired: "5.1.0",
+			history: []configv1.UpdateHistory{
+				{Version: "5.1.0", State: configv1.PartialUpdate},
+				{Version: "5.0.2", State: configv1.CompletedUpdate},
+			},
+		},
+		{
+			name: "completed 4.16 while targeting 5.0", desired: "5.0.0", wantErr: true,
+			history: []configv1.UpdateHistory{
+				{Version: "5.0.0", State: configv1.PartialUpdate},
+				{Version: "4.16.1", State: configv1.CompletedUpdate},
+			},
+		},
+		{
+			name: "most recent completed version wins", desired: "5.1.0", wantErr: true,
+			history: []configv1.UpdateHistory{
+				{Version: "5.1.0", State: configv1.CompletedUpdate},
+				{Version: "5.0.2", State: configv1.CompletedUpdate},
+			},
+		},
+		{
+			name: "completed 5.0", desired: "5.0.2",
+			history: []configv1.UpdateHistory{{Version: "5.0.2", State: configv1.CompletedUpdate}},
+		},
+		{name: "empty history", desired: "5.0.2", wantErr: true},
+		{
+			name: "no completed update", desired: "5.0.2", wantErr: true,
+			history: []configv1.UpdateHistory{{Version: "5.0.2", State: configv1.PartialUpdate}},
+		},
+		{
+			name: "empty completed version", desired: "5.0.2", wantErr: true,
+			history: []configv1.UpdateHistory{{State: configv1.CompletedUpdate}},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			clusterVersion := &configv1.ClusterVersion{Status: configv1.ClusterVersionStatus{
+				Desired: configv1.Release{Version: test.desired}, History: test.history,
+			}}
+			err := VerifyFBCClusterVersion(clusterVersion)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("unexpected cluster version error: %v", err)
+			}
+		})
+	}
+}
 
 func TestRunCommandCapturesOutput(t *testing.T) {
 	for _, exit := range []string{"0", "7"} {
