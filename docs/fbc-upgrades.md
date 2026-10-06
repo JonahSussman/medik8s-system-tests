@@ -24,8 +24,13 @@ the UID and complete spec, requires a fresh pause response, restores the origina
 configuration, and exercises candidate remediation. The shared runner calls both
 hooks around the Subscription upgrade and requires them to succeed.
 
-SBR, SNR, FAR, MDR, and NMO still use `NewStubUpgradeOperatorTest` in this base
-change. Their stubs provide only the shared catalog/CSV/version/image checks,
+SBR also has concrete hooks in `tests/sbr-operator/tests/upgrade_lifecycle.go`.
+They capture and compare the config UID and complete spec, prove fresh
+reconciliation, and restore the original configuration. Its default no-storage
+mode and optional remediation check are described below.
+
+SNR, FAR, MDR, and NMO still use `NewStubUpgradeOperatorTest`.
+Their stubs provide only the shared catalog/CSV/version/image checks,
 not configuration persistence or operator-specific behavior validation.
 Follow-ups replace each operator's factory with concrete lifecycle hooks;
 operator-specific validations do not belong in the generic `stub.go`.
@@ -69,9 +74,43 @@ make run-tests
 ```
 
 Replace `nhc-operator` with `sbr-operator`, `snr-operator`, `far-operator`,
-`mdr-operator`, or `nmo-operator`. NHC's remediation checks require enough
-healthy workers. The other operators' current stubs do not exercise remediation
-or configuration persistence; they are not complete lifecycle tests.
+`mdr-operator`, or `nmo-operator`. NHC and SBR have operator-specific lifecycle
+checks; SNR, FAR, MDR, and NMO currently have lifecycle stubs.
+
+## SBR: upgrade and configuration without storage
+
+By default, SBR needs no ODF installation or RWX StorageClass. Its test installs
+the GA baseline, creates a safe `StorageBasedRemediationConfig` without shared
+storage, switches the Subscription to the candidate FBC, and requires:
+
+- A different Succeeded CSV with the exact candidate version and controller image.
+- The same config UID and complete spec, rather than a recreated config.
+- A fresh candidate-controller response to a unique, intentionally nonexistent
+  StorageClass, followed by restoration of the original config spec.
+- No PVC or agent DaemonSet from this no-storage probe.
+
+SBR intentionally reports `PVCError` when storage is absent. The test uses that
+expected validation response as evidence of reconciliation; it does **not**
+claim that agents are Ready or that functional remediation works without storage.
+Logs and reports explicitly say `remediation NOT REQUESTED` in the default mode.
+Both source-built and downstream FBCs use these same checks and `SBR_FBC_*` inputs.
+No `operator-sdk run bundle-upgrade` is involved.
+
+To additionally exercise Emily's real reboot-and-recovery check from PR #11:
+
+```bash
+export SBR_FBC_REMEDIATION=true
+export SBR_STORAGE_CLASS=existing-rwx-storage-class
+```
+
+This opt-in requires existing RWX storage, at least two healthy worker agents,
+and a target worker not hosting an SBR controller. It creates an owned,
+storage-backed config, triggers SBR, and requires a changed boot ID and a Ready
+node afterward. It never installs ODF or another storage provider. The suite
+is labelled `disruption:destructive` only when this mode is enabled; otherwise
+it is `disruption:nondestructive`. Missing opt-in prerequisites fail rather than
+silently skipping the upgrade test. `SBR_STORAGE_CLASS` alone does not enable
+storage or remediation.
 
 The tests are designed for disposable clusters. Candidate CatalogSource and
 OLM cleanup failures are logged as warnings. The applied IDMS remains in place

@@ -300,15 +300,19 @@ func (run *OwnedRun) clusterObjects(ctx context.Context) ([]*unstructured.Unstru
 // (the nodeSelector never matches), so no watchdog or storage action is ever taken,
 // while the controller still reconciles the object and its owned DaemonSet.
 //
-// storageClass must name a real, RWX-capable StorageClass. The controller treats a
-// missing/incompatible StorageClass as a permanent validation error and never creates
-// the agent DaemonSet at all, regardless of nodeSelector, so this cannot be omitted.
+// An empty storageClass omits shared storage entirely. In that mode the controller
+// reports a storage validation error and creates no agent DaemonSet or PVC.
+// A nonempty storageClass must name a real, RWX-capable class to create the DaemonSet.
 func SafeSpec(token, storageClass string) map[string]interface{} {
-	return map[string]interface{}{
+	spec := map[string]interface{}{
 		"nodeSelector": map[string]interface{}{
 			RunLabel: token,
 		},
 		"maxConsecutiveFailures": int64(sbrparams.SBRCMaxConsecutiveFailuresMin),
-		"sharedStorageClass":     storageClass,
 	}
+	if storageClass != "" {
+		spec["sharedStorageClass"] = storageClass
+	}
+
+	return spec
 }
