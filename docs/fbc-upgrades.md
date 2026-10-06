@@ -55,8 +55,21 @@ evict a standalone workload before and after upgrading. It creates an owned
 least-privilege CredentialsRequest, keeps credentials only in Secrets, and
 deletes its request during cleanup. The full FAR acceptance suite is not run.
 
-MDR and NMO still use `NewStubUpgradeOperatorTest`.
-Their stubs provide only the shared catalog/CSV/version/image checks,
+MDR has concrete, nondestructive hooks in `tests/mdr-operator/tests/upgrade_lifecycle.go`.
+They require the exact upgrade and preserve a GA-created template's UID and full
+spec. MDR currently has no configurable spec fields: its `template.spec` is an
+empty map, which is still compared in full rather than replaced with invented settings.
+Before and after the upgrade, a fresh request copies the persisted template and
+must report both `Processing=False` and `Succeeded=False` with reason
+`RemediationStoppedByNHC`. Each request targets a unique, verified nonexistent node
+and carries the mandatory NHC timeout safety annotation, blocking Machine deletion
+even if that node appeared. No NHC installation, worker replacement, or storage is
+needed. A new post-upgrade request UID prevents stale GA status satisfying this check;
+MDR does not currently populate `observedGeneration` in these conditions.
+This proves safe controller reconciliation, not functional Machine replacement.
+
+NMO still uses `NewStubUpgradeOperatorTest`.
+Its stub provides only the shared catalog/CSV/version/image checks,
 not configuration persistence or operator-specific behavior validation.
 Follow-ups replace each operator's factory with concrete lifecycle hooks;
 operator-specific validations do not belong in the generic `stub.go`.
@@ -100,8 +113,8 @@ make run-tests
 ```
 
 Replace `nhc-operator` with `sbr-operator`, `snr-operator`, `far-operator`,
-`mdr-operator`, or `nmo-operator`. NHC, SBR, SNR, and FAR have operator-specific lifecycle
-checks; MDR and NMO currently have lifecycle stubs.
+`mdr-operator`, or `nmo-operator`. NHC, SBR, SNR, FAR, and MDR have operator-specific lifecycle
+checks; NMO currently has a lifecycle stub.
 
 ## SBR: upgrade and configuration without storage
 
