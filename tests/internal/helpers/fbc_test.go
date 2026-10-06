@@ -18,11 +18,11 @@ func TestPodContainerUsesDigestPinnedImageThroughTaggedSpec(t *testing.T) {
 		}}},
 	}
 
-	if !podContainerUsesImage(pod, "manager", "ttl.sh/operator@sha256:"+digest) {
+	if !PodContainerUsesImage(pod, "manager", "ttl.sh/operator@sha256:"+digest) {
 		t.Fatal("tagged container spec did not match its runtime digest")
 	}
 
-	if podContainerUsesImage(pod, "manager", "ttl.sh/operator@sha256:"+strings.Repeat("b", 64)) {
+	if PodContainerUsesImage(pod, "manager", "ttl.sh/operator@sha256:"+strings.Repeat("b", 64)) {
 		t.Fatal("container matched a different runtime digest")
 	}
 }
