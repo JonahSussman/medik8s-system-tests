@@ -1,5 +1,51 @@
 # Storage-Based Remediation (SBR) Test Analysis
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Test Structure](#test-structure)
+  - [Test Files](#test-files)
+- [Test Cases by Category](#test-cases-by-category)
+  - [1. Post-Deployment Validation Tests](#1-post-deployment-validation-tests-sbrgo)
+  - [2. Negative Tests](#2-negative-tests-sbrgo)
+  - [3. Remediation CR Lifecycle](#3-remediation-cr-lifecycle-remediationgo)
+  - [4. SBRC Lifecycle](#4-sbrc-lifecycle-sbrc_lifecyclego)
+  - [5. Watchdog Tests](#5-watchdog-tests-watchdoggo)
+  - [6. Destructive Failure Scenarios](#6-destructive-failure-scenarios)
+  - [7. Integration Tests](#7-integration-tests)
+  - [8. Observability Tests](#8-observability-tests)
+  - [9. Controller Resilience](#9-controller-resilience-controller_resiliencego)
+  - [10. Upgrade Tests](#10-upgrade-tests-upgrade_operator_fbcgo)
+- [Test Labels and Categorization](#test-labels-and-categorization)
+- [Platform Support](#platform-support)
+- [Storage Class Configuration](#storage-class-configuration)
+  - [Storage Requirements by Test Category](#storage-requirements-by-test-category)
+  - [CephFS-Specific Tests](#cephfs-specific-tests)
+  - [Environment Variable Override](#environment-variable-override)
+  - [Common StorageClass Examples](#common-storageclass-examples)
+  - [Storage Class Requirements Summary](#storage-class-requirements-summary)
+- [Known Test Dependencies](#known-test-dependencies)
+- [Common Test Patterns](#common-test-patterns)
+- [Job Run Analysis](#job-run-analysis)
+- [Test Execution Flow](#test-execution-flow)
+- [Recommendations](#recommendations)
+- [Summary](#summary)
+- [Proposed New Test Cases for Ceph RBD Block Storage](#proposed-new-test-cases-for-ceph-rbd-block-storage-rhwa-system-tests)
+  - [Background](#background)
+  - [Proposed Test Cases for rhwa-system-tests](#proposed-test-cases-for-rhwa-system-tests)
+    - [1. Ceph RBD Multi-Writer Concurrency Test](#1-ceph-rbd-multi-writer-concurrency-test)
+    - [2. Ceph RBD Block Device Inspection and Slot Verification Test](#2-ceph-rbd-block-device-inspection-and-slot-verification-test)
+    - [3. Ceph RBD Persistent Fencing State Across Node Reboot](#3-ceph-rbd-persistent-fencing-state-across-node-reboot)
+    - [4. Ceph RBD Heartbeat Performance Under Load](#4-ceph-rbd-heartbeat-performance-under-load)
+    - [5. Ceph RBD Recovery After Transient Network Partition](#5-ceph-rbd-recovery-after-transient-network-partition)
+  - [Implementation Guide for rhwa-system-tests](#implementation-guide-for-rhwa-system-tests)
+  - [Success Criteria](#success-criteria)
+  - [Expected Benefits](#expected-benefits)
+  - [Integration with OpenShift CI](#integration-with-openshift-ci)
+  - [Proposed Ceph RBD Block Storage Tests - Storage Requirements Summary](#proposed-ceph-rbd-block-storage-tests---storage-requirements-summary)
+
+---
+
 ## Overview
 Analysis of Storage-Based Remediation tests from the rhwa-system-tests repository and job run from periodic-ci-openshift-rhwa-system-tests-main-5.0-upstream-e2e-sbr-daily-aws-odf/2107320620009132032
 
