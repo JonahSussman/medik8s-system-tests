@@ -38,7 +38,24 @@ upgrade; boot IDs must change while the node UID remains the same. This scenario
 is destructive and requires at least two Ready workers on a disposable cluster.
 It does not install NHC or stop kubelet: a test-owned SNR CR triggers remediation.
 
-FAR, MDR, and NMO still use `NewStubUpgradeOperatorTest`.
+FAR's default is a focused, nondestructive upgrade check on OpenShift 5.0.
+It requires the new Succeeded CSV, exact candidate version/image, and the same
+customized template UID and complete spec. A temporary, read-only status probe
+against a documentation-only dummy IP address must produce `ValidationFailed`
+at the current template generation, proving fresh candidate reconciliation.
+That failure is expected, not a claim that real remediation works. The original
+spec is restored and the probe result must clear. The default creates no
+remediation CRs, fencing credentials, workload pods, NHC, or storage.
+
+Real fencing is optional: set `FAR_FBC_REMEDIATION=true` on a disposable AWS
+cluster with three Ready workers, a runnable `WORKLOAD_IMAGE` with `sleep`,
+and CCO capable of minting fencing credentials. This mode requires a successful
+read-only status probe and uses the persisted template to reboot a worker and
+evict a standalone workload before and after upgrading. It creates an owned
+least-privilege CredentialsRequest, keeps credentials only in Secrets, and
+deletes its request during cleanup. The full FAR acceptance suite is not run.
+
+MDR and NMO still use `NewStubUpgradeOperatorTest`.
 Their stubs provide only the shared catalog/CSV/version/image checks,
 not configuration persistence or operator-specific behavior validation.
 Follow-ups replace each operator's factory with concrete lifecycle hooks;
@@ -69,7 +86,7 @@ When `<OPERATOR>_FBC_IDMS_PATH` is unset, the test uses `$SHARED_DIR/idms.yaml` 
 that file exists. Otherwise it skips IDMS application, which is appropriate for
 directly pullable source-built catalogs. The catalog and candidate images must
 use immutable `@sha256:` pullspecs. Registry credentials must already be
-present in the cluster pull secret; tests never acquire or print credentials.
+present in the cluster pull secret; tests never acquire or print registry credentials.
 
 ## Run one operator
 
@@ -83,8 +100,8 @@ make run-tests
 ```
 
 Replace `nhc-operator` with `sbr-operator`, `snr-operator`, `far-operator`,
-`mdr-operator`, or `nmo-operator`. NHC, SBR, and SNR have operator-specific lifecycle
-checks; FAR, MDR, and NMO currently have lifecycle stubs.
+`mdr-operator`, or `nmo-operator`. NHC, SBR, SNR, and FAR have operator-specific lifecycle
+checks; MDR and NMO currently have lifecycle stubs.
 
 ## SBR: upgrade and configuration without storage
 
