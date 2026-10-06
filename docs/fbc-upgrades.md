@@ -63,7 +63,7 @@ Before and after the upgrade, a fresh request copies the persisted template and
 must report both `Processing=False` and `Succeeded=False` with reason
 `RemediationStoppedByNHC`. Each request targets a unique, verified nonexistent node
 and carries the mandatory NHC timeout safety annotation, blocking Machine deletion
-even if that node appeared. No NHC installation, worker replacement, or storage is
+while the request is active. No NHC installation, worker replacement, or storage is
 needed. A new post-upgrade request UID prevents stale GA status satisfying this check;
 MDR does not currently populate `observedGeneration` in these conditions.
 This proves safe controller reconciliation, not functional Machine replacement.
