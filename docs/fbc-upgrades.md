@@ -29,7 +29,16 @@ They capture and compare the config UID and complete spec, prove fresh
 reconciliation, and restore the original configuration. Its default no-storage
 mode and optional remediation check are described below.
 
-SNR, FAR, MDR, and NMO still use `NewStubUpgradeOperatorTest`.
+SNR has concrete hooks in `tests/snr-operator/tests/upgrade_lifecycle.go`.
+They customize the GA-created default config, compare its UID and complete spec
+after upgrading, and require a unique config probe to reach newly rolled agent
+pods. Both the controller and all agents must run the expected candidate image.
+A direct SNR remediation must reboot and recover a worker before and after the
+upgrade; boot IDs must change while the node UID remains the same. This scenario
+is destructive and requires at least two Ready workers on a disposable cluster.
+It does not install NHC or stop kubelet: a test-owned SNR CR triggers remediation.
+
+FAR, MDR, and NMO still use `NewStubUpgradeOperatorTest`.
 Their stubs provide only the shared catalog/CSV/version/image checks,
 not configuration persistence or operator-specific behavior validation.
 Follow-ups replace each operator's factory with concrete lifecycle hooks;
@@ -74,8 +83,8 @@ make run-tests
 ```
 
 Replace `nhc-operator` with `sbr-operator`, `snr-operator`, `far-operator`,
-`mdr-operator`, or `nmo-operator`. NHC and SBR have operator-specific lifecycle
-checks; SNR, FAR, MDR, and NMO currently have lifecycle stubs.
+`mdr-operator`, or `nmo-operator`. NHC, SBR, and SNR have operator-specific lifecycle
+checks; FAR, MDR, and NMO currently have lifecycle stubs.
 
 ## SBR: upgrade and configuration without storage
 
