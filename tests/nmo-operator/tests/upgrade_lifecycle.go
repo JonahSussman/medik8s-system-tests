@@ -19,6 +19,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -75,6 +76,13 @@ func (hooks *nmoUpgradeOperatorFBCTest) BeforeUpgrade(ctx context.Context) error
 	Eventually(func() error {
 		return APIClient.Create(ctx, hooks.config.DeepCopy(), client.DryRunAll)
 	}, medik8sparams.DefaultTimeout, nmoparams.DefaultPollInterval).Should(Succeed())
+	node := &corev1.Node{}
+	if err := APIClient.Get(ctx, client.ObjectKey{Name: hooks.worker.Name}, node); err != nil {
+		return err
+	}
+	if err := nmoutils.VerifyNode(node, hooks.worker.UID, false); err != nil {
+		return err
+	}
 	if err := APIClient.Create(ctx, hooks.config); err != nil {
 		return err
 	}
@@ -126,18 +134,22 @@ func (hooks *nmoUpgradeOperatorFBCTest) changeSpecAndReconcile(ctx context.Conte
 	if err := hooks.owned.VerifyOwner(ctx); err != nil {
 		return err
 	}
-	if err := APIClient.Get(ctx, client.ObjectKeyFromObject(hooks.config), hooks.config); err != nil {
-		return err
-	}
-	if err := nmoutils.VerifyOwned(hooks.config, hooks.configUID, hooks.owned.Token, hooks.worker.Name); err != nil {
-		return err
-	}
-	base := hooks.config.DeepCopy()
-	if err := unstructured.SetNestedMap(hooks.config.Object, spec, "spec"); err != nil {
-		return err
-	}
-	patch := client.MergeFromWithOptions(base, client.MergeFromWithOptimisticLock{})
-	if err := APIClient.Patch(ctx, hooks.config, patch); err != nil {
+	// NMO also writes status; retry resource-version conflicts without dropping ownership checks.
+	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := APIClient.Get(ctx, client.ObjectKeyFromObject(hooks.config), hooks.config); err != nil {
+			return err
+		}
+		if err := nmoutils.VerifyOwned(hooks.config, hooks.configUID, hooks.owned.Token, hooks.worker.Name); err != nil {
+			return err
+		}
+		base := hooks.config.DeepCopy()
+		if err := unstructured.SetNestedMap(hooks.config.Object, spec, "spec"); err != nil {
+			return err
+		}
+		patch := client.MergeFromWithOptions(base, client.MergeFromWithOptimisticLock{})
+
+		return APIClient.Patch(ctx, hooks.config, patch)
+	}); err != nil {
 		return err
 	}
 	// Use the API patch response, not client time or a status sampled before the write.
