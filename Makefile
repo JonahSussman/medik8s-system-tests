@@ -87,7 +87,7 @@ run-tests: ginkgo
 
 run-internal-pkg-unit-tests:
 	@echo "Executing internal package unit tests"
-	UNIT_TEST=true go test -v ./tests/internal/...
+	UNIT_TEST=true WORKLOAD_IMAGE=unused go test -v ./tests/internal/...
 
 # Note: To add more unit tests for more packages, add corresponding targets here
 test: run-internal-pkg-unit-tests run-nhc-upgrade-unit-tests run-sbr-upgrade-unit-tests run-blanklines-unit-tests

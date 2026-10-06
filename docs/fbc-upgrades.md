@@ -1,7 +1,8 @@
 # File-Based Catalog Operator Upgrades
 
-The `tier:upgrade-operator` tests exercise the same release contract for
-NHC, SBR, SNR, FAR, MDR, and NMO:
+The shared `tier:upgrade-operator` runner handles the catalog and OLM transition
+for NHC, SBR, SNR, FAR, MDR, and NMO. Operator-specific lifecycle hooks supply
+the configuration and behavior checks:
 
 1. Apply the release-provided ImageDigestMirrorSet and wait for any
    MachineConfigPool rollout.
@@ -10,9 +11,24 @@ NHC, SBR, SNR, FAR, MDR, and NMO:
 4. Exercise operator-specific behavior and capture persistent state.
 5. Switch the existing Subscription to the candidate FBC.
 6. Require a new Succeeded CSV with the exact candidate version.
-7. Require the live controller and operands to run the expected digest-pinned
-   image.
+7. Require the live controller to run the expected digest-pinned image.
 8. Verify preserved state, fresh reconciliation, and operator-specific behavior.
+
+## Validation coverage
+
+NHC's validations moved from `upgrade_operator.go` into
+`tests/nhc-operator/tests/upgrade_lifecycle.go`; they are not deferred to a stub.
+`BeforeUpgrade` creates the configuration, captures its UID and complete spec,
+and exercises baseline reconciliation and remediation. `AfterUpgrade` compares
+the UID and complete spec, requires a fresh pause response, restores the original
+configuration, and exercises candidate remediation. The shared runner calls both
+hooks around the Subscription upgrade and requires them to succeed.
+
+SBR, SNR, FAR, MDR, and NMO still use `NewStubUpgradeOperatorTest` in this base
+change. Their stubs provide only the shared catalog/CSV/version/image checks,
+not configuration persistence or operator-specific behavior validation.
+Follow-ups replace each operator's factory with concrete lifecycle hooks;
+operator-specific validations do not belong in the generic `stub.go`.
 
 ## Inputs
 
@@ -53,10 +69,9 @@ make run-tests
 ```
 
 Replace `nhc-operator` with `sbr-operator`, `snr-operator`, `far-operator`,
-`mdr-operator`, or `nmo-operator`. SBR also requires `SBR_STORAGE_CLASS` to
-name an RWX-capable class. FAR requires AWS credentials available through the
-cluster CredentialsRequest. The destructive suites require enough healthy
-workers for safe remediation.
+`mdr-operator`, or `nmo-operator`. NHC's remediation checks require enough
+healthy workers. The other operators' current stubs do not exercise remediation
+or configuration persistence; they are not complete lifecycle tests.
 
 The tests are designed for disposable clusters. Candidate CatalogSource and
 OLM cleanup failures are logged as warnings. The applied IDMS remains in place

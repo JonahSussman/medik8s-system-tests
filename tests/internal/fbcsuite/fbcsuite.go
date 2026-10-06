@@ -1,4 +1,3 @@
-//nolint:wsl_v5 // Ginkgo spec registration flows logically across test phases.
 package fbcsuite
 
 import (
@@ -87,7 +86,6 @@ func DefineFBCUpgradeSuite(cfg UpgradeOperatorFBCConfig) bool {
 					defer cancel()
 
 					test.Cleanup(cleanupCtx)
-
 					helpers.DeleteSubscription(APIClient, cfg.SubscriptionName, medik8sparams.OperatorNs, GinkgoWriter.Printf)
 					helpers.DeleteStaleCSVsAndInstallPlans(APIClient, cfg.PackageName, medik8sparams.OperatorNs, GinkgoWriter.Printf)
 					if err := helpers.DeleteCandidateCatalog(APIClient, inputs.CatalogName); err != nil {
@@ -133,7 +131,6 @@ func DefineFBCUpgradeSuite(cfg UpgradeOperatorFBCConfig) bool {
 			By("2. Applying IDMS and waiting for MachineConfigPool rollout if needed")
 			preIDMSGens, err := helpers.GetMCPGenerations(ctx)
 			Expect(err).NotTo(HaveOccurred(), "capture MCP generations before IDMS apply")
-
 			idmsChanged, err := helpers.ApplyIDMSFile(ctx, inputs.IDMSPath, GinkgoWriter.Printf)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -164,7 +161,6 @@ func DefineFBCUpgradeSuite(cfg UpgradeOperatorFBCConfig) bool {
 				medik8sparams.GACatalogNamespace, spec.Package, spec.Channel,
 			)
 			Expect(err).NotTo(HaveOccurred())
-
 			baseline, err := helpers.WaitForInstalledOperator(
 				ctx, APIClient, spec, medik8sparams.OperatorUpgradeTimeout, 10*time.Second,
 			)
@@ -198,7 +194,6 @@ func DefineFBCUpgradeSuite(cfg UpgradeOperatorFBCConfig) bool {
 
 			By("9. Proving upgraded operator behavior after upgrade")
 			Expect(test.AfterUpgrade(ctx)).To(Succeed())
-
 			AddReportEntry(
 				fmt.Sprintf("%s-upgrade-operator-fbc-result", reportPrefix),
 				result,

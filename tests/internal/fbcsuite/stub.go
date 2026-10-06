@@ -9,6 +9,8 @@ import (
 type stubUpgradeOperatorTest struct{}
 
 // NewStubUpgradeOperatorTest creates an operator upgrade test with no operator-specific behavior.
+// Only shared catalog/CSV/version/image checks run; configuration persistence
+// and behavior validation require an operator-specific factory instead.
 func NewStubUpgradeOperatorTest(medik8sparams.FBCUpgradeInputs) UpgradeOperatorFBCTest {
 	return &stubUpgradeOperatorTest{}
 }

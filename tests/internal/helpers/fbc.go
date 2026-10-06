@@ -1,4 +1,3 @@
-//nolint:wsl_v5 // Polling state is kept adjacent to the checks that update it.
 package helpers
 
 import (
@@ -73,7 +72,6 @@ func CreateCandidateCatalog(
 	catalog.Definition.Spec.Image = image
 	catalog.Definition.Spec.DisplayName = "RHWA FBC upgrade candidate"
 	catalog.Definition.Spec.Publisher = "rhwa-system-tests"
-
 	created, err := catalog.Create()
 	if err != nil {
 		return nil, fmt.Errorf("create candidate CatalogSource %s: %w", name, err)

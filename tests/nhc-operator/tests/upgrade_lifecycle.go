@@ -1,4 +1,3 @@
-//nolint:wsl_v5 // Upgrade steps are grouped by lifecycle phase.
 package tests
 
 import (
@@ -111,7 +110,6 @@ func (hooks *nhcUpgradeOperatorFBCTest) BeforeUpgrade(ctx context.Context) error
 		return err
 	}
 	hooks.currentTargetNode = targetNode
-
 	AddReportEntry("nhc-baseline-remediation-node", hooks.currentTargetNode)
 	cleanupPostRemediationNHC(ctx, &hooks.currentTargetNode, "pre-operator-upgrade")
 

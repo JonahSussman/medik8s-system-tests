@@ -10,7 +10,6 @@ func TestLoadFBCUpgradeInputs(t *testing.T) {
 	t.Setenv("NHC_FBC_CATALOG_IMAGE", "quay.io/example/catalog@sha256:"+strings.Repeat("a", 64))
 	t.Setenv("NHC_FBC_CANDIDATE_VERSION", "5.8.0")
 	t.Setenv("NHC_FBC_CANDIDATE_IMAGE", "quay.io/example/operator@sha256:"+strings.Repeat("b", 64))
-
 	inputs, err := LoadFBCUpgradeInputs("NHC")
 	if err != nil {
 		t.Fatalf("LoadFBCUpgradeInputs returned an error: %v", err)
@@ -86,7 +85,6 @@ func TestLoadFBCUpgradeInputsSeparatesOperators(t *testing.T) {
 	t.Setenv("SBR_FBC_CATALOG_IMAGE", "quay.io/example/sbr-catalog@sha256:"+strings.Repeat("c", 64))
 	t.Setenv("SBR_FBC_CANDIDATE_VERSION", "5.9.0")
 	t.Setenv("SBR_FBC_CANDIDATE_IMAGE", "quay.io/example/sbr@sha256:"+strings.Repeat("d", 64))
-
 	nhcInputs, err := LoadFBCUpgradeInputs("nhc")
 	if err != nil {
 		t.Fatalf("load NHC inputs: %v", err)

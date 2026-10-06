@@ -66,7 +66,6 @@ func LoadFBCUpgradeInputs(operatorName string) (FBCUpgradeInputs, error) {
 	}
 
 	skipCleanupName := envName("SKIP_CLEANUP")
-
 	skipCleanup := strings.TrimSpace(os.Getenv(skipCleanupName))
 	switch skipCleanup {
 	case "", "false":
