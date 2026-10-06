@@ -3,8 +3,9 @@
 Automated tests validating the Fence Agents Remediation (FAR) operator deployment, security posture, and high-availability configuration.
 
 The shared FBC upgrade scenario is documented in
-[`../../docs/fbc-upgrades.md`](../../docs/fbc-upgrades.md). On AWS it performs real fencing
-and recovery before and after the candidate upgrade.
+[`../../docs/fbc-upgrades.md`](../../docs/fbc-upgrades.md). By default it validates the
+OLM upgrade, preserved template UID/full spec, and fresh safe reconciliation.
+Real AWS fencing and recovery are optional with `FAR_FBC_REMEDIATION=true`.
 
 ## Prerequisites
 
