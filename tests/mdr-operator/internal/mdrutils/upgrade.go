@@ -26,7 +26,7 @@ func VerifyConfiguration(object *unstructured.Unstructured, uid types.UID, spec 
 	return nil
 }
 
-// SafeProbe copies the persisted template and unconditionally blocks Machine deletion.
+// SafeProbe copies the persisted template and blocks Machine deletion while the request is active.
 // NHC is not installed: its timeout annotation is a supported controller safety gate.
 func SafeProbe(template *unstructured.Unstructured, name, token string) (*unstructured.Unstructured, error) {
 	spec, found, err := unstructured.NestedMap(template.Object, "spec", "template", "spec")
@@ -53,7 +53,8 @@ func SafeProbe(template *unstructured.Unstructured, name, token string) (*unstru
 // VerifySafeProbe requires both stopped conditions on the newly created, owned request.
 // MDR does not populate observedGeneration; a fresh request UID prevents stale GA status passing.
 func VerifySafeProbe(object *unstructured.Unstructured, uid types.UID, token string) error {
-	if uid == "" || object.GetUID() != uid || object.GetLabels()[helpers.FBCRunLabel] != token {
+	if uid == "" || object.GetUID() != uid || object.GetLabels()[helpers.FBCRunLabel] != token ||
+		object.GetDeletionTimestamp() != nil {
 		return fmt.Errorf("MDR probe was replaced or is not owned by this run")
 	}
 	if _, exists := object.GetAnnotations()[mdrparams.NHCTimedOutAnnotationKey]; !exists {

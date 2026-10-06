@@ -6,6 +6,7 @@ import (
 
 	"github.com/medik8s/system-tests/tests/internal/helpers"
 	"github.com/medik8s/system-tests/tests/mdr-operator/internal/mdrparams"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -125,6 +126,16 @@ func TestVerifySafeProbe(t *testing.T) {
 		}},
 		{name: "missing safety gate", wantErr: true, change: func(object *unstructured.Unstructured) {
 			object.SetAnnotations(nil)
+		}},
+		{name: "terminating request", wantErr: true, change: func(object *unstructured.Unstructured) {
+			timestamp := metav1.Now()
+			object.SetDeletionTimestamp(&timestamp)
+		}},
+		{name: "wrong stopped reason", wantErr: true, change: func(object *unstructured.Unstructured) {
+			_ = unstructured.SetNestedSlice(object.Object, []interface{}{
+				map[string]interface{}{"type": "Processing", "status": "False", "reason": "NodeNotFound"},
+				map[string]interface{}{"type": "Succeeded", "status": "False", "reason": "NodeNotFound"},
+			}, "status", "conditions")
 		}},
 		{name: "only processing stopped", wantErr: true, change: func(object *unstructured.Unstructured) {
 			_ = unstructured.SetNestedSlice(object.Object, []interface{}{map[string]interface{}{
