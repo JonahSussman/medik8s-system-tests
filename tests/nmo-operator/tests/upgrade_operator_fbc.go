@@ -1,12 +1,25 @@
 package tests
 
 import (
+	"crypto/rand"
+	"strings"
+
 	"github.com/medik8s/system-tests/tests/internal/fbcsuite"
+	"github.com/medik8s/system-tests/tests/internal/helpers"
 	"github.com/medik8s/system-tests/tests/internal/labels"
+	. "github.com/medik8s/system-tests/tests/internal/medik8sinittools"
+	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 	"github.com/medik8s/system-tests/tests/nmo-operator/internal/nmoparams"
 )
 
-// Operator-specific NMO lifecycle validation is deferred.
+func newNMOFBCTest(inputs medik8sparams.FBCUpgradeInputs) fbcsuite.UpgradeOperatorFBCTest {
+	return &nmoUpgradeOperatorFBCTest{
+		owned: &helpers.FBCNamespace{
+			API: APIClient, Name: medik8sparams.OperatorNs, Token: strings.ToLower(rand.Text()),
+		},
+	}
+}
+
 var _ = fbcsuite.DefineFBCUpgradeSuite(fbcsuite.UpgradeOperatorFBCConfig{
 	OperatorName:     "NMO",
 	PackageName:      "node-maintenance-operator",
@@ -16,8 +29,8 @@ var _ = fbcsuite.DefineFBCUpgradeSuite(fbcsuite.UpgradeOperatorFBCConfig{
 	ContainerName:    nmoparams.ManagerContainerName,
 	Labels: []string{
 		labels.OperatorNMO, nmoparams.Label, labels.TierUpgradeOperator,
-		labels.DisruptionNonDestructive, labels.PlatformAny, labels.ComponentOLM,
+		labels.DisruptionDestructive, labels.PlatformAny, labels.ComponentOLM,
 	},
 	PolarionID:                "REPLACE_WITH_POLARION_ID",
-	NewUpgradeOperatorFBCTest: fbcsuite.NewStubUpgradeOperatorTest,
+	NewUpgradeOperatorFBCTest: newNMOFBCTest,
 })
