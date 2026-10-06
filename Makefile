@@ -90,7 +90,7 @@ run-internal-pkg-unit-tests:
 	UNIT_TEST=true WORKLOAD_IMAGE=unused go test -v ./tests/internal/...
 
 # Note: To add more unit tests for more packages, add corresponding targets here
-test: run-internal-pkg-unit-tests run-nhc-upgrade-unit-tests run-sbr-upgrade-unit-tests run-snr-upgrade-unit-tests run-far-upgrade-unit-tests run-blanklines-unit-tests
+test: run-internal-pkg-unit-tests run-nhc-upgrade-unit-tests run-sbr-upgrade-unit-tests run-snr-upgrade-unit-tests run-far-upgrade-unit-tests run-mdr-upgrade-unit-tests run-blanklines-unit-tests
 
 .PHONY: run-blanklines-unit-tests
 run-blanklines-unit-tests:
@@ -111,6 +111,10 @@ run-snr-upgrade-unit-tests:
 .PHONY: run-far-upgrade-unit-tests
 run-far-upgrade-unit-tests:
 	UNIT_TEST=true WORKLOAD_IMAGE=unused go test ./tests/far-operator/internal/...
+
+.PHONY: run-mdr-upgrade-unit-tests
+run-mdr-upgrade-unit-tests:
+	UNIT_TEST=true WORKLOAD_IMAGE=unused go test ./tests/mdr-operator/internal/...
 
 coverage-html: test
 	go tool cover -html cover.out
