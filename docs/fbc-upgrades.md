@@ -68,11 +68,16 @@ needed. A new post-upgrade request UID prevents stale GA status satisfying this 
 MDR does not currently populate `observedGeneration` in these conditions.
 This proves safe controller reconciliation, not functional Machine replacement.
 
-NMO still uses `NewStubUpgradeOperatorTest`.
-Its stub provides only the shared catalog/CSV/version/image checks,
-not configuration persistence or operator-specific behavior validation.
-Follow-ups replace each operator's factory with concrete lifecycle hooks;
-operator-specific validations do not belong in the generic `stub.go`.
+NMO has concrete hooks in `tests/nmo-operator/tests/upgrade_lifecycle.go`.
+On a disposable OpenShift 5.0 cluster with at least two Ready, schedulable workers,
+it drains one non-control-plane worker using an owned `NodeMaintenance` CR.
+The same CR UID and complete spec must survive the exact version/image upgrade.
+A unique reason change and restoration must each produce a newer controller
+`status.lastUpdate` than the API patch response: NMO has no `observedGeneration`.
+The worker must remain Ready, cordoned, drain-tainted, and excluded from remediation.
+Cleanup deletes only the owned CR, requires the original worker to recover and its
+lease to disappear, and only then removes the operator. This is destructive
+maintenance, not a reboot or a full acceptance suite. All six suites have real hooks.
 
 ## Inputs
 
@@ -113,8 +118,7 @@ make run-tests
 ```
 
 Replace `nhc-operator` with `sbr-operator`, `snr-operator`, `far-operator`,
-`mdr-operator`, or `nmo-operator`. NHC, SBR, SNR, FAR, and MDR have operator-specific lifecycle
-checks; NMO currently has a lifecycle stub.
+`mdr-operator`, or `nmo-operator`. All six have operator-specific lifecycle checks.
 
 ## SBR: upgrade and configuration without storage
 
