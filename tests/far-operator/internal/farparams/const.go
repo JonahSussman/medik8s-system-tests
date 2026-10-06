@@ -203,7 +203,7 @@ const (
 	// The :latest tag is intentional: this suite validates that must-gather collects
 	// the correct FAR data using the build a customer would actually pull, not a
 	// pinned must-gather version. The resolved image digest is logged on every run
-	// (see farutils.RunMustGather) so a failure is reproducible against the exact
+	// (see mustgather.Run) so a failure is reproducible against the exact
 	// build, and MUST_GATHER_IMAGE overrides this default when a specific ref is needed.
 	DefaultMustGatherImage = "quay.io/medik8s/must-gather:latest"
 	// MustGatherTimeout is how long to allow `oc adm must-gather` to run.

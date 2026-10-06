@@ -279,7 +279,7 @@ const (
 
 	// DefaultMustGatherImage is the upstream medik8s must-gather image, matching the FAR suite.
 	// The :latest tag is intentional so the test exercises the must-gather build a user would actually
-	// pull; the resolved image digest is logged on every run (see runMustGather) so a failure is
+	// pull; the resolved image digest is logged on every run (see mustgather.Run) so a failure is
 	// reproducible against the exact build, and MustGatherImageEnvVar overrides it when a specific ref
 	// is needed.
 	DefaultMustGatherImage = "quay.io/medik8s/must-gather:latest"

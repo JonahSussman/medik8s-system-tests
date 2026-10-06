@@ -76,26 +76,9 @@ var _ = Describe(
 			Expect(crdErr).ToNot(HaveOccurred(),
 				"Unexpected error while checking for NodeHealthCheck CRD")
 
-			By("Checking that StorageBasedRemediationTemplate exists")
+			By("Ensuring StorageBasedRemediationTemplate exists")
 
-			sbrTemplate := &unstructured.Unstructured{}
-			sbrTemplate.SetGroupVersionKind(schema.GroupVersionKind{
-				Group:   sbrparams.CRDGroup,
-				Version: sbrparams.CRDVersion,
-				Kind:    "StorageBasedRemediationTemplate",
-			})
-			templateErr := APIClient.Get(context.TODO(),
-				types.NamespacedName{Name: sbrparams.SBRTemplateName, Namespace: medik8sparams.OperatorNs}, sbrTemplate)
-
-			if k8serrors.IsNotFound(templateErr) {
-				Skip(fmt.Sprintf(
-					"StorageBasedRemediationTemplate %q not found in %s — "+
-						"NHC cannot create SBR CRs without it; skipping NHC integration test",
-					sbrparams.SBRTemplateName, medik8sparams.OperatorNs))
-			}
-
-			Expect(templateErr).ToNot(HaveOccurred(),
-				"Unexpected error fetching StorageBasedRemediationTemplate %q", sbrparams.SBRTemplateName)
+			ensureSBRTemplate()
 
 			By("Discovering RWX storage class")
 

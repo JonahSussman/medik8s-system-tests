@@ -89,6 +89,7 @@ var _ = Describe(
 
 			By("Ensuring NodeHealthCheck CR exists for SBR storage-loss detection")
 
+			ensureSBRTemplate()
 			nhcObj := buildNHCForSBRStorageLoss(sbrparams.NHCSBRTestName)
 			createNHCErr := APIClient.Create(context.TODO(), nhcObj)
 			if createNHCErr != nil && !k8serrors.IsAlreadyExists(createNHCErr) {

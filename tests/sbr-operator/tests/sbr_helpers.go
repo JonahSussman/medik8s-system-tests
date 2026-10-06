@@ -203,6 +203,46 @@ func isNHCCRDInstalled() bool {
 	return false
 }
 
+// ensureSBRTemplate creates the StorageBasedRemediationTemplate referenced by every SBR
+// NodeHealthCheck when it does not already exist. The SBR operator does not create it (the
+// sample only lives in the CSV alm-examples), and without it NHC disables itself with
+// RemediationTemplateNotFound and never creates StorageBasedRemediation CRs. A template
+// created here is deleted by DeferCleanup at the end of the calling node; a pre-existing
+// template is left untouched.
+func ensureSBRTemplate() {
+	template := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": sbrparams.CRDGroup + "/" + sbrparams.CRDVersion,
+			"kind":       "StorageBasedRemediationTemplate",
+			"metadata": map[string]interface{}{
+				"name":      sbrparams.SBRTemplateName,
+				"namespace": medik8sparams.OperatorNs,
+			},
+			"spec": map[string]interface{}{
+				"template": map[string]interface{}{
+					"spec": map[string]interface{}{},
+				},
+			},
+		},
+	}
+	err := APIClient.Create(context.TODO(), template)
+	if k8serrors.IsAlreadyExists(err) {
+		return
+	}
+
+	Expect(err).ToNot(HaveOccurred(),
+		"StorageBasedRemediationTemplate %q must be created in %s", sbrparams.SBRTemplateName, medik8sparams.OperatorNs)
+	GinkgoWriter.Printf("Created StorageBasedRemediationTemplate %s/%s\n",
+		medik8sparams.OperatorNs, sbrparams.SBRTemplateName)
+
+	DeferCleanup(func() {
+		if delErr := APIClient.Delete(context.TODO(), template); delErr != nil && !k8serrors.IsNotFound(delErr) {
+			GinkgoWriter.Printf("Warning: cleanup StorageBasedRemediationTemplate %s: %v\n",
+				sbrparams.SBRTemplateName, delErr)
+		}
+	})
+}
+
 // buildNHC returns an unstructured NodeHealthCheck CR that triggers SBR-based remediation
 // when a worker node reports SBRStorageUnhealthy=True for NHCUnhealthyDuration.
 func buildNHC(name string) *unstructured.Unstructured {

@@ -517,6 +517,7 @@ var _ = Describe(
 				if nhcInstalled {
 					By("NHC is installed — creating NodeHealthCheck CR for detect-only suppression test")
 
+					ensureSBRTemplate()
 					nhcCR = buildNHC(sbrparams.NHCDetectOnlyTestName)
 
 					if createNHCErr := APIClient.Create(context.TODO(), nhcCR); createNHCErr != nil {

@@ -155,6 +155,7 @@ var _ = Describe(
 
 			By("Creating NodeHealthCheck CR for split-brain test (or reusing an existing one)")
 
+			ensureSBRTemplate()
 			existingNHC := &unstructured.Unstructured{}
 			existingNHC.SetGroupVersionKind(schema.GroupVersionKind{
 				Group:   sbrparams.NHCAPIGroup,

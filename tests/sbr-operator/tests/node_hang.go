@@ -112,6 +112,7 @@ var _ = Describe(
 
 			By("Creating NodeHealthCheck CR")
 
+			ensureSBRTemplate()
 			nhc := buildNHCNodeHang(sbrparams.NHCNodeHangTestName)
 			nhcErr := APIClient.Create(context.TODO(), nhc)
 			if nhcErr != nil && !k8serrors.IsAlreadyExists(nhcErr) {
@@ -186,7 +187,7 @@ var _ = Describe(
 
 				buf, execErr := probePod.ExecCommand(
 					[]string{
-						"nsenter", "-t", "1", "--pid", "--mnt", "--",
+						"nsenter", "-t", "1", "--pid", "--mount", "--",
 						"cat", "/proc/sys/kernel/sysrq",
 					})
 
@@ -303,7 +304,7 @@ var _ = Describe(
 
 					// Fire-and-forget: exec will fail because the node reboots immediately.
 					_, _ = injectorPod.ExecCommand([]string{
-						"nsenter", "-t", "1", "--pid", "--mnt", "--", "sh", "-c",
+						"nsenter", "-t", "1", "--pid", "--mount", "--", "sh", "-c",
 						"echo 1 > /proc/sys/kernel/sysrq && echo c > /proc/sysrq-trigger",
 					})
 				} else {
