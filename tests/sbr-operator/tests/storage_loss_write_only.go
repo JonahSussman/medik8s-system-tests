@@ -136,8 +136,13 @@ var _ = Describe(
 			By(fmt.Sprintf("Creating StorageBasedRemediationConfig %q with sharedStorageClass=%q",
 				sbrparams.SBRCStorageLossWriteName, storageClass))
 
+			// Minimum sbrTimeoutSeconds (heartbeat = timeout/2) so a peer marks the
+			// storage-isolated node SBRStorageUnhealthy=True after ~MaxConsecutiveFailures
+			// heartbeats well within StorageInjectionTimeout. The default (30s) leaves too
+			// thin a margin under the injection wait and makes the test flaky.
 			testSBRC = buildSBRC(sbrparams.SBRCStorageLossWriteName, map[string]interface{}{
 				"sharedStorageClass": storageClass,
+				"sbrTimeoutSeconds":  int64(sbrparams.SBRCTimeoutSecondsMin),
 			})
 			createErr := APIClient.Create(context.TODO(), testSBRC)
 			Expect(createErr).ToNot(HaveOccurred(),
