@@ -149,6 +149,7 @@ var _ = Describe(
 
 			By("Creating NodeHealthCheck CR for the write-only storage loss test")
 
+			ensureSBRTemplate()
 			existingNHC := &unstructured.Unstructured{}
 			existingNHC.SetGroupVersionKind(schema.GroupVersionKind{
 				Group:   sbrparams.NHCAPIGroup,

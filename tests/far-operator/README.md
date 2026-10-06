@@ -314,7 +314,7 @@ Triggers a FAR remediation on a non-leader worker node, waits for the Processing
 
 ### 21. Verify FAR Timed-Out Remediation Retry Logging ([OCP-70873](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-70873))
 
-Deletes the FAR controller pods to isolate logs, then creates a FAR CR with an invalid AWS instance ID so every fence attempt fails, and verifies the active controller logs one failure entry per retry. Confirms the retry mechanism logs failure messages matching the configured retry count.
+Deletes the FAR controller pods to isolate logs, then creates a FAR CR with an invalid AWS instance ID so every fence attempt fails, and verifies the active controller logs one failure entry per retry for that CR's UID. Confirms the retry mechanism logs failure messages matching the configured retry count without counting failures from other remediations.
 
 - **Operators**: FAR v0.8.0+
 - **Cluster**: AWS, 3+ Ready worker nodes
@@ -322,7 +322,7 @@ Deletes the FAR controller pods to isolate logs, then creates a FAR CR with an i
 - **Environment**: Connected
 - **Labels**: `disruption:nondestructive`, `platform:aws`, `component:remediation`, `tier:acceptance`, `frequency:weekly`
 - **Standalone**: `ginkgo --label-filter="far" --focus="timeout messages matching retry count" ./tests/far-operator/...`
-- **Pass criteria**: the active FAR controller log contains exactly 10 (`FARCRRetryCount`) `command failed` entries, one per retry
+- **Pass criteria**: the active FAR controller log contains exactly 10 (`FARCRRetryCount`) `command failed` entries with the created CR's UID, one per retry
 
 ## NHC+FAR Interop Tests
 

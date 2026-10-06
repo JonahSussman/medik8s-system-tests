@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 
@@ -28,6 +27,7 @@ import (
 	"github.com/medik8s/system-tests/tests/internal/labels"
 	. "github.com/medik8s/system-tests/tests/internal/medik8sinittools"
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
+	"github.com/medik8s/system-tests/tests/internal/mustgather"
 )
 
 var _ = Describe("FAR Observability Tests",
@@ -243,12 +243,19 @@ var _ = Describe("FAR Observability Tests",
 
 					By("Running oc adm must-gather")
 
-					Expect(farutils.RunMustGather(ctx, mustGatherDir, farparams.MustGatherTimeout,
-						GinkgoWriter.Printf)).To(Succeed(), "oc adm must-gather failed")
+					mustGatherImage := os.Getenv(farparams.MustGatherImageEnvVar)
+					if mustGatherImage == "" {
+						mustGatherImage = farparams.DefaultMustGatherImage
+					}
+
+					Expect(mustgather.Run(ctx, mustGatherImage, mustGatherDir, mustgather.Options{
+						CommandTimeout:   farparams.MustGatherTimeout,
+						ImageInfoTimeout: farparams.OcDebugTimeout,
+					}, GinkgoWriter.Printf)).To(Succeed(), "oc adm must-gather failed")
 
 					By("Validating must-gather output contains FAR data")
 
-					expectations := []farutils.MustGatherExpectation{
+					expectations := []mustgather.MustGatherExpectation{
 						{
 							Description:  "node YAML files",
 							PathContains: "nodes",
@@ -273,7 +280,7 @@ var _ = Describe("FAR Observability Tests",
 							MinCount:     1,
 						},
 					}
-					missingItems := farutils.ValidateMustGatherContents(mustGatherDir, expectations)
+					missingItems := mustgather.ValidateMustGatherContents(mustGatherDir, expectations)
 					Expect(missingItems).To(BeEmpty(),
 						"Must-gather validation failed:\n%s", strings.Join(missingItems, "\n"))
 
@@ -357,6 +364,7 @@ var _ = Describe("FAR Observability Tests",
 
 					farCR := buildFARUnstructured(farCRName, fenceAgent, sharedParams, timedOutNodeParams)
 					createFARCR(ctx, APIClient, farCR)
+					Expect(farCR.GetUID()).ToNot(BeEmpty(), "Created FAR CR must have an API-assigned UID")
 
 					DeferCleanup(func() {
 						By("Deleting timed-out FAR CR " + farCRName)
@@ -385,7 +393,6 @@ var _ = Describe("FAR Observability Tests",
 
 					Expect(activeControllerPodName).ToNot(BeEmpty(),
 						"Could not find active controller pod on leader node %s", activeLeaderNode)
-					timedOutPattern := regexp.MustCompile(farparams.TimedOutLogPattern)
 
 					// Resolving the leader pod once is safe here: the timed-out fencing is
 					// non-destructive, so the controller leader stays stable through the retry
@@ -405,7 +412,7 @@ var _ = Describe("FAR Observability Tests",
 							return lastFailureCount
 						}
 
-						lastFailureCount = len(timedOutPattern.FindAllString(logs, -1))
+						lastFailureCount = farutils.CountRemediationFailureLogs(logs, string(farCR.GetUID()))
 
 						return lastFailureCount
 					}
