@@ -156,7 +156,7 @@ func WaitForDeploymentImage(
 					return false, nil
 				}
 
-				if !podContainerUsesImage(&pod, containerName, expectedImage) {
+				if !PodContainerUsesImage(&pod, containerName, expectedImage) {
 					return false, nil
 				}
 			}
@@ -171,7 +171,8 @@ func WaitForDeploymentImage(
 	return nil
 }
 
-func podContainerUsesImage(pod *corev1.Pod, containerName, expectedImage string) bool {
+// PodContainerUsesImage matches a pullspec or the immutable runtime image digest.
+func PodContainerUsesImage(pod *corev1.Pod, containerName, expectedImage string) bool {
 	for _, container := range pod.Spec.Containers {
 		if container.Name != containerName {
 			continue

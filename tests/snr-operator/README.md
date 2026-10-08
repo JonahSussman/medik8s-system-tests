@@ -1,12 +1,42 @@
 # SNR Operator Tests
 
+## FBC operator upgrade
+
+The `tier:upgrade-operator` scenario uses the same shared FBC runner as NHC and
+SBR. It installs GA SNR, customizes the default `SelfNodeRemediationConfig`, and
+captures its UID and entire defaulted spec. After switching the Subscription to
+the candidate catalog, it verifies the same config identity/spec and the expected
+controller and agent images. A unique toleration probe must reach newly rolled,
+Ready agent pods, then the original config is restored.
+
+Before and after upgrading, a test-owned `SelfNodeRemediation` must reboot a
+worker, preserve its node UID, and return it to Ready without remediation taints.
+This is a destructive test for disposable OpenShift 5.0 clusters with at least
+two Ready workers and an eligible target not hosting the active controller.
+It does not need NHC, SSH, a kubelet-stop command, or storage provisioning.
+
+```bash
+export ECO_TEST_FEATURES=snr-operator
+export ECO_TEST_LABELS=tier:upgrade-operator
+export ECO_TEST_VERBOSE=true
+export SNR_FBC_CATALOG_IMAGE='registry.example/snr-catalog@sha256:...'
+export SNR_FBC_CANDIDATE_VERSION=5.8.0
+export SNR_FBC_CANDIDATE_IMAGE='registry.example/snr-operator@sha256:...'
+export WORKLOAD_IMAGE=unused-by-snr-fbc-upgrade
+make run-tests
+```
+
+The cluster pull secret must already allow the supplied images to be pulled.
+Set `SNR_FBC_IDMS_PATH` only if registry mirrors are required. A source-built FBC
+and a supplied downstream FBC use these same inputs and lifecycle checks.
+Preflight rejects existing SNR installs or the operator namespace. Cleanup only
+removes the run-owned namespace/OLM resources; shared CRDs and any IDMS remain.
+
+See [shared FBC upgrade inputs and coverage](../../docs/fbc-upgrades.md).
+
 Automated tests validating the Self Node Remediation (SNR) operator
 deployment, configuration, OLM metadata, CRD validation, config lifecycle,
 and destructive remediation (kubelet stop, node reboot via NHC detection).
-
-The shared FBC upgrade scenario is documented in
-[`../../docs/fbc-upgrades.md`](../../docs/fbc-upgrades.md). It preserves the default SNR
-configuration and proves worker reboot remediation before and after upgrade.
 
 ## Prerequisites
 
