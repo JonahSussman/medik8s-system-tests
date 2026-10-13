@@ -564,6 +564,39 @@ func pickTargetWorkerNode() string {
 	return ""
 }
 
+// purgeInjectorImageAfterReboot removes the injector image from a node that was hard-rebooted.
+// An unclean reboot can corrupt the image's CRI-O overlay links, after which every new
+// container from that image fails with "readlink .../overlay/l: invalid argument" while the
+// node still reports Ready. Removing the image forces a clean pull for the next spec.
+// Containers still using the image (for example an injector pod whose container is being
+// restarted after the reboot) are removed first, since crictl rmi refuses an image in use.
+// Best effort: failures are logged, not asserted. The command reports whether the image is
+// actually gone afterwards, so the logs never claim a removal that did not happen.
+func purgeInjectorImageAfterReboot(ctx context.Context, nodeName string) {
+	GinkgoWriter.Printf("Removing injector image %s from node %s to drop overlay layers written before the reboot\n",
+		sbrparams.InjectorImage, nodeName)
+	output, err := helpers.RunOnNode(ctx, nodeName, sbrparams.CrioCleanupTimeout,
+		"bash", "-c", fmt.Sprintf(
+			"if ! crictl inspecti %[1]s >/dev/null 2>&1; then echo absent; "+
+				"else crictl ps -a -q --image %[1]s | xargs -r crictl rm -f >/dev/null 2>&1; "+
+				"if crictl rmi %[1]s >/dev/null 2>&1; then echo removed; else echo still-present; fi; fi",
+			sbrparams.InjectorImage))
+
+	switch {
+	case err != nil:
+		GinkgoT().Logf("Warning: injector image removal on node %s failed: %v (output: %s)",
+			nodeName, err, output)
+	case strings.Contains(output, "still-present"):
+		GinkgoT().Logf("Warning: injector image %s is still present on node %s after the purge, "+
+			"probably because a container is using it again (output: %s)",
+			sbrparams.InjectorImage, nodeName, output)
+	case strings.Contains(output, "absent"):
+		GinkgoT().Logf("Injector image %s already absent from node %s", sbrparams.InjectorImage, nodeName)
+	default:
+		GinkgoWriter.Printf("Injector image removed from node %s (output: %s)\n", nodeName, output)
+	}
+}
+
 // getSBRCRCondition returns the named status condition from an unstructured SBR CR, or nil.
 func getSBRCRCondition(sbrObj *unstructured.Unstructured, condType string) map[string]interface{} {
 	conditions, found, err := unstructured.NestedSlice(sbrObj.Object, "status", "conditions")
@@ -731,6 +764,16 @@ func (o *sbrCRObserver) observe() error {
 	return nil
 }
 
+// observeBestEffort samples the CR and logs unexpected pull errors. The node reboot and
+// recovery waits use it because a failed sample only risks missing CR lifecycle evidence,
+// not the wait's own subject. NotFound is expected and stays silent while NHC has not
+// created the CR yet.
+func (o *sbrCRObserver) observeBestEffort() {
+	if err := o.observe(); err != nil && !k8serrors.IsNotFound(err) {
+		GinkgoWriter.Printf("Warning: StorageBasedRemediation/%s sample failed: %v\n", o.nodeName, err)
+	}
+}
+
 // crFenced is an Eventually body: nil once FencingSucceeded=True was observed on the first CR.
 // Polling from the first sighting keeps sampling during the CR's short life, which may start
 // before the agents write the status. It stops retrying when that CR is removed or replaced
@@ -770,6 +813,19 @@ func (o *sbrCRObserver) crRemoved() error {
 	}
 
 	return fmt.Errorf("StorageBasedRemediation/%s (uid %s) still exists; waiting for cleanup", o.nodeName, o.uid)
+}
+
+// waitForSBRCRFenced waits until NHC creates the first StorageBasedRemediation CR for the
+// observed node and that CR reaches FencingSucceeded=True. The SBR agents fence as soon as
+// the CR exists and NHC deletes it soon after, so the observer must sample it while polling.
+func waitForSBRCRFenced(observer *sbrCRObserver) {
+	GinkgoHelper()
+	Eventually(observer.crFenced, sbrparams.NHCSBRCRCreationTimeout,
+		sbrparams.DefaultPollInterval).Should(Succeed(),
+		"NHC must create StorageBasedRemediation CR for node %s and it must reach FencingSucceeded=True",
+		observer.nodeName)
+	GinkgoWriter.Printf("StorageBasedRemediation/%s (uid %s) created by NHC and FencingSucceeded=True\n",
+		observer.nodeName, observer.uid)
 }
 
 // odfBlocklistEntry is one entry of "ceph osd blocklist ls --format json".

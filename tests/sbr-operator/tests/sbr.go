@@ -35,6 +35,12 @@ import (
 // Populated by the "SBR Debug — Cluster Watchdog Inventory" suite; readable by subsequent tests.
 var WatchdogDevicesByNode map[string][]string
 
+// WatchdogInventoryBootIDs stores each node's boot ID recorded when the watchdog inventory
+// was taken. The watchdog integration test compares it with the current boot ID to detect
+// nodes that rebooted after the inventory: a reboot clears the softdog kernel module, so
+// /dev/watchdog* can be absent until an SBR agent restarts on the node.
+var WatchdogInventoryBootIDs map[string]string
+
 // watchdogDebugPodName returns a valid pod name for the per-node watchdog discovery pod.
 func watchdogDebugPodName(nodeName string) string {
 	safe := strings.Map(func(r rune) rune {
@@ -69,6 +75,7 @@ var _ = Describe(
 				labels.FrequencyPresubmit,
 			), func() {
 				WatchdogDevicesByNode = make(map[string][]string)
+				WatchdogInventoryBootIDs = make(map[string]string)
 				nodeList, err := APIClient.CoreV1Interface.Nodes().List(context.TODO(), metav1.ListOptions{})
 				Expect(err).ToNot(HaveOccurred(), "Failed to list cluster nodes for watchdog inventory")
 
@@ -76,6 +83,7 @@ var _ = Describe(
 
 				for i := range nodeList.Items {
 					nodeName := nodeList.Items[i].Name
+					WatchdogInventoryBootIDs[nodeName] = nodeList.Items[i].Status.NodeInfo.BootID
 					podName := watchdogDebugPodName(nodeName)
 
 					By(fmt.Sprintf("Creating watchdog discovery pod on node %s", nodeName))

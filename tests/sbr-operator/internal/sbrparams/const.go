@@ -232,6 +232,26 @@ const (
 	// NodeRebootPollInterval is the polling interval while waiting for a node to become NotReady then Ready.
 	NodeRebootPollInterval = 15 * time.Second
 
+	// WatchdogPostRebootDeviceWait is how long the watchdog integration check keeps retrying
+	// /dev/watchdog* on a node that rebooted after the inventory. A reboot clears the softdog
+	// kernel module, and only a restarted SBR agent loads it again, so the device files can be
+	// absent for a while after the node is already back Ready.
+	WatchdogPostRebootDeviceWait = 2 * time.Minute
+
+	// NodeHangPanicRebootDelaySeconds is the kernel.panic value set before the node-hang crash.
+	// The panicked kernel waits this long before rebooting, so the node stays NotReady well past
+	// the node-monitor grace period plus the 60s NHC unhealthy duration. With the RHCOS default,
+	// an AWS node is Ready again in under a minute and NHC never creates a remediation.
+	NodeHangPanicRebootDelaySeconds = 180
+
+	// NodeHangSyncSettleSeconds is how long the node-hang crash command waits after the
+	// emergency sync (sysrq-s) before triggering the panic, so dirty pages are flushed
+	// first and the crash does not corrupt CRI-O overlay links.
+	NodeHangSyncSettleSeconds = 2
+
+	// CrioCleanupTimeout bounds the oc debug call that removes the injector image from a rebooted node.
+	CrioCleanupTimeout = 2 * time.Minute
+
 	// SplitBrainHealthyNodeCheckDuration is how long to Consistently assert no SBR CR exists for healthy nodes.
 	SplitBrainHealthyNodeCheckDuration = 60 * time.Second
 
