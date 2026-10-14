@@ -16,3 +16,13 @@ This directory contains cross-cutting architecture, shared testing workflows, an
 ## Guides
 
 - [File-Based Catalog (FBC) Operator Upgrades](fbc-upgrades.md) (`tier:upgrade-operator`): Common release upgrade contract, environment inputs, and execution for all six operators.
+
+## Test Case Documents
+
+[`docs/TESTCASES/`](TESTCASES/README.md) holds per-ticket test case documents written
+before the Go spec. Copy [rhwa-1234.example](TESTCASES/rhwa-1234.example) to
+`docs/TESTCASES/rhwa-<jira-id>.md` and fill it in: scope, environment, preconditions,
+numbered steps, pass criteria, cleanup, and labels.
+
+- [Test case requirements](TESTCASES/AGENTS.md): required sections, spec conventions, review checklist.
+- [Directory guide](TESTCASES/README.md): naming, authoring workflow, status values.

@@ -6,6 +6,8 @@ This file provides guidance to all coding agents working in this repository.
 
 See [SKILLS.md](.agents/SKILLS.md) for the full behavioral guidelines that apply to all code written or reviewed here.
 
+See [docs/TESTCASES/AGENTS.md](docs/TESTCASES/AGENTS.md) for the requirements and expectations of a test case — required document sections, spec conventions, and the review checklist. Read it before writing or modifying a test case document or a Ginkgo spec. [docs/TESTCASES/README.md](docs/TESTCASES/README.md) covers the directory layout, naming, authoring workflow, and status values.
+
 ## Project Conventions for Agents
 
 - **Keep the repository root clean.** Do not add new files to the root unless strictly required by a tool or standard (e.g. `go.mod`, `Makefile`, `LICENSE`). Documentation, guidelines, and agent-specific files belong in subdirectories.
@@ -119,6 +121,7 @@ All `It`/`DescribeTable` specs should be labelled using constants from `tests/in
 
 ### Key Conventions
 
+- Every new test ships as two artifacts in the same PR: a test case document `docs/TESTCASES/rhwa-<jira-id>.md` (copied from [rhwa-1234.example](docs/TESTCASES/rhwa-1234.example)) and its Ginkgo spec. Requirements: [docs/TESTCASES/AGENTS.md](docs/TESTCASES/AGENTS.md).
 - Every `It`/`DescribeTable` spec must call `reportxml.ID("…")` to assign a test case ID.
 - Document test steps with `By("description")` blocks inside each `It`.
 - Use `Eventually`/`Consistently` with explicit timeout + poll interval from `<op>params`/`medik8sparams` — never `time.Sleep`.
