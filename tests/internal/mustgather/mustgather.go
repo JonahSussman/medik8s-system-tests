@@ -18,6 +18,38 @@ const (
 	namespaceTimestampFields = 2
 )
 
+// Shared must-gather configuration, centralized here so every operator suite
+// references one definition instead of copying these values into each
+// operator's params package.
+const (
+	// ImageEnvVar overrides the must-gather image (e.g. a mirrored ref on
+	// disconnected clusters). It takes precedence over DefaultImage.
+	ImageEnvVar = "MUST_GATHER_IMAGE"
+
+	// DefaultImage is the upstream medik8s must-gather image used when
+	// ImageEnvVar is unset. The :latest tag is intentional so the test
+	// exercises the build a user would actually pull; the resolved image
+	// digest is logged on every run (see Run) so a failure is reproducible
+	// against the exact build, and ImageEnvVar overrides it when a specific
+	// ref is needed.
+	DefaultImage = "quay.io/medik8s/must-gather:latest"
+
+	// DefaultOCTimeout is the --timeout flag passed to oc adm must-gather so
+	// it cleans up gracefully.
+	DefaultOCTimeout = 14 * time.Minute
+
+	// DefaultContextTimeout is the outer Go context timeout, strictly greater
+	// than DefaultOCTimeout.
+	DefaultContextTimeout = 16 * time.Minute
+
+	// DefaultImageInfoTimeout bounds the best-effort `oc image info` digest lookup.
+	DefaultImageInfoTimeout = 1 * time.Minute
+
+	// DefaultCleanupTimeout is the deadline for best-effort cleanup of leftover
+	// must-gather namespaces.
+	DefaultCleanupTimeout = 2 * time.Minute
+)
+
 // Options preserves each suite's command execution and artifact requirements.
 type Options struct {
 	// CommandTimeout bounds only the collection subprocess, after digest lookup.

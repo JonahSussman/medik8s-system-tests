@@ -61,7 +61,7 @@ var _ = Describe(
 				By("Resolving the RHWA must-gather image")
 
 				mustGatherImage := mustgather.ResolveImage(
-					snrparams.MustGatherImageEnvVar, snrparams.DefaultMustGatherImage, GinkgoWriter.Printf)
+					mustgather.ImageEnvVar, mustgather.DefaultImage, GinkgoWriter.Printf)
 				Expect(mustGatherImage).To(ContainSubstring(":"),
 					"must-gather image %q should contain a tag separator", mustGatherImage)
 
@@ -89,18 +89,18 @@ var _ = Describe(
 				By("Running oc adm must-gather")
 
 				testStartTime := time.Now()
-				ctx, cancel := context.WithTimeout(context.Background(), snrparams.MustGatherContextTimeout)
+				ctx, cancel := context.WithTimeout(context.Background(), mustgather.DefaultContextTimeout)
 				defer cancel()
 
 				DeferCleanup(func() {
 					By("Cleaning up leftover must-gather namespaces")
 					mustgather.CleanupNamespaces(context.Background(), testStartTime,
-						snrparams.MustGatherCleanupTimeout, GinkgoWriter.Printf)
+						mustgather.DefaultCleanupTimeout, GinkgoWriter.Printf)
 				})
 
 				Expect(mustgather.Run(ctx, mustGatherImage, destDir, mustgather.Options{
-					ImageInfoTimeout: snrparams.MustGatherImageInfoTimeout,
-					OCTimeout:        snrparams.MustGatherOCTimeout,
+					ImageInfoTimeout: mustgather.DefaultImageInfoTimeout,
+					OCTimeout:        mustgather.DefaultOCTimeout,
 					SaveCommandLog:   true,
 					HomeFallback:     true,
 				}, GinkgoWriter.Printf)).To(Succeed(), "oc adm must-gather failed")
