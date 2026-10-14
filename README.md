@@ -145,6 +145,18 @@ ginkgo -timeout=30m --keep-going --require-suite -r --focus="should remediate a 
 ```
 # How to contribute
 
+The project follows the medik8s organization guidelines: the
+[Contributing Guide](https://github.com/medik8s/.github/blob/main/CONTRIBUTING.md)
+(DCO sign-off with `git commit -s`, forking workflow, `/lgtm` + `/approve` from two
+different OWNERS), the
+[Code of Conduct](https://github.com/medik8s/.github/blob/main/CODE_OF_CONDUCT.md),
+and the [Security Policy](https://github.com/medik8s/.github/blob/main/SECURITY.md).
+
+A new test ships as two artifacts in the same PR: a test case document under
+[`docs/TESTCASES/`](docs/TESTCASES/README.md) — generate it with
+`make new-testcase JIRA=RHWA-<id>` — and its Ginkgo spec. The requirements for both
+are in [docs/TESTCASES/AGENTS.md](docs/TESTCASES/AGENTS.md).
+
 The project uses a development method - forking workflow
 ### The following is a step-by-step example of forking workflow:
 1) A developer [forks](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/fork-a-repo)
@@ -162,6 +174,7 @@ The project uses a development method - forking workflow
 # Project structure
     .
     ├── docs                               # Cross-cutting guides and test workflows
+    │   └── TESTCASES                      # Per-ticket test case documents
     ├── images                             # Container images artifacts
     ├── scripts                            # Makefile scripts
     ├── tests                              # Test cases directory

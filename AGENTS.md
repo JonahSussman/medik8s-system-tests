@@ -25,6 +25,7 @@ See [docs/TESTCASES/AGENTS.md](docs/TESTCASES/AGENTS.md) for the requirements an
 ## Commands
 
 ```bash
+make new-testcase JIRA=RHWA-1834 # scaffold docs/TESTCASES/rhwa-1834.md from the template
 make lint                        # golangci-lint version pinned in scripts/golangci-lint.sh
 make fmt                         # apply gofumpt/goimports and compact straight-line spacing
 make lint-blanklines              # check compact spacing without modifying files
@@ -121,7 +122,7 @@ All `It`/`DescribeTable` specs should be labelled using constants from `tests/in
 
 ### Key Conventions
 
-- Every new test ships as two artifacts in the same PR: a test case document `docs/TESTCASES/rhwa-<jira-id>.md` (copied from [rhwa-1234.example](docs/TESTCASES/rhwa-1234.example)) and its Ginkgo spec. Requirements: [docs/TESTCASES/AGENTS.md](docs/TESTCASES/AGENTS.md).
+- Every new test ships as two artifacts in the same PR: a test case document `docs/TESTCASES/rhwa-<jira-id>.md` (run `make new-testcase JIRA=RHWA-<id>` to generate it from the [TEMPLATE.md](docs/TESTCASES/TEMPLATE.md) skeleton; [EXAMPLE.md](docs/TESTCASES/EXAMPLE.md) shows a finished one) and its Ginkgo spec. Existing specs need no backfilled document. Requirements: [docs/TESTCASES/AGENTS.md](docs/TESTCASES/AGENTS.md).
 - Every `It`/`DescribeTable` spec must call `reportxml.ID("…")` to assign a test case ID.
 - Document test steps with `By("description")` blocks inside each `It`.
 - Use `Eventually`/`Consistently` with explicit timeout + poll interval from `<op>params`/`medik8sparams` — never `time.Sleep`.
