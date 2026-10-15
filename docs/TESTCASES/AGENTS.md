@@ -47,7 +47,7 @@ reviewers can tell "not applicable" from "not considered".
 
 | # | Section                   | Must contain                                                                   |
 | - | ------------------------- | ------------------------------------------------------------------------------ |
-| 1 | Metadata                  | Jira link, `reportxml.ID`, legacy Polarion link or `None`, operator versions, suite, spec file, status |
+| 1 | Metadata                  | Jira link, `reportxml.ID`, legacy Polarion link (OPTIONAL — `None` for anything not ported), operator versions, suite, spec file, status |
 | 2 | Summary                   | One or two sentences in plain language                                         |
 | 3 | Scope                     | In scope **and** an explicit out-of-scope list                                 |
 | 4 | Environment               | Topology, platform, storage, namespace, destructive flag, every env var read   |
@@ -121,8 +121,10 @@ the Python approach, with its reason, in section 3 of the document. See
 "Migrating Tests from Python" in the root [AGENTS.md](../../AGENTS.md).
 
 A ported test keeps its existing `OCP-xxxxx` number in `reportxml.ID` so results
-stay comparable with historical runs; record the Polarion link in the legacy row
-of section 1 and the Jira ticket tracking the port in the Jira row.
+stay comparable with historical runs; record the Polarion link in the optional
+legacy row of section 1 and the Jira ticket tracking the port in the Jira row.
+The Polarion link is a convenience for tracing a test back to its old plan — if
+the work item is gone or you cannot find it, write `None` and move on.
 
 ## Review checklist
 

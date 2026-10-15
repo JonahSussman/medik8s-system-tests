@@ -19,23 +19,38 @@
 
 ## 1. Metadata
 
-| Field             | Value                                                   |
-| ----------------- | ------------------------------------------------------- |
-| Jira              | [RHWA-XXXX](https://issues.redhat.com/browse/RHWA-XXXX) |
-| `reportxml.ID`    | `XXXX`                                                  |
-| Polarion (legacy) | None                                                    |
-| Operators         | `<operator and pinned version, e.g. NHC v0.9.0>`        |
-| Suite             | `tests/<operator>`                                      |
-| Spec file         | `tests/<operator>/tests/<feature>.go`                   |
-| Author            | `<your-kerberos>`                                       |
-| Status            | draft                                                   |
+| Field                        | Value                                                   |
+| ---------------------------- | ------------------------------------------------------- |
+| Jira                         | [RHWA-XXXX](https://issues.redhat.com/browse/RHWA-XXXX) |
+| `reportxml.ID`               | `XXXX`                                                  |
+| Polarion (legacy) — OPTIONAL | None                                                    |
+| Operators                    | `<operator and pinned version, e.g. NHC v0.9.0>`        |
+| Suite                        | `tests/<operator>`                                      |
+| Spec file                    | `tests/<operator>/tests/<feature>.go`                   |
+| Author                       | `<your-kerberos>`                                       |
+| Status                       | draft                                                   |
 
 > `<operator>` is the suite directory name — `nhc-operator`, not `nhc`.
 > `reportxml.ID` is the numeric part of the Jira key and must match the
 > `reportxml.ID("…")` argument in the spec. Every `It`/`DescribeTable` needs one.
-> Fill "Polarion (legacy)" only for a test ported from a Polarion plan that
-> already has an `OCP-xxxxx` ID; keep that ID in `reportxml.ID` so historical
-> runs stay comparable. Status is `draft`, `implemented`, or `blocked-by-bug`.
+>
+> "Polarion (legacy)" is **optional** — a nice-to-have, never a reason to hold
+> up a test case. Jira is the system of record. Leave it `None` unless this test
+> was ported from a Polarion plan that already has an `OCP-xxxxx` ID; then link
+> the work item here and keep that ID in `reportxml.ID` so historical runs stay
+> comparable. Keep the row itself even when it is `None`.
+>
+> Status tracks this document's own lifecycle. The skeleton starts at `draft`;
+> it is one of exactly three values:
+>
+> - `draft` — document under review, no spec merged yet. This is the state it is
+>   written and reviewed in, before the Go code exists.
+> - `implemented` — spec merged and passing in CI. Set this before opening the
+>   PR: the document and the spec land in the same change, so a merged document
+>   is rarely still a draft.
+> - `blocked-by-bug` — spec merged, but gated behind an env var and `Skip`ping
+>   because the product bug named in section 8 is still open. Section 8 must not
+>   say `None` when the status is this.
 
 ## 2. Summary
 

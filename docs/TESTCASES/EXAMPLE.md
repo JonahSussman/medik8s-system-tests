@@ -12,25 +12,26 @@
 
 ## 1. Metadata
 
-| Field             | Value                                                   |
-| ----------------- | ------------------------------------------------------- |
-| Jira              | [RHWA-1234](https://issues.redhat.com/browse/RHWA-1234) |
-| `reportxml.ID`    | `1234`                                                  |
-| Polarion (legacy) | None                                                    |
-| Operators         | NHC v0.9.0, SNR v0.10.0                                 |
-| Suite             | `tests/nhc-operator`                                    |
-| Spec file         | `tests/nhc-operator/tests/nhc_remediation_trigger.go`   |
-| Author            | your-kerberos                                           |
-| Status            | implemented                                             |
+| Field                        | Value                                                   |
+| ---------------------------- | ------------------------------------------------------- |
+| Jira                         | [RHWA-1234](https://issues.redhat.com/browse/RHWA-1234) |
+| `reportxml.ID`               | `1234`                                                  |
+| Polarion (legacy) — OPTIONAL | None                                                    |
+| Operators                    | NHC v0.9.0, SNR v0.10.0                                 |
+| Suite                        | `tests/nhc-operator`                                    |
+| Spec file                    | `tests/nhc-operator/tests/nhc_remediation_trigger.go`   |
+| Author                       | your-kerberos                                           |
+| Status                       | implemented                                             |
 
 > Jira is the system of record for new tests. `reportxml.ID` is the numeric part
 > of the Jira key (`RHWA-1234` → `reportxml.ID("1234")`) and must match the
 > `reportxml.ID("…")` argument in the spec. Every `It`/`DescribeTable` needs one.
 >
-> "Polarion (legacy)" exists only for tests ported from a Polarion plan that
-> already carry an `OCP-xxxxx` ID — keep that ID in `reportxml.ID` so historical
-> runs stay comparable, and record the Polarion link in this row. Write `None`
-> for anything new.
+> "Polarion (legacy)" is optional, as it is here — it exists only for tests
+> ported from a Polarion plan that already carry an `OCP-xxxxx` ID. In that case
+> keep that ID in `reportxml.ID` so historical runs stay comparable, and record
+> the Polarion link in this row. Write `None` for anything new; no reviewer will
+> ask you to find an ID for a test that never had one.
 
 ## 2. Summary
 
