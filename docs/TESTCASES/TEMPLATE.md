@@ -25,11 +25,12 @@
 | `reportxml.ID`    | `XXXX`                                                  |
 | Polarion (legacy) | None                                                    |
 | Operators         | `<operator and pinned version, e.g. NHC v0.9.0>`        |
-| Suite             | `tests/<operator>-operator`                             |
-| Spec file         | `tests/<operator>-operator/tests/<feature>.go`          |
+| Suite             | `tests/<operator>`                                      |
+| Spec file         | `tests/<operator>/tests/<feature>.go`                   |
 | Author            | `<your-kerberos>`                                       |
 | Status            | draft                                                   |
 
+> `<operator>` is the suite directory name — `nhc-operator`, not `nhc`.
 > `reportxml.ID` is the numeric part of the Jira key and must match the
 > `reportxml.ID("…")` argument in the spec. Every `It`/`DescribeTable` needs one.
 > Fill "Polarion (legacy)" only for a test ported from a Polarion plan that
@@ -64,7 +65,7 @@ Environment variables:
 
 ```bash
 export KUBECONFIG=/absolute/path/to/kubeconfig
-export ECO_TEST_FEATURES=<operator>-operator
+export ECO_TEST_FEATURES=<operator>
 export ECO_TEST_LABELS='<label filter expression>'
 ```
 
@@ -140,7 +141,7 @@ Label(
 
 ```bash
 ginkgo -v --label-filter="<expression>" \
-    --focus="<unique substring of the It text>" ./tests/<operator>-operator/...
+    --focus="<unique substring of the It text>" ./tests/<operator>/...
 ```
 
 ## 12. Implementation sketch
@@ -170,7 +171,7 @@ It("RHWA-XXXX: <It text>",
 
 ## 13. Documentation to update
 
-- `tests/<operator>-operator/README.md` — add the test to the suite's numbered
+- `tests/<operator>/README.md` — add the test to the suite's numbered
   catalog with its Jira link, operators, cluster/storage requirements, standalone
   command, and pass criteria.
 - `docs/README.md` — only when adding a new cross-cutting guide.
