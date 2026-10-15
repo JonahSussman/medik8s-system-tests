@@ -24,9 +24,15 @@ GO_PACKAGES=$(shell go list ./... | grep -v vendor)
         lint-blanklines \
         fmt \
         deps-update \
+        new-testcase \
         vet
 vet:
 	go vet ${GO_PACKAGES}
+
+# JIRA: the ticket the test case belongs to, e.g. make new-testcase JIRA=RHWA-1834
+JIRA ?=
+new-testcase:
+	scripts/new-testcase.sh $(JIRA)
 
 lint: lint-blanklines
 	@echo "Running go lint"

@@ -1,28 +1,36 @@
 # RHWA-1234 — NHC creates a SNR remediation CR for an unhealthy worker node
 
-> **Template.** Copy this file to `docs/TESTCASES/rhwa-<jira-id>.md` and replace
-> every value with your own. The content below is a *hypothetical* test case; it
-> is not implemented in this repository. Lines in `> blockquote` are guidance for
-> the author and should be deleted from a real test case document.
+> **Worked example — read this, do not copy it.** Generate your own document with
+> `make new-testcase JIRA=RHWA-<id>`, which starts from the empty skeleton in
+> [TEMPLATE.md](TEMPLATE.md). This file shows what a *finished* document looks
+> like: how much detail each section wants, and what "observable pass criteria"
+> means in practice. The test below is hypothetical and is not implemented in
+> this repository.
 >
-> Write this document *before* the Go code. It is the contract the reviewer reads:
-> what is verified, on what cluster, and what counts as a pass.
+> Write your document *before* the Go code. It is the contract the reviewer
+> reads: what is verified, on what cluster, and what counts as a pass.
 
 ## 1. Metadata
 
-| Field          | Value                                                                       |
-| -------------- | --------------------------------------------------------------------------- |
-| Jira           | [RHWA-1234](https://issues.redhat.com/browse/RHWA-1234)                      |
-| Polarion       | [OCP-99999](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-99999) |
-| `reportxml.ID` | `99999`                                                                      |
-| Operators      | NHC v0.9.0, SNR v0.10.0                                                      |
-| Suite          | `tests/nhc-operator`                                                         |
-| Spec file      | `tests/nhc-operator/tests/nhc_remediation_trigger.go`                        |
-| Author         | your-kerberos                                                                |
-| Status         | draft / implemented / blocked-by-bug                                         |
+| Field             | Value                                                   |
+| ----------------- | ------------------------------------------------------- |
+| Jira              | [RHWA-1234](https://issues.redhat.com/browse/RHWA-1234) |
+| `reportxml.ID`    | `1234`                                                  |
+| Polarion (legacy) | None                                                    |
+| Operators         | NHC v0.9.0, SNR v0.10.0                                 |
+| Suite             | `tests/nhc-operator`                                    |
+| Spec file         | `tests/nhc-operator/tests/nhc_remediation_trigger.go`   |
+| Author            | your-kerberos                                           |
+| Status            | implemented                                             |
 
-> `reportxml.ID` is the numeric part of the Polarion ID and must match the
+> Jira is the system of record for new tests. `reportxml.ID` is the numeric part
+> of the Jira key (`RHWA-1234` → `reportxml.ID("1234")`) and must match the
 > `reportxml.ID("…")` argument in the spec. Every `It`/`DescribeTable` needs one.
+>
+> "Polarion (legacy)" exists only for tests ported from a Polarion plan that
+> already carry an `OCP-xxxxx` ID — keep that ID in `reportxml.ID` so historical
+> runs stay comparable, and record the Polarion link in this row. Write `None`
+> for anything new.
 
 ## 2. Summary
 
@@ -97,7 +105,7 @@ export ECO_REPORTS_DUMP_DIR="$(mktemp -d)"
 
 ## 7. Pass criteria
 
-- Exactly one spec with `reportxml.ID("99999")` runs and passes.
+- Exactly one spec with `reportxml.ID("1234")` runs and passes.
 - Every assertion in the table above holds.
 - Cleanup finishes: no `NodeHealthCheck` and no remediation CR remain, and the
   target node is Ready and schedulable.
@@ -132,12 +140,15 @@ Label(
     labels.DisruptionDestructive,
     labels.PlatformAny,
     labels.ComponentRemediation,
+    labels.TopologyMinimalWorker,
 )
 ```
 
-> Pick one constant per axis from `tests/internal/labels`: operator, tier,
-> frequency, disruption, component, platform (and topology when it matters).
-> Never use a bare string literal.
+> Always set operator, tier, and component — `ECO_TEST_LABELS` filtering in CI
+> depends on them. Add frequency, disruption, platform, and topology whenever the
+> test is constrained on that axis; the topology constant here matches the
+> `topology:minimal-worker` declared in section 4. One constant per axis, taken
+> from `tests/internal/labels` — never a bare string literal.
 
 ## 11. Running it standalone
 
@@ -150,7 +161,7 @@ ginkgo -v --label-filter="operator:nhc && tier:acceptance" \
 
 ```go
 It("RHWA-1234: NHC creates a SelfNodeRemediation CR for an unhealthy worker node",
-    reportxml.ID("99999"),
+    reportxml.ID("1234"),
     Label(
         labels.OperatorNHC,
         labels.TierAcceptance,
@@ -158,6 +169,7 @@ It("RHWA-1234: NHC creates a SelfNodeRemediation CR for an unhealthy worker node
         labels.DisruptionDestructive,
         labels.PlatformAny,
         labels.ComponentRemediation,
+        labels.TopologyMinimalWorker,
     ), func() {
         DeferCleanup(func() {
             By("DeferCleanup: restoring the target node and removing the NodeHealthCheck")
@@ -171,7 +183,7 @@ It("RHWA-1234: NHC creates a SelfNodeRemediation CR for an unhealthy worker node
 
         Eventually(func() error {
             return remediationCRExists(targetNodeName)
-        }, nhcparams.RemediationTimeout, nhcparams.DefaultPollInterval).Should(Succeed(),
+        }, nhcparams.RemediationCompletionTimeout, nhcparams.DefaultPollInterval).Should(Succeed(),
             "NHC must create a SelfNodeRemediation for unhealthy node %q", targetNodeName)
     })
 ```
@@ -185,6 +197,6 @@ It("RHWA-1234: NHC creates a SelfNodeRemediation CR for an unhealthy worker node
 ## 13. Documentation to update
 
 - `tests/<operator>/README.md` — add the test to the suite's numbered catalog
-  with its Polarion link, operators, cluster/storage requirements, standalone
+  with its Jira link, operators, cluster/storage requirements, standalone
   command, and pass criteria.
 - `docs/README.md` — only when adding a new cross-cutting guide.

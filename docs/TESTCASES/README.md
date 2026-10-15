@@ -1,40 +1,48 @@
 # Test Case Documents
 
-Every system test in this repository is described by a test case document in this
-directory before — or alongside — its Ginkgo spec. The document is the contract a
-reviewer reads: what is verified, on which cluster, and what counts as a pass.
+Every system test added to this repository is described by a test case document
+in this directory before — or alongside — its Ginkgo spec. The document is the
+contract a reviewer reads: what is verified, on which cluster, and what counts as
+a pass. Specs that predate this directory have no document; none is backfilled.
 
 The normative rules live in [AGENTS.md](AGENTS.md) and apply to humans and coding
 agents alike. This file explains the directory and the workflow.
 
 ## Contents
 
-| File                                   | Purpose                                                 |
-| -------------------------------------- | --------------------------------------------------------- |
-| [AGENTS.md](AGENTS.md)                 | Requirements and expectations for a test case             |
-| [rhwa-1234.example](rhwa-1234.example) | Filled-in template to copy                                |
-| `rhwa-<jira-id>.md`                    | One document per Jira ticket                              |
+| File                       | Purpose                                                       |
+| -------------------------- | ------------------------------------------------------------- |
+| [AGENTS.md](AGENTS.md)     | Requirements and expectations for a test case                 |
+| [TEMPLATE.md](TEMPLATE.md) | Empty skeleton; `make new-testcase` copies it                 |
+| [EXAMPLE.md](EXAMPLE.md)   | A finished document, as a worked example to read              |
+| `rhwa-<jira-id>.md`        | One document per Jira ticket                                  |
 
 ## Naming
 
 - One file per Jira ticket: `rhwa-<jira-id>.md`, lowercase (`rhwa-1834.md`).
+  Write the key uppercase in prose and links (`RHWA-1834`).
 - A ticket covering several specs stays in one document, with one
   "Test steps"/"Pass criteria" pair per spec.
-- `rhwa-1234.example` is the template. It is never a real test case; leave it
-  alone except to improve the template itself.
+- `TEMPLATE.md` and `EXAMPLE.md` are never real test cases, and the `RHWA-XXXX`
+  in the skeleton is not a ticket. Leave both alone except to improve the
+  template or the example itself.
 
 ## Workflow
 
-1. **Copy the template.** `cp rhwa-1234.example rhwa-<jira-id>.md`, then replace
-   every value and delete the `>` guidance blockquotes.
-2. **Fill in sections 1–11 before writing Go.** Scope, environment, preconditions,
-   numbered steps, and pass criteria are design decisions, not documentation of
-   code that already exists. Getting them reviewed first is cheaper than
-   rewriting a spec.
+1. **Generate the document.** `make new-testcase JIRA=RHWA-1834` copies the
+   `TEMPLATE.md` skeleton to `rhwa-1834.md` with the ticket substituted. Read
+   [EXAMPLE.md](EXAMPLE.md) first to see the level of detail expected, then
+   replace every `<…>` placeholder and delete the `>` guidance blockquotes.
+2. **Fill in sections 1–12 before writing Go.** Scope, environment, preconditions,
+   numbered steps, pass criteria, and the implementation sketch are design
+   decisions, not documentation of code that already exists. Getting them
+   reviewed first is cheaper than rewriting a spec.
 3. **Implement the spec** under `tests/<operator>/tests/<feature>.go`, keeping the
    `By("…")` strings identical to the step table.
 4. **Update the suite catalog.** Add the test to `tests/<operator>/README.md` with
-   its Polarion link, requirements, standalone command, and pass criteria.
+   its Jira link, requirements, standalone command, and pass criteria. Keep that
+   entry short — the document in this directory is the detailed description, and
+   the catalog is the index that points at it.
 5. **Set the document status** to `implemented` and open the PR with the document
    and the spec in the same change.
 
@@ -57,3 +65,7 @@ line for line. The checklist is in [AGENTS.md](AGENTS.md#review-checklist).
   taxonomy, commit message format
 - [docs/README.md](../README.md) — cross-cutting guides
 - [docs/fbc-upgrades.md](../fbc-upgrades.md) — shared FBC upgrade contract
+- [docs/SBR/sbr_test_analysis.md](../SBR/sbr_test_analysis.md) — SBR coverage
+  analysis and proposed tests; new proposals from it become documents here
+- [medik8s CONTRIBUTING.md](https://github.com/medik8s/.github/blob/main/CONTRIBUTING.md)
+  — DCO sign-off, fork workflow, `/lgtm` + `/approve` from two different OWNERS
