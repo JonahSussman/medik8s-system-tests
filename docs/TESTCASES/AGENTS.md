@@ -44,7 +44,7 @@ reviewers can tell "not applicable" from "not considered".
 | 2 | Summary                   | One or two sentences in plain language                                         |
 | 3 | Scope                     | In scope **and** an explicit out-of-scope list                                 |
 | 4 | Environment               | Topology, platform, storage, namespace, destructive flag, every env var read   |
-| 5 | Preconditions             | Conditions asserted in `BeforeAll`, not assumed                                |
+| 5 | Preconditions             | Conditions asserted in `BeforeAll`/`BeforeSuite`, not assumed                                |
 | 6 | Test steps                | One row per `By("…")`, in order, with expected result                          |
 | 7 | Pass criteria             | What a passing run proves, including that cleanup finished                     |
 | 8 | Failure / known issues    | Open bugs, their effect, and the gate used — or `None`                         |
