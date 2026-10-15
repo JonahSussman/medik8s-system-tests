@@ -32,21 +32,26 @@ agents alike. This file explains the directory and the workflow.
 
 ## Workflow
 
-1. **Generate the document.** `make new-testcase JIRA=RHWA-1834` copies the
+1. **File the Jira ticket.** It must be a `Task`, titled `TEST: <what the test
+   proves>`, and labelled `rhwa-test`. CI checks all three with
+   `make check-testcase-jira` and fails the PR when one is missing. You can
+   check a ticket before opening the PR with
+   `make check-testcase-jira TESTCASE=RHWA-1834`.
+2. **Generate the document.** `make new-testcase JIRA=RHWA-1834` copies the
    `TEMPLATE.md` skeleton to `rhwa-1834.md` with the ticket substituted. Read
    [EXAMPLE.md](EXAMPLE.md) first to see the level of detail expected, then
    replace every `<…>` placeholder and delete the `>` guidance blockquotes.
-2. **Fill in sections 1–12 before writing Go.** Scope, environment, preconditions,
+3. **Fill in sections 1–12 before writing Go.** Scope, environment, preconditions,
    numbered steps, pass criteria, and the implementation sketch are design
    decisions, not documentation of code that already exists. Getting them
    reviewed first is cheaper than rewriting a spec.
-3. **Implement the spec** under `tests/<operator>/tests/<feature>.go`, keeping the
+4. **Implement the spec** under `tests/<operator>/tests/<feature>.go`, keeping the
    `By("…")` strings identical to the step table.
-4. **Update the suite catalog.** Add the test to `tests/<operator>/README.md` with
+5. **Update the suite catalog.** Add the test to `tests/<operator>/README.md` with
    its Jira link, requirements, standalone command, and pass criteria. Keep that
    entry short — the document in this directory is the detailed description, and
    the catalog is the index that points at it.
-5. **Set the document status** to `implemented` and open the PR with the document
+6. **Set the document status** to `implemented` and open the PR with the document
    and the spec in the same change.
 
 ## Status values

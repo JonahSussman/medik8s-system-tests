@@ -10,6 +10,27 @@ initialization chain, label taxonomy, commit message format — are in the root
 [.agents/SKILLS.md](../../.agents/SKILLS.md). The directory workflow and status
 values are in [README.md](README.md).
 
+## The Jira ticket
+
+Every test case is tracked by a Jira ticket in the
+[RHWA project](https://issues.redhat.com/browse/RHWA), and that ticket must be:
+
+| Requirement | Value                                                          |
+| ----------- | ---------------------------------------------------------------- |
+| Issue type  | `Task` — not a Bug, Story, Epic, or sub-task                    |
+| Title       | starts with `TEST:`, e.g. `TEST: Ceph RBD persistent fencing state` |
+| Label       | `rhwa-test`                                                     |
+
+Create the ticket before generating the document; `rhwa-<jira-id>.md` is named
+after it. The three requirements are enforced in CI by
+`make check-testcase-jira`, which reads the ticket from Jira and fails the
+"Check Test Case" workflow when any of them is unmet, so a document whose
+ticket is a Bug, lacks the `TEST:` prefix, or is missing the label will not
+merge. Fix the ticket rather than the check.
+
+Jira is the system of record for new tests; the optional Polarion row in
+section 1 exists only for tests ported from an old Polarion plan.
+
 ## What a test case is
 
 A test case is **two artifacts that ship in the same pull request**:
@@ -48,7 +69,7 @@ reviewers can tell "not applicable" from "not considered".
 
 | # | Section                   | Must contain                                                                   |
 | - | ------------------------- | ------------------------------------------------------------------------------ |
-| 1 | Metadata                  | Jira link, `reportxml.ID`, legacy Polarion link (OPTIONAL — `None` for anything not ported), operator versions, suite, spec file, status |
+| 1 | Metadata                  | Jira link (a `Task` titled `TEST: …`, labelled `rhwa-test`), `reportxml.ID`, legacy Polarion link (OPTIONAL — `None` for anything not ported), operator versions, suite, spec file, status |
 | 2 | Summary                   | One or two sentences in plain language                                         |
 | 3 | Scope                     | In scope **and** an explicit out-of-scope list                                 |
 | 4 | Environment               | Topology, platform, storage, namespace, destructive flag, every env var read   |
@@ -130,6 +151,7 @@ the work item is gone or you cannot find it, write `None` and move on.
 ## Review checklist
 
 - [ ] Document and spec in the same PR; all thirteen sections present
+- [ ] Jira ticket is a `Task`, titled `TEST: …`, labelled `rhwa-test`
 - [ ] Jira and `reportxml.ID` agree with the spec
 - [ ] Out-of-scope list is explicit
 - [ ] Step table matches the `By("…")` strings one to one
