@@ -23,7 +23,10 @@
 | Author                       | your-kerberos                                           |
 | Status                       | implemented                                             |
 
-> Jira is the system of record for new tests. `reportxml.ID` is the numeric part
+> Jira is the system of record for new tests, and RHWA-1234 here is a `Task`
+> titled "TEST: NHC creates a SNR remediation CR for an unhealthy worker node"
+> with the `rhwa-test` label — the three things CI checks on the ticket.
+> `reportxml.ID` is the numeric part
 > of the Jira key (`RHWA-1234` → `reportxml.ID("1234")`) and must match the
 > `reportxml.ID("…")` argument in the spec. Every `It`/`DescribeTable` needs one.
 >

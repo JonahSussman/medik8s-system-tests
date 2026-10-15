@@ -11,12 +11,14 @@ on:
     paths:
       - 'docs/TESTCASES/**'
       - 'scripts/check-testcase.sh'
+      - 'scripts/check-testcase-jira.sh'
       - '.github/workflows/check-testcase.yml'
 
   pull_request:
     paths:
       - 'docs/TESTCASES/**'
       - 'scripts/check-testcase.sh'
+      - 'scripts/check-testcase-jira.sh'
       - '.github/workflows/check-testcase.yml'
 
 permissions:
@@ -36,3 +38,12 @@ jobs:
       # review checklist, not a gate.
       - name: Check test case documents
         run: make check-testcase
+
+      # The ticket behind each document must be a Task, titled "TEST: ...", and
+      # labelled rhwa-test. Red Hat Jira serves these three fields anonymously,
+      # so this needs no credentials and works on pull requests from forks. An
+      # unreachable Jira warns rather than failing the run.
+      - name: Check Jira tickets
+        run: make check-testcase-jira
+        env:
+          JIRA_BASE_URL: https://issues.redhat.com
