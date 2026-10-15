@@ -1,0 +1,38 @@
+name: Check Test Case
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches:
+      - main
+      - 'release-*'
+      - 'medik8s-*'
+    paths:
+      - 'docs/TESTCASES/**'
+      - 'scripts/check-testcase.sh'
+      - '.github/workflows/check-testcase.yml'
+
+  pull_request:
+    paths:
+      - 'docs/TESTCASES/**'
+      - 'scripts/check-testcase.sh'
+      - '.github/workflows/check-testcase.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check test case documents
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # Checks the skeleton and every docs/TESTCASES/rhwa-<id>.md for the parts
+      # a machine can check: the thirteen sections, the metadata rows, and
+      # leftover placeholders. The rest of docs/TESTCASES/AGENTS.md is a human
+      # review checklist, not a gate.
+      - name: Check test case documents
+        run: make check-testcase
