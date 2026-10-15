@@ -3,7 +3,10 @@
 Every system test added to this repository is described by a test case document
 in this directory before — or alongside — its Ginkgo spec. The document is the
 contract a reviewer reads: what is verified, on which cluster, and what counts as
-a pass. Specs that predate this directory have no document; none is backfilled.
+a pass. The per-operator `tests/<operator>/README.md` remains the scannable
+catalog (one entry per test); the document here is the full specification behind
+that entry. Specs that predate this directory have no document; none is
+backfilled.
 
 The normative rules live in [AGENTS.md](AGENTS.md) and apply to humans and coding
 agents alike. This file explains the directory and the workflow.

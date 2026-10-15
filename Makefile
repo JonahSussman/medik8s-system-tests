@@ -25,6 +25,7 @@ GO_PACKAGES=$(shell go list ./... | grep -v vendor)
         fmt \
         deps-update \
         new-testcase \
+        check-testcase \
         vet
 vet:
 	go vet ${GO_PACKAGES}
@@ -33,6 +34,12 @@ vet:
 JIRA ?=
 new-testcase:
 	scripts/new-testcase.sh $(JIRA)
+
+# Structural check of docs/TESTCASES/; pass files to check only those.
+# e.g. make check-testcase TESTCASE=docs/TESTCASES/rhwa-1834.md
+TESTCASE ?=
+check-testcase:
+	scripts/check-testcase.sh $(TESTCASE)
 
 lint: lint-blanklines
 	@echo "Running go lint"

@@ -28,8 +28,9 @@ A spec without a document, or a document whose steps no longer match its spec,
 is incomplete work. Do not open a PR with only one of the two.
 
 A third artifact, the entry in `tests/<operator>/README.md`, is updated in the
-same PR (see section 13). The operator README is the scannable catalog; the
-`docs/TESTCASES/` document is the full specification behind that entry.
+same PR (see section 13). That per-operator README remains the scannable catalog
+(one entry per test); the document in `docs/TESTCASES/` is the full
+specification behind that entry.
 
 Throughout this file and the template, `<operator>` is the suite directory name
 (`nhc-operator`, `sbr-operator`), and `<op>` is its short form used in package
