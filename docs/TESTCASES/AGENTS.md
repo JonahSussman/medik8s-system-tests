@@ -27,6 +27,7 @@ A test case is **two artifacts that ship in the same pull request**:
 A spec without a document, or a document whose steps no longer match its spec,
 is incomplete work. Do not open a PR with only one of the two.
 
+A third artifact, the entry in tests/<operator>/README.md, is updated in the same PR (see section 13). The operator README is the scannable catalog; the TESTCASES document is the full specification behind that entry.
 This applies to tests added from now on. Specs that predate this directory have
 no document and do not need one backfilled; when you substantially rework one,
 adding its document is welcome but is not a condition of the change.
