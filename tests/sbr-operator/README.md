@@ -257,3 +257,19 @@ lifecycle test (OCP-70636).
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="sbr" --focus="controller leadership" ./tests/sbr-operator/...`
 - **Pass criteria**: Lease `holderIdentity` changes to a different Running controller pod; deployment returns to full ready replicas
+
+### 12. Verify Fencing State Persists on Ceph RBD Block Storage Across Node Reboot ([RHWA-1916](https://redhat.atlassian.net/browse/RHWA-1916))
+
+Validates that a node fenced against a Ceph RBD block device stays fenced exactly once. The test
+creates an SBRC with `sharedStorageVolumeMode: Block`, triggers fencing with a manually created
+`StorageBasedRemediation` CR, and follows the node through reboot and recovery, checking that the
+operator does not create a second remediation CR for it afterwards.
+
+Full specification: [`../../docs/TESTCASES/rhwa-1916.md`](../../docs/TESTCASES/rhwa-1916.md).
+
+- **Operators**: SBR v0.3.0; NHC optional (CRD presence only)
+- **Cluster**: At least one schedulable worker node that hosts no SBR controller pod and may be rebooted
+- **Storage**: Ceph RBD block StorageClass (provisioner containing `rbd.csi.ceph.com`), auto-discovered or set with `SBR_RBD_STORAGE_CLASS`
+- **Environment**: Connected or disconnected. **Destructive** — the target node is fenced and hard-rebooted
+- **Standalone**: `ginkgo --label-filter="sbr" --focus="fencing state persists on Ceph RBD" ./tests/sbr-operator/...`
+- **Pass criteria**: `FencingSucceeded=True` on the SBR CR; node boot-id changes and the node returns Ready; node becomes schedulable again after the CR is deleted; agent pod returns to Running/ContainersReady; no new `StorageBasedRemediation` CR exists for the node
