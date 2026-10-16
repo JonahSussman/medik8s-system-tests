@@ -45,4 +45,6 @@ jobs:
 
       - name: eco-goinfra go vet
         if: ${{ !contains(github.event.*.labels.*.name, 'ignore-dep-check') }}
+        env:
+          GOFLAGS: -mod=readonly
         run: make vet

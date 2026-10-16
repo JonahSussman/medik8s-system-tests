@@ -23,6 +23,7 @@ GO_PACKAGES=$(shell go list ./... | grep -v vendor)
 .PHONY: lint \
         lint-blanklines \
         fmt \
+        deps-download \
         deps-update \
         new-testcase \
         check-testcase \
@@ -58,6 +59,10 @@ lint-blanklines:
 fmt:
 	scripts/golangci-lint.sh fmt
 	go run ./internal/tools/blanklines --fix ./...
+
+deps-download:
+	go mod download
+	go mod verify
 
 deps-update:
 	go mod tidy && \
