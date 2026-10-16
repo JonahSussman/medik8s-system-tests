@@ -197,16 +197,10 @@ const (
 	// TestCordonAnnotation marks nodes cordoned by the test for cleanup identification.
 	TestCordonAnnotation = "system-tests.medik8s.io/cordoned-for-topology-test"
 
-	// MustGatherImageEnvVar is the environment variable that overrides the must-gather image.
-	MustGatherImageEnvVar = "MUST_GATHER_IMAGE"
-	// DefaultMustGatherImage is the default medik8s must-gather container image.
-	// The :latest tag is intentional: this suite validates that must-gather collects
-	// the correct FAR data using the build a customer would actually pull, not a
-	// pinned must-gather version. The resolved image digest is logged on every run
-	// (see mustgather.Run) so a failure is reproducible against the exact
-	// build, and MUST_GATHER_IMAGE overrides this default when a specific ref is needed.
-	DefaultMustGatherImage = "quay.io/medik8s/must-gather:latest"
 	// MustGatherTimeout is how long to allow `oc adm must-gather` to run.
+	// The shared image env var and default image live in the mustgather package
+	// (mustgather.ImageEnvVar / mustgather.DefaultImage); this value is kept
+	// FAR-specific because the FAR suite allows a shorter collection window.
 	MustGatherTimeout = 10 * time.Minute
 
 	// TimedOutBadInstanceID is an invalid AWS EC2 instance ID that forces fence_aws

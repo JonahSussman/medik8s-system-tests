@@ -243,9 +243,9 @@ var _ = Describe("FAR Observability Tests",
 
 					By("Running oc adm must-gather")
 
-					mustGatherImage := os.Getenv(farparams.MustGatherImageEnvVar)
+					mustGatherImage := os.Getenv(mustgather.ImageEnvVar)
 					if mustGatherImage == "" {
-						mustGatherImage = farparams.DefaultMustGatherImage
+						mustGatherImage = mustgather.DefaultImage
 					}
 
 					Expect(mustgather.Run(ctx, mustGatherImage, mustGatherDir, mustgather.Options{

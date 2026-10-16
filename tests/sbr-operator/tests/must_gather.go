@@ -60,14 +60,15 @@ var _ = Describe(
 
 				By("Resolving the RHWA must-gather image")
 
-				mustGatherImage := resolveMustGatherImage()
+				mustGatherImage := mustgather.ResolveImage(
+					mustgather.ImageEnvVar, mustgather.DefaultImage, GinkgoWriter.Printf)
 				Expect(mustGatherImage).To(ContainSubstring(":"),
 					"must-gather image %q should contain a tag separator", mustGatherImage)
-				GinkgoWriter.Printf("Using must-gather image: %s\n", mustGatherImage)
 
 				By("Creating artifact directory for must-gather output")
 
-				destDir := createMustGatherDestDir()
+				destDir, mkdirErr := mustgather.CreateDestDir("sbr-must-gather-", GinkgoT().TempDir())
+				Expect(mkdirErr).ToNot(HaveOccurred(), "Failed to create must-gather output directory")
 
 				By("Capturing cluster state before must-gather for validation")
 
@@ -86,18 +87,18 @@ var _ = Describe(
 				By("Running oc adm must-gather")
 
 				testStartTime := time.Now()
-				ctx, cancel := context.WithTimeout(context.Background(), sbrparams.MustGatherContextTimeout)
+				ctx, cancel := context.WithTimeout(context.Background(), mustgather.DefaultContextTimeout)
 				defer cancel()
 
 				DeferCleanup(func() {
 					By("Cleaning up leftover must-gather namespaces")
 					mustgather.CleanupNamespaces(context.Background(), testStartTime,
-						sbrparams.MustGatherCleanupTimeout, GinkgoWriter.Printf)
+						mustgather.DefaultCleanupTimeout, GinkgoWriter.Printf)
 				})
 
 				Expect(mustgather.Run(ctx, mustGatherImage, destDir, mustgather.Options{
-					ImageInfoTimeout: sbrparams.MustGatherImageInfoTimeout,
-					OCTimeout:        sbrparams.MustGatherOCTimeout,
+					ImageInfoTimeout: mustgather.DefaultImageInfoTimeout,
+					OCTimeout:        mustgather.DefaultOCTimeout,
 					SaveCommandLog:   true,
 					HomeFallback:     true,
 				}, GinkgoWriter.Printf)).To(Succeed(), "oc adm must-gather failed")
@@ -135,28 +136,3 @@ var _ = Describe(
 					"must-gather should contain MachineHealthCheck data")
 			})
 	})
-
-func resolveMustGatherImage() string {
-	if envImg := os.Getenv(sbrparams.MustGatherImageEnvVar); envImg != "" {
-		GinkgoWriter.Printf("must-gather image resolved from %s env var: %s\n",
-			sbrparams.MustGatherImageEnvVar, envImg)
-
-		return envImg
-	}
-
-	GinkgoWriter.Printf("must-gather image using default: %s\n", sbrparams.DefaultMustGatherImage)
-
-	return sbrparams.DefaultMustGatherImage
-}
-
-func createMustGatherDestDir() string {
-	base := os.Getenv("ARTIFACT_DIR")
-	if base == "" {
-		base = GinkgoT().TempDir()
-	}
-
-	dir, mkdirErr := os.MkdirTemp(base, "sbr-must-gather-")
-	ExpectWithOffset(1, mkdirErr).ToNot(HaveOccurred(), "Failed to create must-gather output directory")
-
-	return dir
-}
