@@ -23,6 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SHELL: /bin/bash
+      GOFLAGS: -mod=readonly
 
     steps:
       - uses: actions/checkout@v6
@@ -31,6 +32,9 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+
+      - name: Download dependencies
+        run: make deps-download
 
       - name: Run lint
         run: make lint
@@ -47,10 +51,26 @@ jobs:
       - name: Run unit tests
         run: make test
 
+      - name: Check module files
+        run: git diff --exit-code -- go.mod go.sum
+
   docker-build:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v6
 
       - name: Build Dockerfile
         run: docker build -t system-tests:ci -f Dockerfile .
+
+      - name: Compile suites offline
+        run: |
+          docker run --rm --network=none \
+            --entrypoint /usr/bin/bash \
+            -e GOPROXY=off -e GOFLAGS=-mod=readonly \
+            -e ECO_DRY_RUN=true -e KUBECONFIG=/dev/null \
+            -e WORKLOAD_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal:latest \
+            system-tests:ci -c \
+            'ginkgo run --dry-run ./tests/far-operator ./tests/mdr-operator ./tests/nhc-operator ./tests/nmo-operator ./tests/sbr-operator ./tests/snr-operator'

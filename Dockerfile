@@ -14,8 +14,11 @@ RUN dnf install -y tar gcc make skopeo && \
 RUN chown -R ${CONTAINERUSER}:${CONTAINERUSER} /opt/app-root/src/go
 USER ${CONTAINERUSER}
 WORKDIR /home/${CONTAINERUSER}
+ENV GOMODCACHE=/home/${CONTAINERUSER}/go/pkg/mod
+ENV GOFLAGS=-mod=readonly
 COPY --chown=${CONTAINERUSER}:${CONTAINERUSER} go.mod go.sum ./
-RUN go install github.com/onsi/ginkgo/v2/ginkgo
+RUN go mod download && go mod verify && \
+    go install github.com/onsi/ginkgo/v2/ginkgo
 COPY --chown=${CONTAINERUSER}:${CONTAINERUSER} . .
 
 ENTRYPOINT ["scripts/test-runner.sh"]
