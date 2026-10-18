@@ -294,3 +294,34 @@ Full test case: [docs/TESTCASES/rhwa-1915.md](../../docs/TESTCASES/rhwa-1915.md)
   SNR and SBR both claim `/dev/watchdog`, and the test fails early with scale-down instructions
 - **Standalone**: `ginkgo --label-filter="sbr" --focus="write concurrently to Ceph RBD block device" ./tests/sbr-operator/...`
 - **Pass criteria**: One Ready agent pod per worker node on the same Block device; every written slot parses with a valid CRC32; heartbeats present from at least 2 distinct node IDs with advancing sequence numbers; slot counts agree across pods
+
+### 14. Verify SBR Recovers From a Transient Ceph RBD Network Partition Without Fencing (RHWA-XXXX)
+
+Validates the self-healing half of Block-mode storage detection. A privileged disruptor pod blocks
+the victim worker's Ceph ports (3300, 6789, 6800-7300) for 150s and then removes its own rules, so
+the outage is long enough for a peer to report `SBRStorageUnhealthy=True` (reason `HeartbeatTimeout`)
+but short enough that the condition clears as `Recovered` instead of ageing into `Unknown`.
+
+The victim's heartbeat slot is identified as the one that stops advancing during the outage — read
+through an agent pod on another node, which keeps working while the victim is cut off — and must
+resume once Ceph traffic returns. The node must come back on its own: same boot-id, still Ready, no
+`StorageBasedRemediation` CR, and an unchanged `sbr_self_fenced_total`.
+
+Skips when a `NodeHealthCheck` remediates through the SBR template, which would legitimately fence
+the node, or when iptables is unusable in the victim's host namespaces.
+
+Full test case: [docs/TESTCASES/rhwa-xxxx.md](../../docs/TESTCASES/rhwa-xxxx.md)
+
+- **Operators**: SBR v5.8.0
+- **Cluster**: Multi-node, at least 2 schedulable workers, one hosting no SBR controller pod
+- **Storage**: ODF Ceph RBD StorageClass, RWX, `volumeMode: Block`. Auto-discovered by
+  provisioner (`rbd.csi.ceph.com`); `SBR_RBD_STORAGE_CLASS` overrides it. Skips when the
+  cluster has none
+- **Environment**: Connected or disconnected; `SBR_INJECTOR_IMAGE` must be mirrored when
+  disconnected. **Destructive** — Ceph traffic is blocked on one worker for 150s. Self Node
+  Remediation must not be running
+- **Standalone**: `ginkgo --label-filter="sbr" --focus="transient Ceph RBD network partition" ./tests/sbr-operator/...`
+- **Pass criteria**: `SBRStorageUnhealthy=True` (reason `HeartbeatTimeout`) during the outage and
+  `False` (reason `Recovered`) after it; exactly one heartbeat slot stalls and then advances past
+  its pre-outage sequence; for 90s after recovery the node keeps its boot-id, stays Ready and has no
+  `StorageBasedRemediation` CR; the agent's `sbr_self_fenced_total` and restart count are unchanged

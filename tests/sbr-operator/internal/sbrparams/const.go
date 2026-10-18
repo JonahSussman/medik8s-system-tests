@@ -306,6 +306,63 @@ const (
 
 	// BlockFencingStateCheckInterval is the polling interval for block device slot state checks.
 	BlockFencingStateCheckInterval = 10 * time.Second
+
+	// SBRCBlockTransientTestName is the SBRC name for the Ceph RBD transient network partition test.
+	SBRCBlockTransientTestName = "test-sbrc-block-transient"
+
+	// BlockPartitionDisruptorPodName is the self-terminating pod that blocks Ceph traffic on the
+	// victim node and removes its own rules again when its outage window expires.
+	BlockPartitionDisruptorPodName = "sbr-rbd-partition-disruptor"
+
+	// BlockPartitionFlusherPodName is the teardown pod that removes any Ceph REJECT rule the
+	// disruptor left behind.
+	BlockPartitionFlusherPodName = "sbr-rbd-partition-flusher"
+
+	// BlockPartitionProbePodName is the precondition pod that proves iptables is usable in the
+	// victim node's host namespaces before the test blocks anything.
+	BlockPartitionProbePodName = "sbr-rbd-partition-probe"
+
+	// BlockPartitionOutage is how long the disruptor keeps Ceph traffic blocked on the victim node.
+	// With the SBRC defaults (sbrTimeoutSeconds 30, so a heartbeat interval of 15s) a peer needs
+	// maxConsecutiveFailures x 15s of silence before it sets SBRStorageUnhealthy=True, and the agent
+	// downgrades that condition to Unknown (reason GivingAgentChance) once it has been True for
+	// (maxConsecutiveFailures+1) x 15s + 5s. 150s sits between the two, so the test observes
+	// True and then Recovered rather than Unknown.
+	BlockPartitionOutage = 150 * time.Second
+
+	// BlockPartitionPodTimeout bounds the short-lived host-command pods: the iptables probe and the
+	// teardown flush. Both run a handful of iptables calls and exit.
+	BlockPartitionPodTimeout = 3 * time.Minute
+
+	// BlockPartitionCompletionTimeout is how long to wait for the disruptor pod to serve out its
+	// outage window and exit. Sized well above BlockPartitionOutage so a busy node does not fail it.
+	BlockPartitionCompletionTimeout = BlockPartitionOutage + 3*time.Minute
+
+	// BlockPartitionRecoveryTimeout is how long the victim gets to report storage healthy again once
+	// Ceph traffic is restored.
+	BlockPartitionRecoveryTimeout = 5 * time.Minute
+
+	// BlockHeartbeatResumeTimeout is how long to wait for the victim's heartbeat slot to start
+	// advancing again after the partition clears.
+	BlockHeartbeatResumeTimeout = 2 * time.Minute
+
+	// BlockNoFencingCheckDuration is how long the victim is observed after recovery to prove it was
+	// never fenced: same boot-id, still Ready, and no StorageBasedRemediation CR.
+	BlockNoFencingCheckDuration = 90 * time.Second
+
+	// BlockNoFencingCheckInterval is the poll interval for the post-recovery no-fencing check.
+	BlockNoFencingCheckInterval = 10 * time.Second
+
+	// SelfFencedMetricName is the agent counter incremented every time an agent self-fences.
+	SelfFencedMetricName = "sbr_self_fenced_total"
+
+	// SBRStorageUnhealthyReasonHeartbeatTimeout is the reason a peer agent gives when it sets
+	// SBRStorageUnhealthy=True because a node's heartbeat slot went stale.
+	SBRStorageUnhealthyReasonHeartbeatTimeout = "HeartbeatTimeout"
+
+	// SBRStorageUnhealthyReasonRecovered is the reason a peer agent gives when it clears
+	// SBRStorageUnhealthy because the node's heartbeats resumed.
+	SBRStorageUnhealthyReasonRecovered = "Recovered"
 )
 
 // AgentExpectedMetricNames lists the Prometheus metric names that must be present in the agent output.
