@@ -71,6 +71,17 @@ func listSchedulableWorkers(ctx context.Context) ([]corev1.Node, error) {
 func selectSchedulableWorker(ctx context.Context) string {
 	GinkgoHelper()
 
+	return selectSchedulableWorkerExcluding(ctx, "")
+}
+
+// selectSchedulableWorkerExcluding is selectSchedulableWorker with one node name removed from
+// the candidate set. A caller that is about to drain a node passes the node hosting the NMO
+// controller pod: draining it would evict the controller, which then reschedules under a new
+// name and invalidates any assertion keyed on the pod name. FAR does the same thing for its
+// leader node (helpers.SelectWorkerNode with the leader excluded).
+func selectSchedulableWorkerExcluding(ctx context.Context, excludeNode string) string {
+	GinkgoHelper()
+
 	var selected string
 
 	Eventually(func() (int, error) {
@@ -79,16 +90,24 @@ func selectSchedulableWorker(ctx context.Context) string {
 			return 0, err
 		}
 
-		if len(eligible) == 0 {
+		candidates := make([]corev1.Node, 0, len(eligible))
+
+		for _, node := range eligible {
+			if node.Name != excludeNode {
+				candidates = append(candidates, node)
+			}
+		}
+
+		if len(candidates) == 0 {
 			return 0, nil
 		}
 
-		sort.Slice(eligible, func(i, j int) bool { return eligible[i].Name < eligible[j].Name })
-		selected = eligible[rand.Intn(len(eligible))].Name
+		sort.Slice(candidates, func(i, j int) bool { return candidates[i].Name < candidates[j].Name })
+		selected = candidates[rand.Intn(len(candidates))].Name
 
-		return len(eligible), nil
+		return len(candidates), nil
 	}, nmoparams.UncordonTimeout, nmoparams.DefaultPollInterval).Should(BeNumerically(">", 0),
-		"no eligible schedulable non-control-plane worker node found")
+		"no eligible schedulable non-control-plane worker node found (excluding %q)", excludeNode)
 
 	return selected
 }
@@ -96,13 +115,20 @@ func selectSchedulableWorker(ctx context.Context) string {
 // newNodeMaintenance builds a NodeMaintenance CR for the given name and node using the
 // shared collision-test reason.
 func newNodeMaintenance(name, nodeName string) *nmov1beta1.NodeMaintenance {
+	return newNodeMaintenanceWithReason(name, nodeName, nmoparams.CollisionReason)
+}
+
+// newNodeMaintenanceWithReason builds a NodeMaintenance CR recording why the test put the node
+// under maintenance. The reason surfaces on the CR and in NMO's events, so each scenario
+// supplies its own rather than sharing one.
+func newNodeMaintenanceWithReason(name, nodeName, reason string) *nmov1beta1.NodeMaintenance {
 	return &nmov1beta1.NodeMaintenance{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
 		Spec: nmov1beta1.NodeMaintenanceSpec{
 			NodeName: nodeName,
-			Reason:   nmoparams.CollisionReason,
+			Reason:   reason,
 		},
 	}
 }

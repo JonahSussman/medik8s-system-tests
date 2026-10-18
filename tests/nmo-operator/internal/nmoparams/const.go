@@ -18,9 +18,15 @@ const (
 	// OperatorDeploymentName is the name of the NMO operator controller manager deployment.
 	OperatorDeploymentName = "node-maintenance-operator-controller-manager"
 
+	// ControllerPodLabelKey is the label key on NMO controller-manager pods.
+	ControllerPodLabelKey = "control-plane"
+	// OperatorControllerPodLabel is the label value on NMO controller-manager pods.
+	OperatorControllerPodLabel = "controller-manager"
 	// OperatorControllerPodLabelSelector is the label selector string to filter NMO controller pods.
 	// NMO's upstream pod template only defines control-plane=controller-manager (no app.kubernetes.io/name).
-	OperatorControllerPodLabelSelector = "control-plane=controller-manager"
+	// It is not NMO-specific: every RHWA operator carries it in the shared operator namespace, so
+	// callers must also filter by OperatorDeploymentName.
+	OperatorControllerPodLabelSelector = ControllerPodLabelKey + "=" + OperatorControllerPodLabel
 
 	// CSVNamePattern is the substring used to match the NMO operator ClusterServiceVersion by name.
 	CSVNamePattern = "node-maintenance-operator"
@@ -147,5 +153,28 @@ const (
 
 	// NMResourceQualified is the resource.group identifier the API server uses in
 	// AlreadyExists errors for NodeMaintenance CRs (`<resource> "<name>" already exists`).
+	// It is also the full CRD name (plural.group), so the must-gather test uses it both to
+	// locate the collected CRD yaml and as the string that yaml must contain.
 	NMResourceQualified = "nodemaintenances.nodemaintenance.medik8s.io"
+
+	// MustGatherTimeout is how long to allow `oc adm must-gather` to run. The image itself
+	// comes from mustgather.ImageEnvVar / mustgather.DefaultImage, shared across suites.
+	MustGatherTimeout = 10 * time.Minute
+
+	// MustGatherNMNamePrefix prefixes the NodeMaintenance CR name created by the must-gather
+	// test; the target node name is appended, matching the Polarion plan's
+	// `nodemaintenance-worker-0-0` and the Python's `node-maintenance-<node>`.
+	MustGatherNMNamePrefix = "node-maintenance-"
+	// MustGatherReason is the spec.reason recorded on that CR.
+	MustGatherReason = "system-tests must-gather validation (RHWA-1251)"
+
+	// UnschedulableTaintKey is the taint the node controller applies to a cordoned node.
+	// The must-gather test asserts it alongside DrainTaintKey on the collected node yaml.
+	UnschedulableTaintKey = "node.kubernetes.io/unschedulable"
+	// ControllerLogEvictedText is the message the NMO controller logs once a drain has evicted
+	// every pod. The "were" matters: the controller also logs "Not all pods evicted" on the
+	// failure path, so the shorter phrase would match a failed drain.
+	ControllerLogEvictedText = "all pods were evicted"
+	// ControllerLogFileName is the file name must-gather uses for a container's current log.
+	ControllerLogFileName = "current.log"
 )
