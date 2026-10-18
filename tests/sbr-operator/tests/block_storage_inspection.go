@@ -60,7 +60,7 @@ var _ = Describe(
 		})
 
 		It("Verify SBR device inspection works on Ceph RBD block storage",
-			reportxml.ID("TBD"),
+			reportxml.ID("1926"),
 			Label(
 				labels.OperatorSBR,
 				labels.TierAcceptance,
@@ -93,8 +93,8 @@ func selectInspectionReaders() *deviceInspection {
 	}
 
 	readerA := agentPods[0]
-	readerBName, readerBErr := agentPodNameOffNode(
-		sbrparams.SBRCBlockInspectionTestName, readerA.Object.Spec.NodeName)
+	readerBName, readerBErr := agentPodNameByNode(
+		sbrparams.SBRCBlockInspectionTestName, readerA.Object.Spec.NodeName, false)
 	if readerBErr != nil {
 		Skip(fmt.Sprintf("Device inspection needs agent pods on two different nodes: %v", readerBErr))
 	}

@@ -273,6 +273,26 @@ func readSlotDataFromPod(podName string) ([]SlotData, error) {
 	return parseSlotData(data), nil
 }
 
+// validSBDHeader returns the slot's message bytes when the slot at slotIdx carries a valid SBD
+// header of msgType, and nil otherwise.
+func validSBDHeader(data []byte, slotIdx int, msgType byte, msgSize int) []byte {
+	slotBytes := data[slotIdx*blockSlotSize : slotIdx*blockSlotSize+msgSize]
+
+	if !bytes.Equal(slotBytes[0:8], []byte(sbdMagic)) || slotBytes[10] != msgType {
+		return nil
+	}
+
+	want := crc32.ChecksumIEEE(slotBytes[0:29])
+	if got := binary.LittleEndian.Uint32(slotBytes[29:33]); got != want {
+		GinkgoWriter.Printf("  Slot %d: checksum mismatch (got %d, want %d), skipping\n",
+			slotIdx, got, want)
+
+		return nil
+	}
+
+	return slotBytes
+}
+
 // parseSlotData parses raw heartbeat-region bytes into SlotData entries.
 //
 // Each slot is BlockSlotSize (4096) bytes and starts with a packed 33-byte SBD
@@ -293,21 +313,9 @@ func parseSlotData(data []byte) []SlotData {
 	var slots []SlotData
 
 	for slotIdx := 0; slotIdx < len(data)/blockSlotSize && slotIdx < blockMaxNodes; slotIdx++ {
-		slotBytes := data[slotIdx*blockSlotSize : slotIdx*blockSlotSize+sbdHeaderSize]
+		slotBytes := validSBDHeader(data, slotIdx, sbdHeartbeatMsgType, sbdHeaderSize)
 
-		// A slot only counts as written if it carries a valid heartbeat header.
-		if !bytes.Equal(slotBytes[0:8], []byte(sbdMagic)) {
-			continue
-		}
-
-		if slotBytes[10] != sbdHeartbeatMsgType {
-			continue
-		}
-
-		want := crc32.ChecksumIEEE(slotBytes[0:29])
-		if got := binary.LittleEndian.Uint32(slotBytes[29:33]); got != want {
-			GinkgoWriter.Printf("  Slot %d: checksum mismatch (got %d, want %d), skipping\n", slotIdx, got, want)
-
+		if slotBytes == nil {
 			continue
 		}
 
@@ -758,17 +766,9 @@ func parseFenceSlots(data []byte) map[int]FenceSlot {
 	slots := make(map[int]FenceSlot)
 
 	for slotIdx := 0; slotIdx < len(data)/blockSlotSize && slotIdx < blockMaxNodes; slotIdx++ {
-		slotBytes := data[slotIdx*blockSlotSize : slotIdx*blockSlotSize+sbdFenceMsgSize]
+		slotBytes := validSBDHeader(data, slotIdx, sbdFenceMsgType, sbdFenceMsgSize)
 
-		if !bytes.Equal(slotBytes[0:8], []byte(sbdMagic)) || slotBytes[10] != sbdFenceMsgType {
-			continue
-		}
-
-		want := crc32.ChecksumIEEE(slotBytes[0:29])
-		if got := binary.LittleEndian.Uint32(slotBytes[29:33]); got != want {
-			GinkgoWriter.Printf("  Fence slot %d: checksum mismatch (got %d, want %d), skipping\n",
-				slotIdx, got, want)
-
+		if slotBytes == nil {
 			continue
 		}
 

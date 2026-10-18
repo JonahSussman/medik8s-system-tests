@@ -63,8 +63,8 @@ var _ = Describe(
 
 			var observerErr error
 
-			observerPodName, observerErr = agentPodNameOffNode(
-				sbrparams.SBRCBlockTransientTestName, victimNodeName)
+			observerPodName, observerErr = agentPodNameByNode(
+				sbrparams.SBRCBlockTransientTestName, victimNodeName, false)
 			Expect(observerErr).ToNot(HaveOccurred(),
 				"An agent pod outside node %q must be available to read the shared device", victimNodeName)
 			GinkgoWriter.Printf("Observer agent pod: %q\n", observerPodName)
@@ -92,7 +92,7 @@ var _ = Describe(
 		})
 
 		It("Verify SBR recovers from a transient Ceph RBD network partition without fencing",
-			reportxml.ID("TBD"),
+			reportxml.ID("1924"),
 			Label(
 				labels.OperatorSBR,
 				labels.TierAcceptance,
@@ -120,7 +120,7 @@ func captureVictimBaseline(victimNodeName, observerPodName string) partitionBase
 
 	By("Recording the victim agent's sbr_self_fenced_total counter and container restart count")
 
-	agentPodName, agentErr := agentPodNameOnNode(sbrparams.SBRCBlockTransientTestName, victimNodeName)
+	agentPodName, agentErr := agentPodNameByNode(sbrparams.SBRCBlockTransientTestName, victimNodeName, true)
 	Expect(agentErr).ToNot(HaveOccurred(), "An SBR agent pod must be Running on node %q", victimNodeName)
 	selfFenced, metricErr := readAgentCounter(agentPodName, sbrparams.SelfFencedMetricName)
 	Expect(metricErr).ToNot(HaveOccurred(),

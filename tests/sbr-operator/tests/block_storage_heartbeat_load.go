@@ -80,7 +80,7 @@ var _ = Describe(
 		})
 
 		It("Verify SBR heartbeats remain stable on Ceph RBD under load",
-			reportxml.ID("TBD"),
+			reportxml.ID("1925"),
 			Label(
 				labels.OperatorSBR,
 				labels.TierResiliency,

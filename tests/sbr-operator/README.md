@@ -295,7 +295,7 @@ Full test case: [docs/TESTCASES/rhwa-1915.md](../../docs/TESTCASES/rhwa-1915.md)
 - **Standalone**: `ginkgo --label-filter="sbr" --focus="write concurrently to Ceph RBD block device" ./tests/sbr-operator/...`
 - **Pass criteria**: One Ready agent pod per worker node on the same Block device; every written slot parses with a valid CRC32; heartbeats present from at least 2 distinct node IDs with advancing sequence numbers; slot counts agree across pods
 
-### 14. Verify SBR Recovers From a Transient Ceph RBD Network Partition Without Fencing (RHWA-XXXX)
+### 14. Verify SBR Recovers From a Transient Ceph RBD Network Partition Without Fencing (RHWA-1924)
 
 Validates the self-healing half of Block-mode storage detection. A privileged disruptor pod blocks
 the victim worker's Ceph ports (3300, 6789, 6800-7300) for 150s and then removes its own rules, so
@@ -310,7 +310,7 @@ resume once Ceph traffic returns. The node must come back on its own: same boot-
 Skips when a `NodeHealthCheck` remediates through the SBR template, which would legitimately fence
 the node, or when iptables is unusable in the victim's host namespaces.
 
-Full test case: [docs/TESTCASES/rhwa-xxxx.md](../../docs/TESTCASES/rhwa-xxxx.md)
+Full test case: [docs/TESTCASES/rhwa-1924.md](../../docs/TESTCASES/rhwa-1924.md)
 
 - **Operators**: SBR v5.8.0
 - **Cluster**: Multi-node, at least 2 schedulable workers, one hosting no SBR controller pod
@@ -326,7 +326,7 @@ Full test case: [docs/TESTCASES/rhwa-xxxx.md](../../docs/TESTCASES/rhwa-xxxx.md)
   past the sequence it stalled at; for 90s after recovery the node keeps its boot-id, stays Ready and has no
   `StorageBasedRemediation` CR; the agent's `sbr_self_fenced_total` and restart count are unchanged
 
-### 15. Verify SBR Heartbeats Remain Stable on Ceph RBD Under Load (RHWA-XXXX)
+### 15. Verify SBR Heartbeats Remain Stable on Ceph RBD Under Load (RHWA-1925)
 
 Measures the false-positive margin of the Block-mode heartbeat path. The SBRC is created with
 `sbrTimeoutSeconds: 10` — the CRD minimum, halving to a 5s heartbeat interval — and a stress pod
@@ -341,7 +341,7 @@ The upstream proposal's `p99 < 500ms` latency assertion is deliberately absent �
 no latency metric — and is replaced by the outcomes above. Stress pods stop their own load after
 five minutes, so a run that dies cannot leave a node saturated.
 
-Full test case: [docs/TESTCASES/rhwa-xxx4.md](../../docs/TESTCASES/rhwa-xxx4.md)
+Full test case: [docs/TESTCASES/rhwa-1925.md](../../docs/TESTCASES/rhwa-1925.md)
 
 - **Operators**: SBR v5.8.0
 - **Cluster**: Multi-node; at least two schedulable workers to exercise peer monitoring
@@ -357,7 +357,7 @@ Full test case: [docs/TESTCASES/rhwa-xxx4.md](../../docs/TESTCASES/rhwa-xxx4.md)
   exists; every node keeps its boot-id; every agent's `sbr_self_fenced_total` and
   `sbr_device_io_errors_total` are unchanged
 
-### 16. Verify SBR Device Inspection Works on Ceph RBD Block Storage (RHWA-XXXX)
+### 16. Verify SBR Device Inspection Works on Ceph RBD Block Storage (RHWA-1926)
 
 Reads every region of a live Block-mode device — superblock, node map, heartbeat slots, fence
 slots — through an agent pod and checks the four agree with each other and with the agents that
@@ -372,7 +372,7 @@ report, which is what makes this test useful for diagnosing a production device.
 
 Read-only: the test creates an SBRC and otherwise writes nothing.
 
-Full test case: [docs/TESTCASES/rhwa-xxx2.md](../../docs/TESTCASES/rhwa-xxx2.md)
+Full test case: [docs/TESTCASES/rhwa-1926.md](../../docs/TESTCASES/rhwa-1926.md)
 
 - **Operators**: SBR v5.8.0
 - **Cluster**: At least two nodes running an SBR agent; skips when only one does
