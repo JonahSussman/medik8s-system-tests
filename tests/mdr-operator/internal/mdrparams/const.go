@@ -139,8 +139,21 @@ const (
 	// DefaultMustGatherImage is the default medik8s must-gather container image.
 	DefaultMustGatherImage = "quay.io/medik8s/must-gather:latest"
 
-	// MustGatherTimeout is how long to allow `oc adm must-gather` to run.
+	// MustGatherTimeout is the outer deadline for the `oc adm must-gather` subprocess.
 	MustGatherTimeout = 10 * time.Minute
+
+	// MustGatherOCTimeout is the --timeout handed to oc itself. It must stay strictly
+	// below MustGatherTimeout so oc exits on its own and runs its deferred cleanup;
+	// if the outer deadline fires first the process is killed and its collection
+	// namespace is orphaned on the cluster.
+	MustGatherOCTimeout = 8 * time.Minute
+
+	// MustGatherImageInfoTimeout bounds the best-effort `oc image info` digest lookup.
+	MustGatherImageInfoTimeout = 1 * time.Minute
+
+	// MustGatherCleanupTimeout is the deadline for best-effort removal of leftover
+	// must-gather namespaces when oc did not clean up after itself.
+	MustGatherCleanupTimeout = 2 * time.Minute
 
 	// MDRTMustGatherTestName is the MDRT created so must-gather has a template to collect.
 	MDRTMustGatherTestName = "mdr-must-gather-template"
