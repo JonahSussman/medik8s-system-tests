@@ -186,17 +186,43 @@ type FenceSlot struct {
 // device, starting at block skipBlocks, by running dd inside an SBR agent pod. iflag=direct
 // bypasses the page cache so writes made by agents on other nodes are actually observed.
 func readDeviceBlocksFromPod(podName string, skipBlocks, countBlocks int) ([]byte, error) {
-	podBuilder, err := pod.Pull(APIClient, podName, medik8sparams.OperatorNs)
-	if err != nil {
-		return nil, fmt.Errorf("failed to pull pod %s: %w", podName, err)
-	}
-
 	cmd := []string{
 		"dd", "if=" + sbrBlockDevicePath,
 		"bs=" + strconv.Itoa(blockSlotSize),
 		"skip=" + strconv.Itoa(skipBlocks),
 		"count=" + strconv.Itoa(countBlocks),
 		"iflag=direct", "status=none",
+	}
+
+	return execDeviceRead(podName, cmd, countBlocks*blockSlotSize)
+}
+
+// readDeviceRegionFromPod reads regionSize bytes starting at byteOffset in a single dd read,
+// rather than one read per block. A region that is checksummed as a whole, like a node map
+// buffer, has to be read that way: the agents rewrite those buffers continuously, and a read
+// split over several syscalls can return the first blocks from one generation and the rest from
+// the next, which fails the checksum even though nothing is wrong with the device.
+//
+// skip_bytes lets the offset be expressed in bytes while bs covers the whole region. Both node
+// map offsets are 4 KB aligned, which is what O_DIRECT needs.
+func readDeviceRegionFromPod(podName string, byteOffset, regionSize int) ([]byte, error) {
+	cmd := []string{
+		"dd", "if=" + sbrBlockDevicePath,
+		"bs=" + strconv.Itoa(regionSize),
+		"skip=" + strconv.Itoa(byteOffset),
+		"count=1",
+		"iflag=direct,skip_bytes", "status=none",
+	}
+
+	return execDeviceRead(podName, cmd, regionSize)
+}
+
+// execDeviceRead runs a dd command inside an SBR agent pod and returns its stdout, insisting on
+// exactly wantBytes of it.
+func execDeviceRead(podName string, cmd []string, wantBytes int) ([]byte, error) {
+	podBuilder, err := pod.Pull(APIClient, podName, medik8sparams.OperatorNs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to pull pod %s: %w", podName, err)
 	}
 
 	var stdout, stderr bytes.Buffer
@@ -228,9 +254,9 @@ func readDeviceBlocksFromPod(podName string, skipBlocks, countBlocks int) ([]byt
 	// A short read means the device is smaller than the layout requires, or dd was cut off.
 	// Either way the bytes cannot be parsed against fixed offsets, so fail rather than
 	// silently returning a truncated region.
-	if want := countBlocks * blockSlotSize; stdout.Len() != want {
+	if stdout.Len() != wantBytes {
 		return nil, fmt.Errorf("short read of %s in pod %s: got %d bytes, want %d (stderr: %s)",
-			sbrBlockDevicePath, podName, stdout.Len(), want, strings.TrimSpace(stderr.String()))
+			sbrBlockDevicePath, podName, stdout.Len(), wantBytes, strings.TrimSpace(stderr.String()))
 	}
 
 	return stdout.Bytes(), nil
@@ -592,24 +618,50 @@ func parseSuperblock(data []byte) (*blockSuperblock, error) {
 	}, nil
 }
 
-// readNodeMapFromPod reads both node map buffers through an agent pod and returns the live one:
-// the valid buffer with the highest generation, exactly as BlockNodeMapStore.Load picks it. The
-// raw JSON payload is returned alongside, for test artifacts.
+// readNodeMapFromPod reads the node map through an agent pod and returns the live buffer: the
+// valid one with the highest generation, exactly as BlockNodeMapStore.Load picks it. The raw JSON
+// payload is returned alongside, for test artifacts.
+//
+// The read is retried because the agents rewrite these buffers continuously - generations were
+// seen advancing by four between two consecutive dumps - so a single attempt can catch a buffer
+// mid-write and fail its checksum. Each attempt re-reads both buffers; an attempt counts as
+// successful as soon as one of them validates, which is also what the agents themselves rely on.
 func readNodeMapFromPod(podName string) (*blockNodeMap, string, error) {
+	var lastErr error
+
+	for attempt := 1; attempt <= sbrparams.BlockNodeMapReadAttempts; attempt++ {
+		nodeMap, jsonPayload, err := readNodeMapOnce(podName)
+		if err == nil {
+			return nodeMap, jsonPayload, nil
+		}
+
+		lastErr = err
+		GinkgoWriter.Printf("Node map read attempt %d/%d failed: %v\n",
+			attempt, sbrparams.BlockNodeMapReadAttempts, err)
+	}
+
+	return nil, "", fmt.Errorf("node map unreadable after %d attempts: %w",
+		sbrparams.BlockNodeMapReadAttempts, lastErr)
+}
+
+// readNodeMapOnce makes one attempt at reading the node map. Each buffer is read in a single dd
+// read, so the 64 KB a checksum covers comes from one point in time rather than sixteen.
+func readNodeMapOnce(podName string) (*blockNodeMap, string, error) {
 	var (
 		bestPayload []byte
 		bestGen     uint64
+		bufferErrs  []string
 	)
 
-	for _, regionBlock := range []int{nodeMapABlock, nodeMapBBlock} {
-		raw, readErr := readDeviceBlocksFromPod(podName, regionBlock, nodeMapRegionBlocks)
+	for _, byteOffset := range []int{nodeMapABlock * blockSlotSize, nodeMapBBlock * blockSlotSize} {
+		raw, readErr := readDeviceRegionFromPod(podName, byteOffset, nodeMapRegionSize)
 		if readErr != nil {
 			return nil, "", readErr
 		}
 
 		generation, payload, parseErr := parseNodeMapBuffer(raw)
 		if parseErr != nil {
-			GinkgoWriter.Printf("Node map buffer at block %d is not usable: %v\n", regionBlock, parseErr)
+			bufferErrs = append(bufferErrs, fmt.Sprintf("buffer at byte %d: %v", byteOffset, parseErr))
 
 			continue
 		}
@@ -620,7 +672,8 @@ func readNodeMapFromPod(podName string) (*blockNodeMap, string, error) {
 	}
 
 	if bestPayload == nil {
-		return nil, "", errors.New("no valid node map buffer on the device")
+		return nil, "", fmt.Errorf("no valid node map buffer on the device (%s)",
+			strings.Join(bufferErrs, "; "))
 	}
 
 	nodeMap, jsonPayload, parseErr := parseNodeMapPayload(bestPayload)

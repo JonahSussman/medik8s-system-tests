@@ -403,6 +403,11 @@ const (
 	// tolerated and a stopped writer is not.
 	BlockHeartbeatSlotMaxAge = 2 * DefaultHeartbeatInterval
 
+	// BlockNodeMapReadAttempts is how many times a node map read is retried before giving up. The
+	// agents rewrite both 64 KB buffers continuously, and a read that lands mid-write fails the
+	// buffer's checksum, so a first attempt failing says nothing about the device.
+	BlockNodeMapReadAttempts = 5
+
 	// BlockInspectionMaxSkew bounds how old the newest heartbeat on the device may look from the
 	// machine running the test. It is deliberately loose: its job is to catch a device nobody is
 	// writing to any more, not to measure cadence, which BlockHeartbeatSlotMaxAge does on
