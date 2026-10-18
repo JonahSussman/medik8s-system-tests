@@ -352,6 +352,14 @@ func validateSequenceNumbers(slotDataByPod map[string][]SlotData) error {
 // watchdog) and skips it when the cluster has no Ceph RBD StorageClass. The returned object is
 // the created SBRC, for the caller to delete in AfterAll.
 func setupBlockModeSBRC(sbrcName string) *unstructured.Unstructured {
+	return setupBlockModeSBRCWithSpec(sbrcName, nil)
+}
+
+// setupBlockModeSBRCWithSpec is setupBlockModeSBRC with additionalSpec merged into the SBRC spec,
+// for a test that has to tune the config it runs against - a shorter sbrTimeoutSeconds, say.
+func setupBlockModeSBRCWithSpec(
+	sbrcName string, additionalSpec map[string]interface{},
+) *unstructured.Unstructured {
 	By("Checking if Self Node Remediation (SNR) operator is running")
 
 	snrRunning, snrPodCount := checkSNRRunning()
@@ -377,7 +385,7 @@ func setupBlockModeSBRC(sbrcName string) *unstructured.Unstructured {
 
 	By(fmt.Sprintf("Creating StorageBasedRemediationConfig %q with Ceph RBD block storage", sbrcName))
 
-	sbrc := buildSBRC(sbrcName, buildBlockModeSBRC(rbdStorageClass, nil))
+	sbrc := buildSBRC(sbrcName, buildBlockModeSBRC(rbdStorageClass, additionalSpec))
 	createErr := APIClient.Create(context.TODO(), sbrc)
 	Expect(createErr).ToNot(HaveOccurred(),
 		"StorageBasedRemediationConfig %q must be created for the Ceph RBD block storage test", sbrcName)

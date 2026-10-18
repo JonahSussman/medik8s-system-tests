@@ -231,13 +231,14 @@ func agentPodNameOffNode(sbrcName, nodeName string) (string, error) {
 	return "", fmt.Errorf("SBRC %s has no Running agent pod outside node %s", sbrcName, nodeName)
 }
 
-// readAgentCounter returns the sum of every sample of metricName on an SBR agent pod's own metrics
+// fetchAgentMetrics returns the raw Prometheus exposition body from an SBR agent pod's own metrics
 // endpoint. The API server cannot proxy to that port in OVN-K clusters, so, as in the metrics
-// suite, it is fetched from inside the container.
-func readAgentCounter(agentPodName, metricName string) (float64, error) {
+// suite, it is fetched from inside the container. Callers that need several counters from the same
+// agent scrape once and parse the body with sumPrometheusSamples.
+func fetchAgentMetrics(agentPodName string) (string, error) {
 	agentPod, pullErr := pod.Pull(APIClient, agentPodName, medik8sparams.OperatorNs)
 	if pullErr != nil {
-		return 0, fmt.Errorf("pull agent pod %s: %w", agentPodName, pullErr)
+		return "", fmt.Errorf("pull agent pod %s: %w", agentPodName, pullErr)
 	}
 
 	metricsURL := "http://localhost:" + sbrparams.AgentMetricsPort + "/metrics"
@@ -246,10 +247,21 @@ func readAgentCounter(agentPodName, metricName string) (float64, error) {
 		"curl -sf " + metricsURL + " 2>/dev/null || wget -qO- " + metricsURL + " 2>/dev/null",
 	})
 	if execErr != nil {
-		return 0, fmt.Errorf("read metrics from agent pod %s: %w", agentPodName, execErr)
+		return "", fmt.Errorf("read metrics from agent pod %s: %w", agentPodName, execErr)
 	}
 
-	return sumPrometheusSamples(output.String(), metricName)
+	return output.String(), nil
+}
+
+// readAgentCounter returns the sum of every sample of metricName on an SBR agent pod's own metrics
+// endpoint.
+func readAgentCounter(agentPodName, metricName string) (float64, error) {
+	body, fetchErr := fetchAgentMetrics(agentPodName)
+	if fetchErr != nil {
+		return 0, fetchErr
+	}
+
+	return sumPrometheusSamples(body, metricName)
 }
 
 // sumPrometheusSamples adds up every sample of metricName in a Prometheus text exposition body.
@@ -335,6 +347,23 @@ func stalledNodeIDs(before, after map[uint16]uint64) []uint16 {
 	slices.Sort(stalled)
 
 	return stalled
+}
+
+// requireNoSBRNodeHealthCheck skips the spec when a NodeHealthCheck remediates through the SBR
+// template. Such an NHC would create a StorageBasedRemediation CR for a node the test is
+// deliberately making unhealthy and fence it, which is correct NHC behaviour but the opposite of
+// what a "nothing was fenced" test measures.
+func requireNoSBRNodeHealthCheck() {
+	By("Verifying no NodeHealthCheck remediates through the SBR template")
+
+	nhcNames, nhcErr := nhcsUsingSBRTemplate(context.TODO())
+	Expect(nhcErr).ToNot(HaveOccurred(), "Failed to list NodeHealthChecks")
+
+	if len(nhcNames) > 0 {
+		Skip(fmt.Sprintf("NodeHealthCheck(s) %v remediate through %s, so they would create a "+
+			"StorageBasedRemediation CR for an unhealthy node and fence it. "+
+			"Delete them to run this test.", nhcNames, sbrparams.SBRTemplateKind))
+	}
 }
 
 // nodeConditionIs returns nil when the named node condition has the wanted status and, when

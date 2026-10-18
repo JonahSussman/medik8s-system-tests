@@ -325,3 +325,34 @@ Full test case: [docs/TESTCASES/rhwa-xxxx.md](../../docs/TESTCASES/rhwa-xxxx.md)
   `False` (reason `Recovered`) after it; exactly one heartbeat slot stalls and then advances past
   its pre-outage sequence; for 90s after recovery the node keeps its boot-id, stays Ready and has no
   `StorageBasedRemediation` CR; the agent's `sbr_self_fenced_total` and restart count are unchanged
+
+### 15. Verify SBR Heartbeats Remain Stable on Ceph RBD Under Load (RHWA-XXXX)
+
+Measures the false-positive margin of the Block-mode heartbeat path. The SBRC is created with
+`sbrTimeoutSeconds: 10` — the CRD minimum, halving to a 5s heartbeat interval — and a stress pod
+then saturates every CPU on every node running an agent.
+
+For three minutes under that load no node may report `SBRStorageUnhealthy=True`, every heartbeat
+slot must keep advancing when read through an observer agent, and nothing may be remediated: no
+`StorageBasedRemediation` CR, no boot-id change, and no movement in any agent's
+`sbr_self_fenced_total` or `sbr_device_io_errors_total`.
+
+The upstream proposal's `p99 < 500ms` latency assertion is deliberately absent — the agent exposes
+no latency metric — and is replaced by the outcomes above. Stress pods stop their own load after
+five minutes, so a run that dies cannot leave a node saturated.
+
+Full test case: [docs/TESTCASES/rhwa-xxx4.md](../../docs/TESTCASES/rhwa-xxx4.md)
+
+- **Operators**: SBR v5.8.0
+- **Cluster**: Multi-node; at least two schedulable workers to exercise peer monitoring
+- **Storage**: ODF Ceph RBD StorageClass, RWX, `volumeMode: Block`. Auto-discovered by
+  provisioner (`rbd.csi.ceph.com`); `SBR_RBD_STORAGE_CLASS` overrides it. Skips when the
+  cluster has none
+- **Environment**: Connected or disconnected; `SBR_INJECTOR_IMAGE` must be mirrored when
+  disconnected. Non-destructive, but every agent node runs at full CPU for up to five minutes, so
+  it belongs in a job that tolerates that. Self Node Remediation must not be running
+- **Standalone**: `ginkgo --label-filter="sbr" --focus="heartbeats remain stable on Ceph RBD under load" ./tests/sbr-operator/...`
+- **Pass criteria**: No node reports `SBRStorageUnhealthy=True` for the whole 3-minute window under
+  load; every heartbeat slot advances past its pre-load sequence; no `StorageBasedRemediation` CR
+  exists; every node keeps its boot-id; every agent's `sbr_self_fenced_total` and
+  `sbr_device_io_errors_total` are unchanged

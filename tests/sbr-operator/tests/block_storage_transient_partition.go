@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -39,17 +38,7 @@ var _ = Describe(
 		)
 
 		BeforeAll(func() {
-			By("Verifying no NodeHealthCheck remediates through the SBR template")
-
-			nhcNames, nhcErr := nhcsUsingSBRTemplate(context.TODO())
-			Expect(nhcErr).ToNot(HaveOccurred(), "Failed to list NodeHealthChecks")
-
-			if len(nhcNames) > 0 {
-				Skip(fmt.Sprintf("NodeHealthCheck(s) %v remediate through %s, so they would create a "+
-					"StorageBasedRemediation CR for the partitioned node and fence it. "+
-					"Delete them to run this test.", nhcNames, sbrparams.SBRTemplateKind))
-			}
-
+			requireNoSBRNodeHealthCheck()
 			testSBRC = setupBlockModeSBRC(sbrparams.SBRCBlockTransientTestName)
 
 			By("Selecting a victim worker node that hosts no SBR controller pod")

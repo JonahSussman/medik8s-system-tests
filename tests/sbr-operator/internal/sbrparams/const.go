@@ -363,6 +363,29 @@ const (
 	// SBRStorageUnhealthyReasonRecovered is the reason a peer agent gives when it clears
 	// SBRStorageUnhealthy because the node's heartbeats resumed.
 	SBRStorageUnhealthyReasonRecovered = "Recovered"
+
+	// DeviceIOErrorsMetricName is the agent counter incremented on every failed read or write of
+	// the shared device.
+	DeviceIOErrorsMetricName = "sbr_device_io_errors_total"
+
+	// SBRCBlockLoadTestName is the SBRC name for the Ceph RBD heartbeat-under-load test.
+	SBRCBlockLoadTestName = "test-sbrc-block-load"
+
+	// BlockStressPodPrefix is the name prefix for the CPU stress pods, one per agent node. The node
+	// name is appended, which keeps the names unique and readable in a failure dump.
+	BlockStressPodPrefix = "sbr-rbd-stress-"
+
+	// BlockLoadStressDuration is how long a stress pod saturates its node before exiting. The pods
+	// are deleted in DeferCleanup; this bounds the load if the test dies without cleaning up, and
+	// must comfortably outlast BlockLoadCheckDuration and the assertions that follow it.
+	BlockLoadStressDuration = 5 * time.Minute
+
+	// BlockLoadCheckDuration is how long every agent node is watched under CPU load to prove no
+	// heartbeat is delayed enough to be read as storage loss.
+	BlockLoadCheckDuration = 3 * time.Minute
+
+	// BlockLoadCheckInterval is the poll interval for the under-load condition check.
+	BlockLoadCheckInterval = 10 * time.Second
 )
 
 // AgentExpectedMetricNames lists the Prometheus metric names that must be present in the agent output.
