@@ -356,3 +356,35 @@ Full test case: [docs/TESTCASES/rhwa-xxx4.md](../../docs/TESTCASES/rhwa-xxx4.md)
   load; every heartbeat slot advances past its pre-load sequence; no `StorageBasedRemediation` CR
   exists; every node keeps its boot-id; every agent's `sbr_self_fenced_total` and
   `sbr_device_io_errors_total` are unchanged
+
+### 16. Verify SBR Device Inspection Works on Ceph RBD Block Storage (RHWA-XXXX)
+
+Reads every region of a live Block-mode device — superblock, node map, heartbeat slots, fence
+slots — through an agent pod and checks the four agree with each other and with the agents that
+are running: valid superblock with a clear quiesce flag, one node map entry per agent node with
+unique in-range node IDs, each node's heartbeat in the slot its node ID points at and recently
+written, and no live fence message. An agent on a second node then repeats the reads and must see
+the same device, with sequence numbers that have only moved forward.
+
+SBR has no `sbr-device-summary` command, so the regions are read raw with `dd` and O_DIRECT and
+decoded against the operator's own layout constants. The decoded state is attached to the Ginkgo
+report, which is what makes this test useful for diagnosing a production device.
+
+Read-only: the test creates an SBRC and otherwise writes nothing.
+
+Full test case: [docs/TESTCASES/rhwa-xxx2.md](../../docs/TESTCASES/rhwa-xxx2.md)
+
+- **Operators**: SBR v5.8.0
+- **Cluster**: At least two nodes running an SBR agent; skips when only one does
+- **Storage**: ODF Ceph RBD StorageClass, RWX, `volumeMode: Block`. Auto-discovered by
+  provisioner (`rbd.csi.ceph.com`); `SBR_RBD_STORAGE_CLASS` overrides it. Skips when the
+  cluster has none
+- **Environment**: Connected or disconnected. Non-destructive. Self Node Remediation must not be
+  running
+- **Standalone**: `ginkgo --label-filter="sbr" --focus="device inspection works on Ceph RBD" ./tests/sbr-operator/...`
+- **Pass criteria**: Superblock magic `SBRBLK`, version 1, matching CRC32 and clear quiesce flag;
+  one node map entry per agent node with unique node IDs in 1-255 and both CRC32s valid; every
+  mapped node's heartbeat at slot `nodeID - 1`, no more than two heartbeat intervals behind the
+  newest on the device; no fence slot with a reason other than `NONE`; a reader on a second node
+  sees the identical node map and sequence numbers no lower; the decoded state is attached to the
+  report

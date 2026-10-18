@@ -1,0 +1,208 @@
+# RHWA-XXXX — The on-disk state of a Ceph RBD block device can be inspected and is self-consistent
+
+## 1. Metadata
+
+| Field                        | Value                                                     |
+| ---------------------------- | ----------------------------------------------------------- |
+| Jira                         | [RHWA-XXXX](https://issues.redhat.com/browse/RHWA-XXXX)   |
+| `reportxml.ID`               | `XXXX`                                                    |
+| Polarion (legacy) — OPTIONAL | None                                                      |
+| Operators                    | SBR v5.8.0                                                |
+| Suite                        | `tests/sbr-operator`                                      |
+| Spec file                    | `tests/sbr-operator/tests/block_storage_inspection.go`    |
+| Author                       | rwurmbra                                                  |
+| Status                       | draft                                                     |
+
+## 2. Summary
+
+Reads every region of a Block-mode SBR device on Ceph RBD — superblock, node map, heartbeat slots
+and fence slots — through an agent pod, and asserts the four regions agree with each other and
+with the set of agents that are running. A second agent pod on another node repeats the reads and
+must see the same device.
+
+## 3. Scope
+
+- **In scope**: that Block-mode device state can be decoded off a live Ceph RBD device at all, and
+  that what is decoded is self-consistent: a valid superblock with its quiesce flag clear, one
+  node map entry per agent node with unique in-range node IDs, each node's heartbeat in the slot
+  its node ID points at and recently written, no live fence message, and the same picture from a
+  reader on a different node.
+- **Out of scope**:
+  - Writing to the device, in any form. This test only reads; nothing is remediated, fenced or
+    disrupted.
+  - Concurrent-write correctness under multi-attach (RHWA-1915) and behaviour when the device goes
+    away (the Ceph RBD transient partition test and `storage_loss_watchdog.go`, OCP-88880).
+  - The node map's write-verify and double-buffering protocol. The test reads both buffers and
+    takes the valid one with the highest generation, exactly as `BlockNodeMapStore.Load` does, but
+    it does not exercise the conflict path.
+  - Fence slot contents during an actual fence, which RHWA-1916 covers.
+  - Filesystem mode, whose node map is a file and whose slots are 512 bytes at `nodeID * 512`.
+
+Three deviations from `docs/sbr-block-rbd-test-flows.md`, which the flow document anticipates in
+part:
+
+- There is no `sbr-device-summary` command in SBR, so the test reads raw sectors with `dd` and
+  O_DIRECT through an agent pod — the reader RHWA-1915 already uses — and decodes them against the
+  operator's own layout constants, mirrored in `block_storage_rbd_helpers.go`.
+- Slot freshness is measured against the newest timestamp on the device rather than against the
+  clock of the machine running the test, which need not agree with the nodes'. A loose absolute
+  bound (`sbrparams.BlockInspectionMaxSkew`, 5 minutes) is still checked, to catch a device that
+  nobody is writing to at all.
+- "Save the raw dumps as test artifacts" is done with `AddReportEntry`, the mechanism this repo
+  already uses for attachments. The two slot regions are 1 MB of mostly zero padding, so what is
+  attached is the superblock bytes, both node map JSON payloads, every written slot and every
+  written fence slot — all of what was read, none of the padding.
+
+## 4. Environment
+
+| Requirement  | Value                                                                               |
+| ------------ | ------------------------------------------------------------------------------------- |
+| Cluster      | OCP ≥ 4.13, multi-node: at least 2 nodes running an SBR agent, so the device can be read from two of them |
+| Topology     | any                                                                                     |
+| Platform     | any (`platform:any`)                                                                    |
+| Storage      | Ceph RBD StorageClass (provisioner containing `rbd.csi.ceph.com`), RWX, `volumeMode: Block` |
+| Network      | connected or disconnected                                                               |
+| Namespace    | `openshift-workload-availability` (`medik8sparams.OperatorNs`)                         |
+| Destructive? | no — the test only reads the device and changes nothing on any node                     |
+
+Environment variables:
+
+```bash
+export KUBECONFIG=/absolute/path/to/kubeconfig
+export ECO_TEST_FEATURES=sbr-operator
+export ECO_TEST_LABELS='operator:sbr && tier:acceptance'
+export ECO_REPORTS_DUMP_DIR="$(mktemp -d)"
+
+# Optional. Unset, the test auto-discovers a StorageClass whose provisioner contains
+# "rbd.csi.ceph.com" and skips when the cluster has none.
+export SBR_RBD_STORAGE_CLASS=ocs-storagecluster-ceph-rbd
+```
+
+## 5. Preconditions
+
+Asserted in `BeforeAll`:
+
+1. Self Node Remediation is not running: SNR and SBR cannot both hold `/dev/watchdog`.
+2. The cluster has a Ceph RBD StorageClass, auto-discovered or named by `SBR_RBD_STORAGE_CLASS`.
+3. Any SBRC left by an earlier run is deleted and gone before a fresh one is created.
+4. A Block-mode SBRC on that StorageClass exists, with default timings, and every pod of its agent
+   DaemonSet is Ready. Readiness means each agent passed its preflight, which includes a write to
+   the shared device, so the regions are initialised before anything is read.
+5. Two Running agent pods on two different nodes are available as readers. The spec skips when the
+   cluster only runs one agent: a second reader on the same node would prove nothing about what
+   another node sees.
+
+## 6. Test steps
+
+| #  | Step (`By` text)                                                                          | Expected result                                                                              |
+| -- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| 1  | Reading the superblock through reader A                                                        | Sector 0 is read and the 80-byte header decodes                                                  |
+| 2  | Asserting the superblock magic is SBRBLK and the version is 1                                  | Magic `SBRBLK`, version 1                                                                        |
+| 3  | Asserting the superblock CRC is valid                                                          | The stored CRC32 equals the checksum over the header's first 76 bytes                            |
+| 4  | Asserting the superblock quiesce flag is clear                                                 | `Flags & 0x1` is zero, so agents are not paused for a migration                                  |
+| 5  | Reading the node map through reader A                                                          | The valid buffer with the highest generation decodes, envelope CRC and payload CRC both matching |
+| 6  | Asserting the node map has one entry per agent node                                            | The mapped node names are exactly the nodes running an agent                                     |
+| 7  | Asserting every node ID is unique and within 1-255                                             | No duplicate ID; every ID in `[1, 255]`                                                          |
+| 8  | Reading each node's heartbeat slot through reader A                                            | The heartbeat region is read and its written slots parse with valid CRC32s                       |
+| 9  | Asserting each heartbeat slot's embedded NodeID matches the node map                           | Each mapped node ID has a slot, at index `nodeID - 1`                                            |
+| 10 | Asserting each heartbeat slot's timestamp is younger than twice the heartbeat interval         | No slot is more than `sbrparams.BlockHeartbeatSlotMaxAge` behind the newest on the device, and that newest one is within `sbrparams.BlockInspectionMaxSkew` of now |
+| 11 | Reading each node's fence slot through reader A                                                | The fence region is read; written slots parse                                                    |
+| 12 | Asserting each fence slot is empty or carries reason NONE                                      | No mapped node has a fence message with a reason other than `FENCE_REASON_NONE`                  |
+| 13 | Reading the node map through reader B                                                          | The node map decodes from an agent on another node                                               |
+| 14 | Asserting reader B's node map matches reader A's                                               | Identical entries                                                                                |
+| 15 | Reading each node's heartbeat slot through reader B                                            | The heartbeat region is read through reader B                                                    |
+| 16 | Asserting each sequence number is greater than or equal to what reader A saw                   | Every node ID reader A saw is present for reader B, with a sequence no lower                     |
+| 17 | Saving the raw device dumps as test artifacts                                                  | Seven report entries are attached, covering every region that was read                           |
+
+## 7. Pass criteria
+
+- Exactly one spec with `reportxml.ID("XXXX")` runs and passes.
+- The superblock carries magic `SBRBLK`, version 1, a CRC32 matching its contents, and a clear
+  quiesce flag.
+- The node map holds exactly one entry per node running an agent of this SBRC, every node ID is
+  unique and in `[1, 255]`, and both its envelope CRC32 and its payload CRC32 check out.
+- Every mapped node has a heartbeat slot at index `nodeID - 1` whose embedded NodeID is that node
+  ID, written no more than `sbrparams.BlockHeartbeatSlotMaxAge` before the newest heartbeat on the
+  device.
+- No mapped node's fence slot carries a reason other than `FENCE_REASON_NONE`.
+- An agent on a second node reads the identical node map, and every heartbeat sequence it sees is
+  greater than or equal to the one the first reader saw.
+- The decoded device state is attached to the report.
+- Cleanup finishes: the SBRC and its agent DaemonSet are removed.
+
+## 8. Failure / known issues
+
+None.
+
+## 9. Cleanup
+
+- `DeferCleanup` removes nothing: the `It` creates no cluster object. It only reads sectors through
+  `dd` in existing agent pods.
+- `AfterAll` removes the SBRC created in `BeforeAll`, tolerating `IsNotFound`, and waits for it to
+  be gone so the next suite does not inherit its agent DaemonSet. Deleting the SBRC releases the
+  PVC, and with it the device this test read.
+- No node state is changed, so there is nothing to recover.
+
+## 10. Labels
+
+```go
+Label(
+    labels.OperatorSBR,
+    labels.TierAcceptance,
+    labels.ComponentDaemonSet,
+    labels.DisruptionNonDestructive,
+    labels.PlatformAny,
+    labels.FrequencyNightly,
+)
+```
+
+## 11. Running it standalone
+
+```bash
+ginkgo -v --label-filter="operator:sbr && tier:acceptance" \
+    --focus="device inspection works on Ceph RBD" ./tests/sbr-operator/...
+```
+
+## 12. Implementation sketch
+
+Implemented in
+[`tests/sbr-operator/tests/block_storage_inspection.go`](../../tests/sbr-operator/tests/block_storage_inspection.go).
+The region readers and decoders live with the rest of the on-disk format knowledge in
+[`block_storage_rbd_helpers.go`](../../tests/sbr-operator/tests/block_storage_rbd_helpers.go).
+
+```go
+It("Verify SBR device inspection works on Ceph RBD block storage",
+    reportxml.ID("XXXX"),
+    Label(
+        labels.OperatorSBR,
+        labels.TierAcceptance,
+        labels.ComponentDaemonSet,
+        labels.DisruptionNonDestructive,
+        labels.PlatformAny,
+        labels.FrequencyNightly,
+    ), func() {
+        inspectSuperblock(inspection)
+        inspectNodeMap(inspection)
+        inspectHeartbeatSlots(inspection)
+        inspectFenceSlots(inspection)
+        inspectThroughSecondReader(inspection)
+        saveInspectionArtifacts(inspection)
+    })
+```
+
+Every offset the decoders use is mirrored from the operator, and named after the constant it comes
+from, so a format change shows up as a mismatch to fix rather than a mystery:
+
+| Region           | Source                                                    |
+| ---------------- | --------------------------------------------------------- |
+| Superblock       | `blockformat.Superblock.Marshal`, 80 bytes at sector 0    |
+| Node map buffers | `blockformat` `nmPayloadOffset` and the envelope CRC32    |
+| Node map payload | `sbdprotocol.NodeMapTable.Marshal`, CRC32-prefixed JSON   |
+| Heartbeat slots  | `sbdprotocol` header, 33 bytes, at `(nodeID-1) * 4096`    |
+| Fence slots      | the same header plus `TargetNodeID` and `Reason`          |
+
+## 13. Documentation to update
+
+- `tests/sbr-operator/README.md` — catalog entry 16, with the Jira link, requirements, standalone
+  command and pass criteria.
+- `docs/README.md` — not needed; this adds no cross-cutting guide.

@@ -319,7 +319,7 @@ func agentRestartCount(agentPodName string) (int32, error) {
 // heartbeatSequences reads the whole heartbeat region through one agent pod and returns the
 // sequence number found in each written slot, keyed by the node ID embedded in that slot.
 func heartbeatSequences(observerPodName string) (map[uint16]uint64, error) {
-	slots, readErr := readSlotDataFromPod(observerPodName, medik8sparams.OperatorNs)
+	slots, readErr := readSlotDataFromPod(observerPodName)
 	if readErr != nil {
 		return nil, readErr
 	}

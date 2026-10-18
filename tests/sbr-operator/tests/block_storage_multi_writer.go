@@ -100,7 +100,7 @@ func testCephRBDConcurrentWrites() {
 	for _, agentPod := range runningPods {
 		podName := agentPod.Object.Name
 		GinkgoWriter.Printf("Reading slot data from pod %s...\n", podName)
-		slotData, err := readSlotDataFromPod(podName, medik8sparams.OperatorNs)
+		slotData, err := readSlotDataFromPod(podName)
 		Expect(err).ToNot(HaveOccurred(), "Failed to read slot data from pod %s", podName)
 		slotDataByPod[podName] = slotData
 		GinkgoWriter.Printf("  Retrieved %d slot entries from pod %s\n", len(slotData), podName)

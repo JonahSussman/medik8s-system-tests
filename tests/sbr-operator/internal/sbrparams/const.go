@@ -386,6 +386,28 @@ const (
 
 	// BlockLoadCheckInterval is the poll interval for the under-load condition check.
 	BlockLoadCheckInterval = 10 * time.Second
+
+	// SBRCBlockInspectionTestName is the SBRC name for the Ceph RBD device inspection test.
+	SBRCBlockInspectionTestName = "test-sbrc-block-inspection"
+
+	// DefaultSBRTimeoutSeconds mirrors api/v1alpha1.DefaultSBRTimeoutSeconds: what an SBRC runs
+	// with when sbrTimeoutSeconds is unset. The agent writes a heartbeat every half of it.
+	DefaultSBRTimeoutSeconds = 30
+
+	// DefaultHeartbeatInterval is the agent's write cadence at the default sbrTimeoutSeconds,
+	// matching StorageBasedRemediationConfigSpec.GetHeartbeatInterval.
+	DefaultHeartbeatInterval = DefaultSBRTimeoutSeconds * time.Second / 2
+
+	// BlockHeartbeatSlotMaxAge is how far behind the newest heartbeat on the device a node's own
+	// slot may be before it counts as stale: two write cycles, so a single missed write is
+	// tolerated and a stopped writer is not.
+	BlockHeartbeatSlotMaxAge = 2 * DefaultHeartbeatInterval
+
+	// BlockInspectionMaxSkew bounds how old the newest heartbeat on the device may look from the
+	// machine running the test. It is deliberately loose: its job is to catch a device nobody is
+	// writing to any more, not to measure cadence, which BlockHeartbeatSlotMaxAge does on
+	// device-written timestamps alone and so without any dependency on the runner's clock.
+	BlockInspectionMaxSkew = 5 * time.Minute
 )
 
 // AgentExpectedMetricNames lists the Prometheus metric names that must be present in the agent output.

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"hash/crc32"
@@ -76,6 +77,67 @@ const (
 
 	// heartbeatRegionBlock is BlockHeartbeatRegionOffset (135168) / blockSlotSize.
 	heartbeatRegionBlock = 33
+
+	// fenceRegionBlock is BlockFenceRegionOffset (1179648) / blockSlotSize.
+	fenceRegionBlock = 288
+
+	// superblockBlock is BlockSuperblockOffset: the self-describing header at sector 0.
+	superblockBlock = 0
+
+	// nodeMapABlock is BlockNodeMapAOffset (4096) / blockSlotSize, and nodeMapBBlock is
+	// BlockNodeMapBOffset (69632) / blockSlotSize. The two buffers are written alternately.
+	nodeMapABlock = 1
+	nodeMapBBlock = 17
+
+	// nodeMapRegionBlocks is BlockNodeMapRegionSize (65536) / blockSlotSize.
+	nodeMapRegionBlocks = 16
+)
+
+// Superblock layout, from internal/blockformat/superblock.go (little-endian throughout):
+// magic[0:6], version[6:8], eight int64 region fields[8:72], flags[72:76], CRC32[76:80].
+const (
+	// superblockMagic is SuperblockMagic, the first 6 bytes of a formatted SBR block device.
+	superblockMagic = "SBRBLK"
+
+	// superblockVersion is SuperblockVersion, the only format version that exists.
+	superblockVersion uint16 = 1
+
+	// superblockDataSize is SuperblockDataSize: the bytes the CRC32 covers.
+	superblockDataSize = 76
+
+	// superblockTotalSize is SuperblockTotalSize: the wire size of the header, CRC included.
+	superblockTotalSize = 80
+
+	// superblockRegionFields is the number of int64 offset/length pairs between the version and
+	// the flags: node map A and B, the heartbeat region and the fence region.
+	superblockRegionFields = 8
+
+	// flagQuiesce is FlagQuiesce, superblock flag bit 0: agents stop heartbeating while it is set,
+	// which only happens during an operator-orchestrated format migration.
+	flagQuiesce uint32 = 1 << 0
+)
+
+// Node map buffer layout, from internal/blockformat/blocknodemap.go: each 64 KB buffer is
+// [Generation u64][WriterUUID 16B][PayloadLen u32][payload][pad][CRC32 u32], with the CRC32 in the
+// last four bytes covering everything before it.
+const (
+	// nodeMapPayloadLenOffset is nmPayloadLenOffset.
+	nodeMapPayloadLenOffset = 24
+
+	// nodeMapPayloadOffset is nmPayloadOffset: where the CRC32-prefixed JSON starts.
+	nodeMapPayloadOffset = 28
+
+	// nodeMapRegionSize is BlockNodeMapRegionSize.
+	nodeMapRegionSize = nodeMapRegionBlocks * blockSlotSize
+
+	// nodeMapCRCOffset is where parseBuffer reads the envelope CRC32: RegionSize - 4.
+	nodeMapCRCOffset = nodeMapRegionSize - 4
+
+	// nodeMapJSONCRCSize is the CRC32 that NodeMapTable.Marshal prepends to its JSON.
+	nodeMapJSONCRCSize = 4
+
+	// nodeMapMagic is SBD_NODE_MAP_MAGIC, carried inside the JSON rather than on the envelope.
+	nodeMapMagic = "SBDNMAP1"
 )
 
 // SBD message layout, from internal/sbdprotocol/message.go (little-endian throughout).
@@ -88,21 +150,43 @@ const (
 
 	// sbdHeartbeatMsgType is SBD_MSG_TYPE_HEARTBEAT.
 	sbdHeartbeatMsgType byte = 0x01
+
+	// sbdFenceMsgType is SBD_MSG_TYPE_FENCE.
+	sbdFenceMsgType byte = 0x02
+
+	// sbdFenceMsgSize is a marshalled fence message: the header plus TargetNodeID and Reason.
+	sbdFenceMsgSize = sbdHeaderSize + 3
+
+	// fenceReasonNone is FENCE_REASON_NONE: a fence slot that asks for nothing.
+	fenceReasonNone uint8 = 0x00
 )
 
 // SlotData represents a single heartbeat slot entry from the SBR device.
 type SlotData struct {
+	// SlotIndex is the slot's position in the region. In Block mode the slot for node N is at
+	// index N-1, so a slot whose embedded NodeID is not SlotIndex+1 was written to the wrong place.
+	SlotIndex int
 	NodeID    uint16
 	Timestamp int64
 	Sequence  uint64
 	HasData   bool
 }
 
+// FenceSlot is a single parsed fence slot from the SBR device.
+type FenceSlot struct {
+	// SlotIndex is the slot's position in the fence region; the slot for node N is at index N-1.
+	SlotIndex int
+	// WriterNodeID is the node that wrote the fence message, from the SBD header.
+	WriterNodeID uint16
+	TargetNodeID uint16
+	Reason       uint8
+}
+
 // readDeviceBlocksFromPod reads countBlocks blockSlotSize-sized blocks from the shared block
 // device, starting at block skipBlocks, by running dd inside an SBR agent pod. iflag=direct
 // bypasses the page cache so writes made by agents on other nodes are actually observed.
-func readDeviceBlocksFromPod(podName, namespace string, skipBlocks, countBlocks int) ([]byte, error) {
-	podBuilder, err := pod.Pull(APIClient, podName, namespace)
+func readDeviceBlocksFromPod(podName string, skipBlocks, countBlocks int) ([]byte, error) {
+	podBuilder, err := pod.Pull(APIClient, podName, medik8sparams.OperatorNs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to pull pod %s: %w", podName, err)
 	}
@@ -154,8 +238,8 @@ func readDeviceBlocksFromPod(podName, namespace string, skipBlocks, countBlocks 
 
 // readSlotDataFromPod reads the whole heartbeat region from an SBR agent pod and parses
 // every written heartbeat slot out of it.
-func readSlotDataFromPod(podName, namespace string) ([]SlotData, error) {
-	data, err := readDeviceBlocksFromPod(podName, namespace, heartbeatRegionBlock, blockMaxNodes)
+func readSlotDataFromPod(podName string) ([]SlotData, error) {
+	data, err := readDeviceBlocksFromPod(podName, heartbeatRegionBlock, blockMaxNodes)
 	if err != nil {
 		return nil, err
 	}
@@ -202,6 +286,7 @@ func parseSlotData(data []byte) []SlotData {
 		}
 
 		slots = append(slots, SlotData{
+			SlotIndex: slotIdx,
 			NodeID:    binary.LittleEndian.Uint16(slotBytes[11:13]),
 			Timestamp: int64(binary.LittleEndian.Uint64(slotBytes[13:21])),
 			Sequence:  binary.LittleEndian.Uint64(slotBytes[21:29]),
@@ -424,4 +509,223 @@ func deleteSBRCAndWait(sbrc *unstructured.Unstructured, sbrcName string) {
 		return fmt.Errorf("SBRC %s still present", sbrcName)
 	}, medik8sparams.DefaultTimeout, sbrparams.DefaultPollInterval).Should(Succeed(),
 		"SBRC %q must be gone", sbrcName)
+}
+
+// blockSuperblock is the parsed sector-0 header of a Block-mode SBR device. CRC and ComputedCRC
+// are both kept so a caller can assert the stored checksum is the right one rather than being
+// handed a parse error for a device it is trying to diagnose.
+type blockSuperblock struct {
+	Magic              string
+	Version            uint16
+	NodeMapAOffset     int64
+	NodeMapALength     int64
+	NodeMapBOffset     int64
+	NodeMapBLength     int64
+	HeartbeatRegOffset int64
+	HeartbeatRegLength int64
+	FenceRegOffset     int64
+	FenceRegLength     int64
+	Flags              uint32
+	CRC                uint32
+	ComputedCRC        uint32
+}
+
+// blockNodeMapEntry is one node's slot assignment, as the agent writes it into the node map JSON.
+type blockNodeMapEntry struct {
+	NodeName string `json:"node_name"`
+	NodeID   uint16 `json:"node_id"`
+}
+
+// blockNodeMap is the subset of sbdprotocol.NodeMapTable this suite reads back. Entries is keyed
+// by node name; NodeUsage is the reverse index, keyed by node ID rendered as a JSON object key.
+type blockNodeMap struct {
+	Magic      [8]byte                      `json:"magic"`
+	Version    uint64                       `json:"version"`
+	Entries    map[string]blockNodeMapEntry `json:"entries"`
+	NodeUsage  map[string]string            `json:"node_usage"`
+	Generation uint64                       `json:"-"`
+}
+
+// readSuperblockFromPod reads sector 0 through an agent pod and parses the superblock out of it.
+func readSuperblockFromPod(podName string) (*blockSuperblock, []byte, error) {
+	data, readErr := readDeviceBlocksFromPod(podName, superblockBlock, 1)
+	if readErr != nil {
+		return nil, nil, readErr
+	}
+
+	superblock, parseErr := parseSuperblock(data)
+	if parseErr != nil {
+		return nil, data[:superblockTotalSize], parseErr
+	}
+
+	return superblock, data[:superblockTotalSize], nil
+}
+
+// parseSuperblock decodes the 80-byte superblock header. It only fails on a short read: a wrong
+// magic, version or checksum is reported through the returned struct, for the caller to assert on.
+func parseSuperblock(data []byte) (*blockSuperblock, error) {
+	if len(data) < superblockTotalSize {
+		return nil, fmt.Errorf("superblock too short: got %d bytes, want %d",
+			len(data), superblockTotalSize)
+	}
+
+	fields := make([]int64, superblockRegionFields)
+	for idx := range fields {
+		start := 8 + idx*8
+		fields[idx] = int64(binary.LittleEndian.Uint64(data[start : start+8]))
+	}
+
+	return &blockSuperblock{
+		Magic:              string(data[0:6]),
+		Version:            binary.LittleEndian.Uint16(data[6:8]),
+		NodeMapAOffset:     fields[0],
+		NodeMapALength:     fields[1],
+		NodeMapBOffset:     fields[2],
+		NodeMapBLength:     fields[3],
+		HeartbeatRegOffset: fields[4],
+		HeartbeatRegLength: fields[5],
+		FenceRegOffset:     fields[6],
+		FenceRegLength:     fields[7],
+		Flags:              binary.LittleEndian.Uint32(data[72:76]),
+		CRC:                binary.LittleEndian.Uint32(data[76:80]),
+		ComputedCRC:        crc32.ChecksumIEEE(data[:superblockDataSize]),
+	}, nil
+}
+
+// readNodeMapFromPod reads both node map buffers through an agent pod and returns the live one:
+// the valid buffer with the highest generation, exactly as BlockNodeMapStore.Load picks it. The
+// raw JSON payload is returned alongside, for test artifacts.
+func readNodeMapFromPod(podName string) (*blockNodeMap, string, error) {
+	var (
+		bestPayload []byte
+		bestGen     uint64
+	)
+
+	for _, regionBlock := range []int{nodeMapABlock, nodeMapBBlock} {
+		raw, readErr := readDeviceBlocksFromPod(podName, regionBlock, nodeMapRegionBlocks)
+		if readErr != nil {
+			return nil, "", readErr
+		}
+
+		generation, payload, parseErr := parseNodeMapBuffer(raw)
+		if parseErr != nil {
+			GinkgoWriter.Printf("Node map buffer at block %d is not usable: %v\n", regionBlock, parseErr)
+
+			continue
+		}
+
+		if generation > bestGen {
+			bestGen, bestPayload = generation, payload
+		}
+	}
+
+	if bestPayload == nil {
+		return nil, "", errors.New("no valid node map buffer on the device")
+	}
+
+	nodeMap, jsonPayload, parseErr := parseNodeMapPayload(bestPayload)
+	if parseErr != nil {
+		return nil, jsonPayload, parseErr
+	}
+
+	nodeMap.Generation = bestGen
+
+	return nodeMap, jsonPayload, nil
+}
+
+// parseNodeMapBuffer validates one 64 KB node map buffer and returns its generation and payload.
+// Generation 0 means the buffer was never written, which is not an error on a device whose
+// writers have only ever used the other buffer.
+func parseNodeMapBuffer(raw []byte) (uint64, []byte, error) {
+	if len(raw) < nodeMapRegionSize {
+		return 0, nil, fmt.Errorf("node map buffer too short: got %d bytes, want %d",
+			len(raw), nodeMapRegionSize)
+	}
+
+	generation := binary.LittleEndian.Uint64(raw[0:8])
+	storedCRC := binary.LittleEndian.Uint32(raw[nodeMapCRCOffset : nodeMapCRCOffset+4])
+	if computed := crc32.ChecksumIEEE(raw[:nodeMapCRCOffset]); computed != storedCRC {
+		return generation, nil, fmt.Errorf("node map envelope CRC mismatch: stored %d, computed %d",
+			storedCRC, computed)
+	}
+
+	if generation == 0 {
+		return 0, nil, errors.New("node map buffer is unused (generation 0)")
+	}
+
+	payloadLen := int(binary.LittleEndian.Uint32(
+		raw[nodeMapPayloadLenOffset : nodeMapPayloadLenOffset+4]))
+	if payloadLen < nodeMapJSONCRCSize || nodeMapPayloadOffset+payloadLen > nodeMapCRCOffset {
+		return generation, nil, fmt.Errorf("node map payload length %d is out of range", payloadLen)
+	}
+
+	return generation, raw[nodeMapPayloadOffset : nodeMapPayloadOffset+payloadLen], nil
+}
+
+// parseNodeMapPayload checks the CRC32 that NodeMapTable.Marshal prepends to its JSON, then
+// decodes the table. The JSON is returned even when decoding fails, so a failure message can show
+// what was actually on the device.
+func parseNodeMapPayload(payload []byte) (*blockNodeMap, string, error) {
+	storedCRC := binary.LittleEndian.Uint32(payload[:nodeMapJSONCRCSize])
+	jsonBytes := payload[nodeMapJSONCRCSize:]
+
+	if computed := crc32.ChecksumIEEE(jsonBytes); computed != storedCRC {
+		return nil, string(jsonBytes), fmt.Errorf("node map JSON CRC mismatch: stored %d, computed %d",
+			storedCRC, computed)
+	}
+
+	nodeMap := &blockNodeMap{}
+	if unmarshalErr := json.Unmarshal(jsonBytes, nodeMap); unmarshalErr != nil {
+		return nil, string(jsonBytes), fmt.Errorf("decode node map JSON: %w", unmarshalErr)
+	}
+
+	if magic := string(nodeMap.Magic[:]); magic != nodeMapMagic {
+		return nodeMap, string(jsonBytes), fmt.Errorf("node map magic is %q, want %q",
+			magic, nodeMapMagic)
+	}
+
+	return nodeMap, string(jsonBytes), nil
+}
+
+// readFenceSlotsFromPod reads the whole fence region through an agent pod and returns the slots
+// that carry a fence message, keyed by slot index. A slot with no valid message is simply absent:
+// on a healthy device that is every slot.
+func readFenceSlotsFromPod(podName string) (map[int]FenceSlot, error) {
+	data, readErr := readDeviceBlocksFromPod(podName, fenceRegionBlock, blockMaxNodes)
+	if readErr != nil {
+		return nil, readErr
+	}
+
+	return parseFenceSlots(data), nil
+}
+
+// parseFenceSlots parses raw fence-region bytes. Like parseSlotData it skips anything without a
+// valid SBD header, and additionally skips messages that are not fence messages.
+func parseFenceSlots(data []byte) map[int]FenceSlot {
+	slots := make(map[int]FenceSlot)
+
+	for slotIdx := 0; slotIdx < len(data)/blockSlotSize && slotIdx < blockMaxNodes; slotIdx++ {
+		slotBytes := data[slotIdx*blockSlotSize : slotIdx*blockSlotSize+sbdFenceMsgSize]
+
+		if !bytes.Equal(slotBytes[0:8], []byte(sbdMagic)) || slotBytes[10] != sbdFenceMsgType {
+			continue
+		}
+
+		want := crc32.ChecksumIEEE(slotBytes[0:29])
+		if got := binary.LittleEndian.Uint32(slotBytes[29:33]); got != want {
+			GinkgoWriter.Printf("  Fence slot %d: checksum mismatch (got %d, want %d), skipping\n",
+				slotIdx, got, want)
+
+			continue
+		}
+
+		slots[slotIdx] = FenceSlot{
+			SlotIndex:    slotIdx,
+			WriterNodeID: binary.LittleEndian.Uint16(slotBytes[11:13]),
+			TargetNodeID: binary.LittleEndian.Uint16(slotBytes[33:35]),
+			Reason:       slotBytes[35],
+		}
+	}
+
+	return slots
 }
