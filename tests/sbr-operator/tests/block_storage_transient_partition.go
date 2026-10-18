@@ -16,6 +16,15 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
+// victimSlotState is the victim's heartbeat slot, identified while it was cut off, and the
+// sequence number it stalled at. Recovery is measured from there rather than from the pre-outage
+// baseline: the victim normally lands one more heartbeat between the baseline read and the rules
+// taking effect, so the baseline value is already behind by the time the outage starts.
+type victimSlotState struct {
+	nodeID          uint16
+	stalledSequence uint64
+}
+
 // partitionBaseline is the victim's state before its Ceph traffic is blocked. The test proves the
 // transient partition left all of it untouched.
 type partitionBaseline struct {
@@ -94,9 +103,9 @@ var _ = Describe(
 			), func() {
 				baseline := captureVictimBaseline(victimNodeName, observerPodName)
 				startCephRBDPartition(victimNodeName)
-				victimSlot := awaitPartitionDetected(victimNodeName, observerPodName, baseline)
+				victim := awaitPartitionDetected(victimNodeName, observerPodName, baseline)
 				awaitPartitionRecovery(victimNodeName)
-				assertVictimNeverFenced(victimNodeName, observerPodName, baseline, victimSlot)
+				assertVictimNeverFenced(victimNodeName, observerPodName, baseline, victim)
 			})
 	})
 
@@ -167,7 +176,9 @@ func startCephRBDPartition(victimNodeName string) {
 // has been remediated, and returns the heartbeat node ID the victim writes to. The victim's node ID
 // is not recorded anywhere in the API, so it is identified as the one slot that stops advancing
 // while the victim is cut off.
-func awaitPartitionDetected(victimNodeName, observerPodName string, baseline partitionBaseline) uint16 {
+func awaitPartitionDetected(
+	victimNodeName, observerPodName string, baseline partitionBaseline,
+) victimSlotState {
 	By(fmt.Sprintf("Waiting for SBRStorageUnhealthy=True with reason %s on the victim node",
 		sbrparams.SBRStorageUnhealthyReasonHeartbeatTimeout))
 
@@ -186,19 +197,20 @@ func awaitPartitionDetected(victimNodeName, observerPodName string, baseline par
 		"No StorageBasedRemediation CR must exist for node %q during a transient partition (get returned %v)",
 		victimNodeName, pullErr)
 
-	By("Confirming exactly one heartbeat slot stopped advancing while the victim is partitioned")
+	By("Confirming exactly one heartbeat slot fell behind while the victim is partitioned")
 
 	duringOutage, seqErr := heartbeatSequences(observerPodName)
 	Expect(seqErr).ToNot(HaveOccurred(),
 		"Must read the heartbeat region through observer pod %q", observerPodName)
-	stalled := stalledNodeIDs(baseline.sequences, duringOutage)
-	Expect(stalled).To(HaveLen(1),
-		"Only node %q must stop writing heartbeats while it is partitioned, but node IDs %v stalled "+
+	lagging := laggingNodeIDs(baseline.sequences, duringOutage)
+	Expect(lagging).To(HaveLen(1),
+		"Only node %q must fall behind on heartbeats while it is partitioned, but node IDs %v did "+
 			"(baseline %v, during the outage %v)",
-		victimNodeName, stalled, baseline.sequences, duringOutage)
-	GinkgoWriter.Printf("Victim node %s owns heartbeat slot node ID %d\n", victimNodeName, stalled[0])
+		victimNodeName, lagging, baseline.sequences, duringOutage)
+	GinkgoWriter.Printf("Victim node %s owns heartbeat slot node ID %d, stalled at sequence %d\n",
+		victimNodeName, lagging[0], duringOutage[lagging[0]])
 
-	return stalled[0]
+	return victimSlotState{nodeID: lagging[0], stalledSequence: duringOutage[lagging[0]]}
 }
 
 // awaitPartitionRecovery waits for the disruptor to serve out its outage window and remove its own
@@ -228,11 +240,9 @@ func awaitPartitionRecovery(victimNodeName string) {
 // assertVictimNeverFenced proves the victim came back on its own: heartbeats resume, and the node
 // is the same booted node it was before, with no remediation and no self-fence behind it.
 func assertVictimNeverFenced(
-	victimNodeName, observerPodName string, baseline partitionBaseline, victimSlot uint16,
+	victimNodeName, observerPodName string, baseline partitionBaseline, victim victimSlotState,
 ) {
 	By("Asserting the victim's heartbeat sequence number is increasing again through the observer agent")
-
-	stalledSequence := baseline.sequences[victimSlot]
 
 	Eventually(func() (uint64, error) {
 		sequences, seqErr := heartbeatSequences(observerPodName)
@@ -240,11 +250,11 @@ func assertVictimNeverFenced(
 			return 0, seqErr
 		}
 
-		return sequences[victimSlot], nil
+		return sequences[victim.nodeID], nil
 	}, sbrparams.BlockHeartbeatResumeTimeout, sbrparams.DefaultPollInterval).Should(
-		BeNumerically(">", stalledSequence),
-		"The victim's heartbeat slot (node ID %d) must advance past sequence %d once Ceph traffic is restored",
-		victimSlot, stalledSequence)
+		BeNumerically(">", victim.stalledSequence),
+		"The victim's heartbeat slot (node ID %d) must advance past the sequence %d it stalled at "+
+			"once Ceph traffic is restored", victim.nodeID, victim.stalledSequence)
 
 	By(fmt.Sprintf("Consistently asserting for %s that the victim keeps its boot-id, stays Ready and "+
 		"gets no StorageBasedRemediation CR", sbrparams.BlockNoFencingCheckDuration))

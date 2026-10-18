@@ -322,8 +322,8 @@ Full test case: [docs/TESTCASES/rhwa-xxxx.md](../../docs/TESTCASES/rhwa-xxxx.md)
   Remediation must not be running
 - **Standalone**: `ginkgo --label-filter="sbr" --focus="transient Ceph RBD network partition" ./tests/sbr-operator/...`
 - **Pass criteria**: `SBRStorageUnhealthy=True` (reason `HeartbeatTimeout`) during the outage and
-  `False` (reason `Recovered`) after it; exactly one heartbeat slot stalls and then advances past
-  its pre-outage sequence; for 90s after recovery the node keeps its boot-id, stays Ready and has no
+  `False` (reason `Recovered`) after it; exactly one heartbeat slot falls behind and then advances
+  past the sequence it stalled at; for 90s after recovery the node keeps its boot-id, stays Ready and has no
   `StorageBasedRemediation` CR; the agent's `sbr_self_fenced_total` and restart count are unchanged
 
 ### 15. Verify SBR Heartbeats Remain Stable on Ceph RBD Under Load (RHWA-XXXX)

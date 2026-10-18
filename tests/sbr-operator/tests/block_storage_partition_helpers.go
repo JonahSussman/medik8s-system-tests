@@ -25,6 +25,10 @@ import (
 // host rather than inside the pod's own namespaces.
 const nsenterIPTables = "nsenter --target 1 --net --mount -- iptables"
 
+// laggingAdvanceFactor is how far below the median a node's heartbeat advance has to be for
+// laggingNodeIDs to call it out: less than a quarter of what its peers managed.
+const laggingAdvanceFactor = 4
+
 // cephRBDRejectMatches are the iptables matches covering every port an RBD client talks to:
 // 3300 (msgr2 monitor), 6789 (msgr1 monitor) and 6800-7300 (OSD/MDS).
 var cephRBDRejectMatches = []string{
@@ -347,6 +351,49 @@ func stalledNodeIDs(before, after map[uint16]uint64) []uint16 {
 	slices.Sort(stalled)
 
 	return stalled
+}
+
+// laggingNodeIDs returns, in ascending order, the node IDs that fell far behind their peers
+// between two reads of the heartbeat region.
+//
+// It exists because a partitioned node rarely stops writing at the exact moment the baseline is
+// taken: the read happens before the rules are injected, so the victim usually lands one more
+// heartbeat first and "did not advance at all" misses it. What identifies it is advancing by an
+// order of magnitude less than everyone else - one write against eight or ten - so a node counts
+// as lagging when it advanced by less than a quarter of the median advance. A node whose slot has
+// gone missing counts as lagging too: either way it is not keeping up.
+func laggingNodeIDs(before, after map[uint16]uint64) []uint16 {
+	advances := make(map[uint16]uint64, len(before))
+	sorted := make([]uint64, 0, len(before))
+
+	for nodeID, earlier := range before {
+		var advance uint64
+		if later, present := after[nodeID]; present && later > earlier {
+			advance = later - earlier
+		}
+
+		advances[nodeID] = advance
+		sorted = append(sorted, advance)
+	}
+
+	if len(sorted) == 0 {
+		return nil
+	}
+
+	slices.Sort(sorted)
+	median := sorted[len(sorted)/2]
+
+	var lagging []uint16
+
+	for nodeID, advance := range advances {
+		if advance*laggingAdvanceFactor < median {
+			lagging = append(lagging, nodeID)
+		}
+	}
+
+	slices.Sort(lagging)
+
+	return lagging
 }
 
 // requireNoSBRNodeHealthCheck skips the spec when a NodeHealthCheck remediates through the SBR

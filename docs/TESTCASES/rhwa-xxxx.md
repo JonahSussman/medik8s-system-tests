@@ -42,8 +42,10 @@ victim's heartbeat slot is found and watched:
 - Nothing in the API maps a node name to the SBD node ID that owns its heartbeat slot, and the
   on-device node map is a CRC-framed JSON blob this suite has no reader for. The spec therefore
   records every slot's sequence number before the outage (step 4) and identifies the victim's slot
-  as the one that stops advancing while it is partitioned (step 8). That also asserts something
-  worth asserting on its own: only the partitioned node stops writing.
+  as the one that falls far behind its peers while it is partitioned (step 8) - "far behind"
+  rather than "frozen" because the baseline is read before the rules are injected, so the victim
+  normally lands one more heartbeat first. That also asserts something worth asserting on its own:
+  only the partitioned node stops keeping up.
 - The three post-recovery checks — boot-id, Ready, no remediation CR — are a single `Consistently`
   block (step 12), as the flow document allows.
 
@@ -105,7 +107,7 @@ Asserted in `BeforeAll`:
 | 5  | Starting a disruptor pod that blocks Ceph ports 3300, 6789 and 6800-7300 on the victim node for 2m30s                        | The privileged pod reaches Running on the victim node                                        |
 | 6  | Waiting for SBRStorageUnhealthy=True with reason HeartbeatTimeout on the victim node                                         | A peer sets the condition within `sbrparams.StorageInjectionTimeout`                         |
 | 7  | Asserting no StorageBasedRemediation CR exists for the victim node                                                           | `StorageBasedRemediation/<victim>` is `IsNotFound`                                           |
-| 8  | Confirming exactly one heartbeat slot stopped advancing while the victim is partitioned                                      | Exactly one node ID has a sequence number that did not advance; that is the victim's slot    |
+| 8  | Confirming exactly one heartbeat slot fell behind while the victim is partitioned                                           | Exactly one node ID advanced by less than a quarter of the median advance; that is the victim's slot |
 | 9  | Waiting for the disruptor pod to complete and restore Ceph traffic                                                           | The pod reaches `Succeeded`, having removed its own REJECT rules in its EXIT trap            |
 | 10 | Waiting for SBRStorageUnhealthy=False with reason Recovered on the victim node                                               | The condition clears within `sbrparams.BlockPartitionRecoveryTimeout`                        |
 | 11 | Asserting the victim's heartbeat sequence number is increasing again through the observer agent                              | That slot's sequence passes its pre-outage value within `sbrparams.BlockHeartbeatResumeTimeout` |
@@ -118,8 +120,8 @@ Asserted in `BeforeAll`:
 - The victim node reports `SBRStorageUnhealthy=True` with reason `HeartbeatTimeout` while its Ceph
   ports are blocked, and `False` with reason `Recovered` within
   `sbrparams.BlockPartitionRecoveryTimeout` of the block being lifted.
-- Exactly one heartbeat slot stalls during the outage, and that slot's sequence number passes its
-  pre-outage value within `sbrparams.BlockHeartbeatResumeTimeout` of recovery.
+- Exactly one heartbeat slot falls behind during the outage, and that slot's sequence number
+  passes the value it stalled at within `sbrparams.BlockHeartbeatResumeTimeout` of recovery.
 - Across `sbrparams.BlockNoFencingCheckDuration` after recovery the victim keeps the boot-id it had
   before the partition, stays `Ready=True`, and has no `StorageBasedRemediation` CR.
 - The victim agent's `sbr_self_fenced_total` and container restart count are the same before and
