@@ -121,6 +121,10 @@ const (
 	// remove its out-of-service taint after an SBR CR finalizer was force-stripped.
 	NodeRestoreTimeout = 1 * time.Minute
 
+	// InjectorRuleCleanupTimeout bounds the injector-pod lookup in
+	// removeInjectedRejectRules so a slow API server cannot hang cleanup.
+	InjectorRuleCleanupTimeout = 1 * time.Minute
+
 	// ODFNamespace is the namespace of the ODF (Rook/Ceph) operators.
 	ODFNamespace = "openshift-storage"
 

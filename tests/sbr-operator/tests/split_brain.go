@@ -68,6 +68,7 @@ var _ = Describe(
 			nhcCreatedByUs  bool
 			storageClass    string
 			injectorPodName string
+			rulesRemoved    bool
 		)
 
 		BeforeAll(func() {
@@ -189,11 +190,9 @@ var _ = Describe(
 			// Remove the injected fault first: the NHC webhook refuses to delete an NHC
 			// while the fault keeps its remediation running.
 			By("AfterAll: ensuring injector pod iptables rules are removed")
+			rulesRemoved = removeInjectedRejectRules(injectorPodName, removeCephFSRejectBidirectional)
 
-			cleanupPod, pullErr := pod.Pull(APIClient, injectorPodName, medik8sparams.OperatorNs)
-			if pullErr == nil {
-				removeCephFSRejectBidirectional(cleanupPod)
-
+			if cleanupPod, pullErr := pod.Pull(APIClient, injectorPodName, medik8sparams.OperatorNs); pullErr == nil {
 				if _, delErr := cleanupPod.Delete(); delErr != nil {
 					GinkgoWriter.Printf("Warning: delete injector pod in AfterAll: %v\n", delErr)
 				}
@@ -279,10 +278,11 @@ var _ = Describe(
 				DeferCleanup(func() {
 					By("DeferCleanup: removing iptables REJECT rules on target node")
 
-					cleanupPod, pullErr := pod.Pull(APIClient, injectorPodName, medik8sparams.OperatorNs)
-					if pullErr == nil {
-						removeCephFSRejectBidirectional(cleanupPod)
+					if !rulesRemoved {
+						rulesRemoved = removeInjectedRejectRules(injectorPodName, removeCephFSRejectBidirectional)
+					}
 
+					if cleanupPod, pullErr := pod.Pull(APIClient, injectorPodName, medik8sparams.OperatorNs); pullErr == nil {
 						if _, delErr := cleanupPod.Delete(); delErr != nil {
 							GinkgoWriter.Printf("Warning: delete injector pod: %v\n", delErr)
 						}

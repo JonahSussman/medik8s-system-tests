@@ -185,7 +185,9 @@ func removeInjectedRejectRules(injectorPodName string, remove func(*pod.Builder)
 	}
 
 	injectorPod := pod.NewBuilder(APIClient, injectorPodName, medik8sparams.OperatorNs, sbrparams.InjectorImage)
-	getErr := APIClient.Get(context.Background(), types.NamespacedName{
+	getCtx, getCancel := context.WithTimeout(context.Background(), sbrparams.InjectorRuleCleanupTimeout)
+	defer getCancel()
+	getErr := APIClient.Get(getCtx, types.NamespacedName{
 		Name: injectorPodName, Namespace: medik8sparams.OperatorNs,
 	}, injectorPod.Definition)
 	if getErr != nil {
