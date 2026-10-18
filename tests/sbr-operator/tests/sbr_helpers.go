@@ -25,6 +25,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/version"
+	"k8s.io/apimachinery/pkg/util/wait"
 )
 
 // getNodeBootID returns the bootID of the named node.
@@ -179,6 +181,9 @@ func removeCephFSRejectBidirectional(injectorPod *pod.Builder) bool {
 // remediation running, so AfterAll calls this before deleting the NHC. The pod is
 // left in place for the later cleanup steps that delete it. Only confirmed removal
 // returns true, so callers can retain their deferred fallback after a failed attempt.
+// A pod that is gone while its target node is mid-reboot is not reported as
+// unconfirmed yet: waitForInjectionReboot waits for the boot ID change that proves
+// the reboot cleared the rules.
 func removeInjectedRejectRules(injectorPodName string, remove func(*pod.Builder) bool) bool {
 	if injectorPodName == "" {
 		return false
@@ -191,11 +196,22 @@ func removeInjectedRejectRules(injectorPodName string, remove func(*pod.Builder)
 		Name: injectorPodName, Namespace: medik8sparams.OperatorNs,
 	}, injectorPod.Definition)
 	if getErr != nil {
-		if k8serrors.IsNotFound(getErr) && nodeRebootedSinceInjection(injectorPodName) {
+		if k8serrors.IsNotFound(getErr) && waitForInjectionReboot(injectorPodName) {
 			confirmODFFaultCleared(injectorPodName)
 			delete(injectionBootIDs, injectorPodName)
 
 			return true
+		}
+
+		if k8serrors.IsNotFound(getErr) && nodeIsDown(injectionTargetNode(injectorPodName)) {
+			// The reboot was still in progress when the wait expired. It clears the
+			// non-persistent rules once kubelet posts the new boot ID, so this is a
+			// pending confirmation, not an unconfirmed removal.
+			AddReportEntry("injected-rule-removal-pending-reboot", fmt.Sprintf(
+				"pod %s: node %s still rebooting; the pending reboot clears the rules",
+				injectorPodName, injectionTargetNode(injectorPodName)))
+
+			return false
 		}
 
 		if k8serrors.IsNotFound(getErr) {
@@ -274,6 +290,126 @@ func isNHCCRDInstalled() bool {
 		sbrparams.NHCCRDName, err))
 
 	return false
+}
+
+// sbrcCRDHasSpecField reports whether the StorageBasedRemediationConfig CRD declares
+// the given field in the spec properties of any served version.
+func sbrcCRDHasSpecField(crd *apiextensionsv1.CustomResourceDefinition, field string) bool {
+	for versionIdx := range crd.Spec.Versions {
+		crdVersion := crd.Spec.Versions[versionIdx]
+		if crdVersion.Schema == nil || crdVersion.Schema.OpenAPIV3Schema == nil {
+			continue
+		}
+
+		specProps, found := crdVersion.Schema.OpenAPIV3Schema.Properties["spec"]
+		if !found {
+			continue
+		}
+
+		if _, found := specProps.Properties[field]; found {
+			return true
+		}
+	}
+
+	return false
+}
+
+// installedSBRCsvVersion returns the SBR operator CSV version recorded in the CRD's
+// operatorframework.io/installed-alongside annotation, for example "0.3.1" for
+// "openshift-workload-availability/storage-based-remediation.v0.3.1". It returns an
+// empty string when OLM did not record the installing CSV. Annotations whose CSV
+// name does not match CSVNamePattern are ignored, so an unrelated CSV recorded on
+// the same CRD cannot be selected instead; OLM writes one annotation per installed
+// CSV and map iteration order is not deterministic.
+func installedSBRCsvVersion(crd *apiextensionsv1.CustomResourceDefinition) string {
+	for key, value := range crd.Annotations {
+		if !strings.HasPrefix(key, "operatorframework.io/installed-alongside-") {
+			continue
+		}
+
+		csvName := value[strings.LastIndex(value, "/")+1:]
+		if !strings.HasPrefix(csvName, sbrparams.CSVNamePattern+".v") {
+			continue
+		}
+		versionIdx := strings.LastIndex(csvName, ".v")
+		if versionIdx < 0 {
+			continue
+		}
+
+		return csvName[versionIdx+len(".v"):]
+	}
+
+	return ""
+}
+
+// requireSBRCBlockVolumeModeSupport verifies that the installed SBR operator can honor
+// sharedStorageVolumeMode (RHWA-1313, RWX Block volume support).
+//
+// Operators at or above FirstSBRCsvWithBlockVolumeMode must ship the field: a missing
+// field there is an operator regression and fails the suite. Older operators predate
+// the feature, so the calling spec skips instead of provisioning RWX Filesystem PVCs
+// on Ceph RBD, which ceph-csi rejects. An unknown CSV version also fails, so a missing
+// field can never silently skip a capable operator.
+func requireSBRCBlockVolumeModeSupport() {
+	crd := &apiextensionsv1.CustomResourceDefinition{}
+	err := APIClient.Get(context.TODO(),
+		types.NamespacedName{Name: sbrparams.SBRCRDName}, crd)
+	if err != nil {
+		Fail(fmt.Sprintf("requireSBRCBlockVolumeModeSupport: cannot read CRD %s: %v",
+			sbrparams.SBRCRDName, err))
+
+		return
+	}
+
+	if sbrcCRDHasSpecField(crd, sbrparams.SBRCBlockVolumeModeField) {
+		GinkgoWriter.Printf("SBRC CRD %s includes the %s field (installed CSV v%s)\n",
+			sbrparams.SBRCRDName, sbrparams.SBRCBlockVolumeModeField, installedSBRCsvVersion(crd))
+
+		return
+	}
+
+	csvVersion := installedSBRCsvVersion(crd)
+	if csvVersion == "" {
+		Fail(fmt.Sprintf(
+			"SBR operator CRD %s lacks the %s field and no installed CSV version was recorded; "+
+				"refusing to skip block volume mode tests",
+			sbrparams.SBRCRDName, sbrparams.SBRCBlockVolumeModeField))
+
+		return
+	}
+
+	installedCsv, parseErr := version.ParseGeneric(csvVersion)
+	if parseErr != nil {
+		Fail(fmt.Sprintf(
+			"requireSBRCBlockVolumeModeSupport: cannot parse installed SBR CSV version %q: %v",
+			csvVersion, parseErr))
+
+		return
+	}
+
+	firstCsvWithField, parseErr := version.ParseGeneric(sbrparams.FirstSBRCsvWithBlockVolumeMode)
+	if parseErr != nil {
+		Fail(fmt.Sprintf(
+			"requireSBRCBlockVolumeModeSupport: cannot parse %q: %v",
+			sbrparams.FirstSBRCsvWithBlockVolumeMode, parseErr))
+
+		return
+	}
+
+	if installedCsv.AtLeast(firstCsvWithField) {
+		Fail(fmt.Sprintf(
+			"SBR operator CSV v%s must support %s (RHWA-1313, first shipped in v%s) "+
+				"but the installed CRD %s lacks the field",
+			csvVersion, sbrparams.SBRCBlockVolumeModeField,
+			sbrparams.FirstSBRCsvWithBlockVolumeMode, sbrparams.SBRCRDName))
+
+		return
+	}
+
+	Skip(fmt.Sprintf(
+		"installed SBR operator CSV v%s predates %s (RHWA-1313, first shipped in v%s); "+
+			"skipping Ceph RBD block persistent fencing",
+		csvVersion, sbrparams.SBRCBlockVolumeModeField, sbrparams.FirstSBRCsvWithBlockVolumeMode))
 }
 
 // nhcsUsingSBRTemplate returns the names of NodeHealthChecks that use SBR as a remediator,
@@ -1033,4 +1169,70 @@ func nodeRebootedSinceInjection(injectorPodName string) bool {
 		"the injected rules were cleared by the reboot\n", injectorPodName, recorded[0], recorded[1], currentBootID)
 
 	return true
+}
+
+// injectionTargetNode returns the node the injector pod targeted, or "" when unknown.
+func injectionTargetNode(injectorPodName string) string {
+	return injectionBootIDs[injectorPodName][0]
+}
+
+// nodeIsDown reports whether the node's Ready condition is not True. A node that is
+// mid-reboot keeps its previous boot ID until kubelet posts the new one after coming
+// back, so a boot-ID check during that window cannot yet see the reboot.
+func nodeIsDown(nodeName string) bool {
+	if nodeName == "" {
+		return false
+	}
+
+	node, err := APIClient.CoreV1Interface.Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+	if err != nil {
+		return false
+	}
+
+	for _, cond := range node.Status.Conditions {
+		if cond.Type == corev1.NodeReady {
+			return cond.Status != corev1.ConditionTrue
+		}
+	}
+
+	return false
+}
+
+// waitForInjectionReboot waits for a reboot that is still in progress to finish and
+// change the target node's boot ID, returning true as soon as
+// nodeRebootedSinceInjection can confirm the change. A node that is down only updates
+// its boot ID after kubelet comes back, so the check is retried within
+// sbrparams.InjectorRuleCleanupTimeout instead of reporting an unconfirmed removal
+// for a reboot that has not landed yet.
+func waitForInjectionReboot(injectorPodName string) bool {
+	if nodeRebootedSinceInjection(injectorPodName) {
+		return true
+	}
+
+	nodeName := injectionTargetNode(injectorPodName)
+	if nodeName == "" || !nodeIsDown(nodeName) {
+		return false
+	}
+
+	GinkgoWriter.Printf("Injector pod %s is absent and node %s is rebooting; "+
+		"waiting up to %s for its boot ID to change\n",
+		injectorPodName, nodeName, sbrparams.InjectorRuleCleanupTimeout)
+	waitCtx, waitCancel := context.WithTimeout(context.Background(), sbrparams.InjectorRuleCleanupTimeout)
+	defer waitCancel()
+
+	rebooted := false
+	_ = wait.PollUntilContextTimeout(waitCtx, sbrparams.DefaultPollInterval,
+		sbrparams.InjectorRuleCleanupTimeout, true,
+		func(context.Context) (bool, error) {
+			if nodeRebootedSinceInjection(injectorPodName) {
+				rebooted = true
+
+				return true, nil
+			}
+
+			// A node that came back without a boot ID change has no reboot pending.
+			return !nodeIsDown(nodeName), nil
+		})
+
+	return rebooted
 }

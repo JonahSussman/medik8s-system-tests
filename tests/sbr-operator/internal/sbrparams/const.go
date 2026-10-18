@@ -121,8 +121,9 @@ const (
 	// remove its out-of-service taint after an SBR CR finalizer was force-stripped.
 	NodeRestoreTimeout = 1 * time.Minute
 
-	// InjectorRuleCleanupTimeout bounds the injector-pod lookup in
-	// removeInjectedRejectRules so a slow API server cannot hang cleanup.
+	// InjectorRuleCleanupTimeout bounds the injector-pod lookup and the mid-reboot
+	// boot-ID wait in removeInjectedRejectRules, so a slow API server or a reboot
+	// that outlives the window cannot hang cleanup.
 	InjectorRuleCleanupTimeout = 1 * time.Minute
 
 	// ODFNamespace is the namespace of the ODF (Rook/Ceph) operators.
@@ -182,6 +183,21 @@ const (
 
 	// NHCCRDName is the CRD name for NodeHealthCheck, used to detect if NHC is installed.
 	NHCCRDName = "nodehealthchecks.remediation.medik8s.io"
+
+	// SBRCRDName is the CRD name for StorageBasedRemediationConfig, used to inspect the
+	// installed SBR operator's API surface.
+	SBRCRDName = "storagebasedremediationconfigs.storage-based-remediation.medik8s.io"
+
+	// SBRCBlockVolumeModeField is the StorageBasedRemediationConfig spec field that selects
+	// raw block device shared storage (RHWA-1313, RWX Block volume support).
+	SBRCBlockVolumeModeField = "sharedStorageVolumeMode"
+
+	// FirstSBRCsvWithBlockVolumeMode is the first SBR operator CSV version whose CRD ships
+	// the sharedStorageVolumeMode field (RHWA-1313, upstream
+	// medik8s/storage-based-remediation commit 8e9f551c32, released in 5.8.0). Operators at
+	// or above this version must have the field; older operators predate it and skip the
+	// Ceph RBD block persistent fencing spec instead of failing it.
+	FirstSBRCsvWithBlockVolumeMode = "5.8.0"
 
 	// NHCAPIGroup is the API group for NodeHealthCheck CRs.
 	NHCAPIGroup = "remediation.medik8s.io"
@@ -344,9 +360,6 @@ const (
 
 	// SBRCBlockPersistentFencingTestName is the SBRC name for the Ceph RBD persistent fencing state test.
 	SBRCBlockPersistentFencingTestName = "test-sbrc-block-persistent-fencing"
-
-	// NHCBlockPersistentFencingTestName is the NHC CR name for the block persistent fencing test.
-	NHCBlockPersistentFencingTestName = "nhc-sbr-block-persistent-fencing"
 
 	// BlockFencingStateCheckTimeout is how long to wait for block device slot state to stabilize after reboot.
 	BlockFencingStateCheckTimeout = 5 * time.Minute

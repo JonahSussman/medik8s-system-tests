@@ -267,7 +267,7 @@ operator does not create a second remediation CR for it afterwards.
 
 Full specification: [`../../docs/TESTCASES/rhwa-1916.md`](../../docs/TESTCASES/rhwa-1916.md).
 
-- **Operators**: SBR v0.3.0; NHC optional (CRD presence only)
+- **Operators**: SBR CSV ≥ 5.8.0 (`sharedStorageVolumeMode`, [RHWA-1313](https://redhat.atlassian.net/browse/RHWA-1313)); older operators Skip with the reason
 - **Cluster**: At least one schedulable worker node that hosts no SBR controller pod and may be rebooted
 - **Storage**: Ceph RBD block StorageClass (provisioner containing `rbd.csi.ceph.com`), auto-discovered or set with `SBR_RBD_STORAGE_CLASS`
 - **Environment**: Connected or disconnected. **Destructive** — the target node is fenced and hard-rebooted

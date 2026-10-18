@@ -192,9 +192,13 @@ var _ = Describe(
 			By("AfterAll: ensuring injector pod iptables rules are removed")
 			rulesRemoved = removeInjectedRejectRules(injectorPodName, removeCephFSRejectBidirectional)
 
-			if cleanupPod, pullErr := pod.Pull(APIClient, injectorPodName, medik8sparams.OperatorNs); pullErr == nil {
-				if _, delErr := cleanupPod.Delete(); delErr != nil {
-					GinkgoWriter.Printf("Warning: delete injector pod in AfterAll: %v\n", delErr)
+			// Keep the pod when removal is unconfirmed so the DeferCleanup retry can
+			// flush through it; the deferred cleanup deletes the pod afterwards.
+			if rulesRemoved {
+				if cleanupPod, pullErr := pod.Pull(APIClient, injectorPodName, medik8sparams.OperatorNs); pullErr == nil {
+					if _, delErr := cleanupPod.Delete(); delErr != nil {
+						GinkgoWriter.Printf("Warning: delete injector pod in AfterAll: %v\n", delErr)
+					}
 				}
 			}
 
@@ -230,27 +234,10 @@ var _ = Describe(
 			By("AfterAll: removing NodeHealthCheck CR if created by this test")
 
 			if nhcCreatedByUs && nhcCR != nil {
-				if deleteErr := APIClient.Delete(context.TODO(), nhcCR); deleteErr != nil &&
-					!k8serrors.IsNotFound(deleteErr) {
-					GinkgoT().Logf("Warning: cleanup delete NodeHealthCheck %s: %v",
-						sbrparams.NHCSplitBrainTestName, deleteErr)
-				} else {
-					Eventually(func() error {
-						getErr := APIClient.Get(context.TODO(),
-							types.NamespacedName{Name: sbrparams.NHCSplitBrainTestName},
-							nhcCR.DeepCopy())
-
-						if k8serrors.IsNotFound(getErr) {
-							return nil
-						}
-
-						if getErr != nil {
-							return getErr
-						}
-
-						return fmt.Errorf("NHC %s still present", sbrparams.NHCSplitBrainTestName)
-					}, medik8sparams.DefaultTimeout, sbrparams.DefaultPollInterval).Should(Succeed())
-				}
+				// cleanupNHCCR retries the delete until the CR is fully gone; the NHC
+				// webhook can reject a single delete while a remediation is still
+				// terminating after the fault removal above.
+				cleanupNHCCR(context.Background(), sbrparams.NHCSplitBrainTestName)
 			}
 
 			By("AfterAll: force-removing any leftover SBR CRs")

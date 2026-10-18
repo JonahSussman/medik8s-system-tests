@@ -220,35 +220,11 @@ var _ = Describe(
 			By("AfterAll: removing NodeHealthCheck CR if created by this test")
 
 			if nhcCreatedByUs && nhcCR != nil {
-				deleteErr := APIClient.Delete(context.TODO(), nhcCR)
-				if deleteErr != nil && !k8serrors.IsNotFound(deleteErr) {
-					GinkgoT().Logf("Warning: cleanup delete NodeHealthCheck %s: %v",
-						sbrparams.NHCTestName, deleteErr)
-				}
-
-				// Wait for the NHC CR to be fully gone; the NHC operator uses finalizers.
-				// A terminating CR on the next run would bypass the IsNotFound check and be
-				// reused as-is, potentially with a mismatched spec.
-				Eventually(func() error {
-					obj := &unstructured.Unstructured{}
-					obj.SetGroupVersionKind(schema.GroupVersionKind{
-						Group:   sbrparams.NHCAPIGroup,
-						Version: sbrparams.NHCAPIVersion,
-						Kind:    "NodeHealthCheck",
-					})
-					getErr := APIClient.Get(context.TODO(),
-						types.NamespacedName{Name: sbrparams.NHCTestName}, obj)
-					if k8serrors.IsNotFound(getErr) {
-						return nil
-					}
-
-					if getErr != nil {
-						return getErr
-					}
-
-					return fmt.Errorf("NodeHealthCheck %s still terminating", sbrparams.NHCTestName)
-				}, sbrparams.SBRCReadyTimeout, sbrparams.DefaultPollInterval).Should(Succeed(),
-					"NodeHealthCheck %s must be fully removed after AfterAll delete", sbrparams.NHCTestName)
+				// cleanupNHCCR retries the delete until the CR is fully gone: the NHC
+				// webhook can reject a single delete while a remediation is still
+				// terminating after the fault removal above, and a half-terminated CR
+				// would be reused as-is by the next run's BeforeAll.
+				cleanupNHCCR(context.Background(), sbrparams.NHCTestName)
 			}
 
 			By("AfterAll: force-removing any leftover StorageBasedRemediation CR")
