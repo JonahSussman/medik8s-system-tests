@@ -26,7 +26,7 @@ set -uo pipefail
 
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 
-JIRA_BASE_URL="${JIRA_BASE_URL:-https://issues.redhat.com}"
+JIRA_BASE_URL="${JIRA_BASE_URL:-https://redhat.atlassian.net}"
 JIRA_TOKEN="${JIRA_TOKEN:-}"
 JIRA_USER="${JIRA_USER:-}"
 
