@@ -371,3 +371,81 @@ func getSBRCRCondition(sbrObj *unstructured.Unstructured, condType string) map[s
 
 	return nil
 }
+
+// agentPodCountMatchesWorkerCount reports whether the number of running SBR agent
+// pods equals the worker node count. It returns the result along with the actual and
+// expected counts so the caller can assert and compose its own failure message.
+// No assertion happens here, so it is safe to call inside Eventually.
+func agentPodCountMatchesWorkerCount() (match bool, actual, expected int, err error) {
+	runningAgentPods, err := runningAgentPods()
+	if err != nil {
+		return false, 0, 0, err
+	}
+
+	actual = len(runningAgentPods)
+	expected = getWorkerNodeCount()
+
+	return actual == expected, actual, expected, nil
+}
+
+// runningAgentPods returns all SBR agent pods currently in Running state.
+func runningAgentPods() ([]*pod.Builder, error) {
+	agentPods, listErr := pod.List(APIClient, medik8sparams.OperatorNs,
+		metav1.ListOptions{LabelSelector: sbrparams.AgentPodLabelSelector})
+	if listErr != nil {
+		return nil, fmt.Errorf("list SBR agent pods: %w", listErr)
+	}
+
+	return helpers.FilterRunningPods(agentPods), nil
+}
+
+// requireNoSBRNodeHealthCheck skips the spec when a NodeHealthCheck remediates through the SBR
+// template. Such an NHC would create a StorageBasedRemediation CR for a node the test is
+// deliberately making unhealthy and fence it, which is correct NHC behaviour but the opposite of
+// what a "nothing was fenced" test measures.
+func requireNoSBRNodeHealthCheck() {
+	By("Verifying no NodeHealthCheck remediates through the SBR template")
+
+	nhcNames, nhcErr := nhcsUsingSBRTemplate(context.TODO())
+	Expect(nhcErr).ToNot(HaveOccurred(), "Failed to list NodeHealthChecks")
+
+	if len(nhcNames) > 0 {
+		Skip(fmt.Sprintf("NodeHealthCheck(s) %v remediate through %s, so they would create a "+
+			"StorageBasedRemediation CR for an unhealthy node and fence it. "+
+			"Delete them to run this test.", nhcNames, sbrparams.SBRTemplateKind))
+	}
+}
+
+// nodeConditionIs returns nil when the named node condition has the wanted status and, when
+// wantReason is set, the wanted reason. A condition that is absent satisfies a plain "must be
+// False": that is how the agent leaves a node it has never reported on.
+func nodeConditionIs(nodeName, condType string, wantStatus corev1.ConditionStatus, wantReason string) error {
+	node, getErr := APIClient.CoreV1Interface.Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+	if getErr != nil {
+		return fmt.Errorf("get node %s: %w", nodeName, getErr)
+	}
+
+	for _, condition := range node.Status.Conditions {
+		if string(condition.Type) != condType {
+			continue
+		}
+
+		if condition.Status != wantStatus {
+			return fmt.Errorf("node %s condition %s is %s (reason %q); want %s",
+				nodeName, condType, condition.Status, condition.Reason, wantStatus)
+		}
+
+		if wantReason != "" && condition.Reason != wantReason {
+			return fmt.Errorf("node %s condition %s is %s with reason %q; want reason %q",
+				nodeName, condType, condition.Status, condition.Reason, wantReason)
+		}
+
+		return nil
+	}
+
+	if wantStatus == corev1.ConditionFalse && wantReason == "" {
+		return nil
+	}
+
+	return fmt.Errorf("node %s has no %s condition; want %s", nodeName, condType, wantStatus)
+}

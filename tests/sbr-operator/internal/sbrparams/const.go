@@ -263,7 +263,8 @@ const (
 
 	// AgentPodLabelSelector selects SBR agent pods deployed by any SBRC.
 	AgentPodLabelSelector = "app=sbr-agent"
-
+	// SBRCBlockTestName is the SBRC name for the Ceph RBD block storage concurrency test.
+	SBRCBlockTestName = "test-sbrc-block-rbd"
 	// AgentMetricsPort is the port on which SBR agent pods expose custom Prometheus metrics.
 	// Port 8080 is controller-runtime's built-in metrics; port 8082 is the SBR agent's own metrics.
 	AgentMetricsPort = "8082"
@@ -305,6 +306,113 @@ const (
 
 	// BlockFencingStateCheckInterval is the polling interval for block device slot state checks.
 	BlockFencingStateCheckInterval = 10 * time.Second
+
+	// SBRCBlockTransientTestName is the SBRC name for the Ceph RBD transient network partition test.
+	SBRCBlockTransientTestName = "test-sbrc-block-transient"
+
+	// BlockPartitionDisruptorPodName is the self-terminating pod that blocks Ceph traffic on the
+	// victim node and removes its own rules again when its outage window expires.
+	BlockPartitionDisruptorPodName = "sbr-rbd-partition-disruptor"
+
+	// BlockPartitionFlusherPodName is the teardown pod that removes any Ceph REJECT rule the
+	// disruptor left behind.
+	BlockPartitionFlusherPodName = "sbr-rbd-partition-flusher"
+
+	// BlockPartitionProbePodName is the precondition pod that proves iptables is usable in the
+	// victim node's host namespaces before the test blocks anything.
+	BlockPartitionProbePodName = "sbr-rbd-partition-probe"
+
+	// BlockPartitionOutage is how long the disruptor keeps Ceph traffic blocked on the victim node.
+	// With the SBRC defaults (sbrTimeoutSeconds 30, so a heartbeat interval of 15s) a peer needs
+	// maxConsecutiveFailures x 15s of silence before it sets SBRStorageUnhealthy=True, and the agent
+	// downgrades that condition to Unknown (reason GivingAgentChance) once it has been True for
+	// (maxConsecutiveFailures+1) x 15s + 5s. 150s sits between the two, so the test observes
+	// True and then Recovered rather than Unknown.
+	BlockPartitionOutage = 150 * time.Second
+
+	// BlockPartitionPodTimeout bounds the short-lived host-command pods: the iptables probe and the
+	// teardown flush. Both run a handful of iptables calls and exit.
+	BlockPartitionPodTimeout = 3 * time.Minute
+
+	// BlockPartitionCompletionTimeout is how long to wait for the disruptor pod to serve out its
+	// outage window and exit. Sized well above BlockPartitionOutage so a busy node does not fail it.
+	BlockPartitionCompletionTimeout = BlockPartitionOutage + 3*time.Minute
+
+	// BlockPartitionRecoveryTimeout is how long the victim gets to report storage healthy again once
+	// Ceph traffic is restored.
+	BlockPartitionRecoveryTimeout = 5 * time.Minute
+
+	// BlockHeartbeatResumeTimeout is how long to wait for the victim's heartbeat slot to start
+	// advancing again after the partition clears.
+	BlockHeartbeatResumeTimeout = 2 * time.Minute
+
+	// BlockNoFencingCheckDuration is how long the victim is observed after recovery to prove it was
+	// never fenced: same boot-id, still Ready, and no StorageBasedRemediation CR.
+	BlockNoFencingCheckDuration = 90 * time.Second
+
+	// BlockNoFencingCheckInterval is the poll interval for the post-recovery no-fencing check.
+	BlockNoFencingCheckInterval = 10 * time.Second
+
+	// SelfFencedMetricName is the agent counter incremented every time an agent self-fences.
+	SelfFencedMetricName = "sbr_self_fenced_total"
+
+	// SBRStorageUnhealthyReasonHeartbeatTimeout is the reason a peer agent gives when it sets
+	// SBRStorageUnhealthy=True because a node's heartbeat slot went stale.
+	SBRStorageUnhealthyReasonHeartbeatTimeout = "HeartbeatTimeout"
+
+	// SBRStorageUnhealthyReasonRecovered is the reason a peer agent gives when it clears
+	// SBRStorageUnhealthy because the node's heartbeats resumed.
+	SBRStorageUnhealthyReasonRecovered = "Recovered"
+
+	// DeviceIOErrorsMetricName is the agent counter incremented on every failed read or write of
+	// the shared device.
+	DeviceIOErrorsMetricName = "sbr_device_io_errors_total"
+
+	// SBRCBlockLoadTestName is the SBRC name for the Ceph RBD heartbeat-under-load test.
+	SBRCBlockLoadTestName = "test-sbrc-block-load"
+
+	// BlockStressPodPrefix is the name prefix for the CPU stress pods, one per agent node. The node
+	// name is appended, which keeps the names unique and readable in a failure dump.
+	BlockStressPodPrefix = "sbr-rbd-stress-"
+
+	// BlockLoadStressDuration is how long a stress pod saturates its node before exiting. The pods
+	// are deleted in DeferCleanup; this bounds the load if the test dies without cleaning up, and
+	// must comfortably outlast BlockLoadCheckDuration and the assertions that follow it.
+	BlockLoadStressDuration = 5 * time.Minute
+
+	// BlockLoadCheckDuration is how long every agent node is watched under CPU load to prove no
+	// heartbeat is delayed enough to be read as storage loss.
+	BlockLoadCheckDuration = 3 * time.Minute
+
+	// BlockLoadCheckInterval is the poll interval for the under-load condition check.
+	BlockLoadCheckInterval = 10 * time.Second
+
+	// SBRCBlockInspectionTestName is the SBRC name for the Ceph RBD device inspection test.
+	SBRCBlockInspectionTestName = "test-sbrc-block-inspection"
+
+	// DefaultSBRTimeoutSeconds mirrors api/v1alpha1.DefaultSBRTimeoutSeconds: what an SBRC runs
+	// with when sbrTimeoutSeconds is unset. The agent writes a heartbeat every half of it.
+	DefaultSBRTimeoutSeconds = 30
+
+	// DefaultHeartbeatInterval is the agent's write cadence at the default sbrTimeoutSeconds,
+	// matching StorageBasedRemediationConfigSpec.GetHeartbeatInterval.
+	DefaultHeartbeatInterval = DefaultSBRTimeoutSeconds * time.Second / 2
+
+	// BlockHeartbeatSlotMaxAge is how far behind the newest heartbeat on the device a node's own
+	// slot may be before it counts as stale: two write cycles, so a single missed write is
+	// tolerated and a stopped writer is not.
+	BlockHeartbeatSlotMaxAge = 2 * DefaultHeartbeatInterval
+
+	// BlockNodeMapReadAttempts is how many times a node map read is retried before giving up. The
+	// agents rewrite both 64 KB buffers continuously, and a read that lands mid-write fails the
+	// buffer's checksum, so a first attempt failing says nothing about the device.
+	BlockNodeMapReadAttempts = 5
+
+	// BlockInspectionMaxSkew bounds how old the newest heartbeat on the device may look from the
+	// machine running the test. It is deliberately loose: its job is to catch a device nobody is
+	// writing to any more, not to measure cadence, which BlockHeartbeatSlotMaxAge does on
+	// device-written timestamps alone and so without any dependency on the runner's clock.
+	BlockInspectionMaxSkew = 5 * time.Minute
 )
 
 // AgentExpectedMetricNames lists the Prometheus metric names that must be present in the agent output.

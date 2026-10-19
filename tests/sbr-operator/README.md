@@ -273,3 +273,118 @@ Full specification: [`../../docs/TESTCASES/rhwa-1916.md`](../../docs/TESTCASES/r
 - **Environment**: Connected or disconnected. **Destructive** — the target node is fenced and hard-rebooted
 - **Standalone**: `ginkgo --label-filter="sbr" --focus="fencing state persists on Ceph RBD" ./tests/sbr-operator/...`
 - **Pass criteria**: `FencingSucceeded=True` on the SBR CR; node boot-id changes and the node returns Ready; node becomes schedulable again after the CR is deleted; agent pod returns to Running/ContainersReady; no new `StorageBasedRemediation` CR exists for the node
+
+### 13. Verify SBR Agents Write Concurrently to a Ceph RBD Block Device ([RHWA-1915](https://issues.redhat.com/browse/RHWA-1915))
+
+Validates SBR in Block volume mode: with `sharedStorageVolumeMode: Block` on a Ceph RBD
+StorageClass, agents on every worker node attach the same raw RWX device and write their
+heartbeats into it concurrently.
+
+Each agent pod reads the heartbeat region straight off the device with `dd` and O_DIRECT, so
+the page cache is bypassed and writes made by agents on other nodes are actually observed.
+
+Full test case: [docs/TESTCASES/rhwa-1915.md](../../docs/TESTCASES/rhwa-1915.md)
+
+- **Operators**: SBR v5.8.0
+- **Cluster**: Multi-node, at least 2 schedulable workers
+- **Storage**: ODF Ceph RBD StorageClass, RWX, `volumeMode: Block`. Auto-discovered by
+  provisioner (`rbd.csi.ceph.com`); `SBR_RBD_STORAGE_CLASS` overrides it. Skips when the
+  cluster has none
+- **Environment**: Connected or disconnected. Self Node Remediation must not be running —
+  SNR and SBR both claim `/dev/watchdog`, and the test fails early with scale-down instructions
+- **Standalone**: `ginkgo --label-filter="sbr" --focus="write concurrently to Ceph RBD block device" ./tests/sbr-operator/...`
+- **Pass criteria**: One Ready agent pod per worker node on the same Block device; every written slot parses with a valid CRC32; heartbeats present from at least 2 distinct node IDs with advancing sequence numbers; slot counts agree across pods
+
+### 14. Verify SBR Recovers From a Transient Ceph RBD Network Partition Without Fencing (RHWA-1924)
+
+Validates the self-healing half of Block-mode storage detection. A privileged disruptor pod blocks
+the victim worker's Ceph ports (3300, 6789, 6800-7300) for 150s and then removes its own rules, so
+the outage is long enough for a peer to report `SBRStorageUnhealthy=True` (reason `HeartbeatTimeout`)
+but short enough that the condition clears as `Recovered` instead of ageing into `Unknown`.
+
+The victim's heartbeat slot is identified as the one that stops advancing during the outage — read
+through an agent pod on another node, which keeps working while the victim is cut off — and must
+resume once Ceph traffic returns. The node must come back on its own: same boot-id, still Ready, no
+`StorageBasedRemediation` CR, and an unchanged `sbr_self_fenced_total`.
+
+Skips when a `NodeHealthCheck` remediates through the SBR template, which would legitimately fence
+the node, or when iptables is unusable in the victim's host namespaces.
+
+Full test case: [docs/TESTCASES/rhwa-1924.md](../../docs/TESTCASES/rhwa-1924.md)
+
+- **Operators**: SBR v5.8.0
+- **Cluster**: Multi-node, at least 2 schedulable workers, one hosting no SBR controller pod
+- **Storage**: ODF Ceph RBD StorageClass, RWX, `volumeMode: Block`. Auto-discovered by
+  provisioner (`rbd.csi.ceph.com`); `SBR_RBD_STORAGE_CLASS` overrides it. Skips when the
+  cluster has none
+- **Environment**: Connected or disconnected; `SBR_INJECTOR_IMAGE` must be mirrored when
+  disconnected. **Destructive** — Ceph traffic is blocked on one worker for 150s. Self Node
+  Remediation must not be running
+- **Standalone**: `ginkgo --label-filter="sbr" --focus="transient Ceph RBD network partition" ./tests/sbr-operator/...`
+- **Pass criteria**: `SBRStorageUnhealthy=True` (reason `HeartbeatTimeout`) during the outage and
+  `False` (reason `Recovered`) after it; exactly one heartbeat slot falls behind and then advances
+  past the sequence it stalled at; for 90s after recovery the node keeps its boot-id, stays Ready and has no
+  `StorageBasedRemediation` CR; the agent's `sbr_self_fenced_total` and restart count are unchanged
+
+### 15. Verify SBR Heartbeats Remain Stable on Ceph RBD Under Load (RHWA-1925)
+
+Measures the false-positive margin of the Block-mode heartbeat path. The SBRC is created with
+`sbrTimeoutSeconds: 10` — the CRD minimum, halving to a 5s heartbeat interval — and a stress pod
+then saturates every CPU on every node running an agent.
+
+For three minutes under that load no node may report `SBRStorageUnhealthy=True`, every heartbeat
+slot must keep advancing when read through an observer agent, and nothing may be remediated: no
+`StorageBasedRemediation` CR, no boot-id change, and no movement in any agent's
+`sbr_self_fenced_total` or `sbr_device_io_errors_total`.
+
+The upstream proposal's `p99 < 500ms` latency assertion is deliberately absent — the agent exposes
+no latency metric — and is replaced by the outcomes above. Stress pods stop their own load after
+five minutes, so a run that dies cannot leave a node saturated.
+
+Full test case: [docs/TESTCASES/rhwa-1925.md](../../docs/TESTCASES/rhwa-1925.md)
+
+- **Operators**: SBR v5.8.0
+- **Cluster**: Multi-node; at least two schedulable workers to exercise peer monitoring
+- **Storage**: ODF Ceph RBD StorageClass, RWX, `volumeMode: Block`. Auto-discovered by
+  provisioner (`rbd.csi.ceph.com`); `SBR_RBD_STORAGE_CLASS` overrides it. Skips when the
+  cluster has none
+- **Environment**: Connected or disconnected; `SBR_INJECTOR_IMAGE` must be mirrored when
+  disconnected. Non-destructive, but every agent node runs at full CPU for up to five minutes, so
+  it belongs in a job that tolerates that. Self Node Remediation must not be running
+- **Standalone**: `ginkgo --label-filter="sbr" --focus="heartbeats remain stable on Ceph RBD under load" ./tests/sbr-operator/...`
+- **Pass criteria**: No node reports `SBRStorageUnhealthy=True` for the whole 3-minute window under
+  load; every heartbeat slot advances past its pre-load sequence; no `StorageBasedRemediation` CR
+  exists; every node keeps its boot-id; every agent's `sbr_self_fenced_total` and
+  `sbr_device_io_errors_total` are unchanged
+
+### 16. Verify SBR Device Inspection Works on Ceph RBD Block Storage (RHWA-1926)
+
+Reads every region of a live Block-mode device — superblock, node map, heartbeat slots, fence
+slots — through an agent pod and checks the four agree with each other and with the agents that
+are running: valid superblock with a clear quiesce flag, one node map entry per agent node with
+unique in-range node IDs, each node's heartbeat in the slot its node ID points at and recently
+written, and no live fence message. An agent on a second node then repeats the reads and must see
+the same device, with sequence numbers that have only moved forward.
+
+SBR has no `sbr-device-summary` command, so the regions are read raw with `dd` and O_DIRECT and
+decoded against the operator's own layout constants. The decoded state is attached to the Ginkgo
+report, which is what makes this test useful for diagnosing a production device.
+
+Read-only: the test creates an SBRC and otherwise writes nothing.
+
+Full test case: [docs/TESTCASES/rhwa-1926.md](../../docs/TESTCASES/rhwa-1926.md)
+
+- **Operators**: SBR v5.8.0
+- **Cluster**: At least two nodes running an SBR agent; skips when only one does
+- **Storage**: ODF Ceph RBD StorageClass, RWX, `volumeMode: Block`. Auto-discovered by
+  provisioner (`rbd.csi.ceph.com`); `SBR_RBD_STORAGE_CLASS` overrides it. Skips when the
+  cluster has none
+- **Environment**: Connected or disconnected. Non-destructive. Self Node Remediation must not be
+  running
+- **Standalone**: `ginkgo --label-filter="sbr" --focus="device inspection works on Ceph RBD" ./tests/sbr-operator/...`
+- **Pass criteria**: Superblock magic `SBRBLK`, version 1, matching CRC32 and clear quiesce flag;
+  one node map entry per agent node with unique node IDs in 1-255 and both CRC32s valid; every
+  mapped node's heartbeat at slot `nodeID - 1`, no more than two heartbeat intervals behind the
+  newest on the device; no fence slot with a reason other than `NONE`; a reader on a second node
+  sees the identical node map and sequence numbers no lower; the decoded state is attached to the
+  report
