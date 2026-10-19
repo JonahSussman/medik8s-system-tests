@@ -130,4 +130,40 @@ const (
 
 	// MDRTInvalidTestNamespace is a syntactically valid namespace that does not exist.
 	MDRTInvalidTestNamespace = "mdr-test-nonexistent-ns"
+
+	// Must-gather test constants (RHWA-1249).
+
+	// MustGatherImageEnvVar is the environment variable that overrides the must-gather image.
+	MustGatherImageEnvVar = "MUST_GATHER_IMAGE"
+
+	// DefaultMustGatherImage is the default medik8s must-gather container image.
+	DefaultMustGatherImage = "quay.io/medik8s/must-gather:latest"
+
+	// MustGatherTimeout is the outer deadline for the `oc adm must-gather` subprocess.
+	MustGatherTimeout = 10 * time.Minute
+
+	// MustGatherOCTimeout is the --timeout handed to oc itself. It must stay strictly
+	// below MustGatherTimeout so oc exits on its own and runs its deferred cleanup;
+	// if the outer deadline fires first the process is killed and its collection
+	// namespace is orphaned on the cluster.
+	MustGatherOCTimeout = 8 * time.Minute
+
+	// MustGatherImageInfoTimeout bounds the best-effort `oc image info` digest lookup.
+	MustGatherImageInfoTimeout = 1 * time.Minute
+
+	// MustGatherCleanupTimeout is the deadline for best-effort removal of leftover
+	// must-gather namespaces when oc did not clean up after itself.
+	MustGatherCleanupTimeout = 2 * time.Minute
+
+	// MDRTMustGatherTestName is the MDRT created so must-gather has a template to collect.
+	MDRTMustGatherTestName = "mdr-must-gather-template"
+
+	// MDRMustGatherTestName is the MDR CR created so must-gather has a remediation to collect.
+	// MDR treats a remediation's name as the node it targets, so this must never match a real
+	// node; the spec asserts that before creating the CR.
+	MDRMustGatherTestName = "mdr-must-gather-nonexistent-node"
+
+	// MachineAPINamespace is the namespace holding Machine API resources, which MDR consumes
+	// and the must-gather image collects.
+	MachineAPINamespace = "openshift-machine-api"
 )

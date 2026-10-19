@@ -17,10 +17,16 @@ var (
 	// OperatorControllerPodLabelSelector selects MDR controller-manager pods by label.
 	OperatorControllerPodLabelSelector = "control-plane=controller-manager"
 
+	// MDRCRDNames lists the full CRD names (plural.group) for all MDR custom resource definitions.
+	MDRCRDNames = []string{
+		"machinedeletionremediations." + CRDGroup,
+		"machinedeletionremediationtemplates." + CRDGroup,
+	}
+
 	// ReporterNamespacesToDump tells the reporter from where to collect logs.
 	ReporterNamespacesToDump = map[string]string{
 		medik8sparams.OperatorNs: medik8sparams.OperatorNs,
-		"openshift-machine-api":  "openshift-machine-api",
+		MachineAPINamespace:      MachineAPINamespace,
 	}
 
 	operatorNs = medik8sparams.OperatorNs
