@@ -102,7 +102,7 @@ var _ = Describe(
 			), func() {
 				baseline := captureVictimBaseline(victimNodeName)
 				startCephRBDPartition(victimNodeName)
-				victim := awaitPartitionDetected(victimNodeName, observerPodName, baseline)
+				victim := awaitPartitionDetected(victimNodeName, observerPodName)
 				awaitPartitionRecovery(victimNodeName)
 				assertVictimNeverFenced(victimNodeName, observerPodName, baseline, victim)
 			})
@@ -166,9 +166,7 @@ func startCephRBDPartition(victimNodeName string) {
 // has been remediated, and returns the heartbeat node ID the victim writes to. The victim's node ID
 // is not in the Kubernetes API, so it is looked up by node name in the on-device node map, read
 // through the observer agent.
-func awaitPartitionDetected(
-	victimNodeName, observerPodName string, baseline partitionBaseline,
-) victimSlotState {
+func awaitPartitionDetected(victimNodeName, observerPodName string) victimSlotState {
 	By(fmt.Sprintf("Waiting for SBRStorageUnhealthy=True with reason %s on the victim node",
 		sbrparams.SBRStorageUnhealthyReasonHeartbeatTimeout))
 

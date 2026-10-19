@@ -307,6 +307,7 @@ func agentPodNameByNode(sbrcName, nodeName string, onNode bool) (string, error) 
 	if onNode {
 		location = "on"
 	}
+
 	return "", fmt.Errorf("SBRC %s has no Running agent pod %s node %s", sbrcName, location, nodeName)
 }
 
