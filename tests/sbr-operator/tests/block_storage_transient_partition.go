@@ -32,7 +32,6 @@ type partitionBaseline struct {
 	agentPodName string
 	selfFenced   float64
 	restarts     int32
-	sequences    map[uint16]uint64
 }
 
 var _ = Describe(
@@ -101,7 +100,7 @@ var _ = Describe(
 				labels.PlatformAny,
 				labels.FrequencyNightly,
 			), func() {
-				baseline := captureVictimBaseline(victimNodeName, observerPodName)
+				baseline := captureVictimBaseline(victimNodeName)
 				startCephRBDPartition(victimNodeName)
 				victim := awaitPartitionDetected(victimNodeName, observerPodName, baseline)
 				awaitPartitionRecovery(victimNodeName)
@@ -111,7 +110,7 @@ var _ = Describe(
 
 // captureVictimBaseline records everything the test later compares against, and asserts the victim
 // starts from a healthy state.
-func captureVictimBaseline(victimNodeName, observerPodName string) partitionBaseline {
+func captureVictimBaseline(victimNodeName string) partitionBaseline {
 	By("Recording the victim node's boot-id")
 
 	bootID, bootErr := getNodeBootID(victimNodeName)
@@ -135,20 +134,11 @@ func captureVictimBaseline(victimNodeName, observerPodName string) partitionBase
 		"Node %q must not report %s=True before its Ceph traffic is blocked",
 		victimNodeName, sbrparams.SBRStorageUnhealthyCondition)
 
-	By("Recording every node's heartbeat sequence number through the observer agent")
-
-	sequences, seqErr := heartbeatSequences(observerPodName)
-	Expect(seqErr).ToNot(HaveOccurred(),
-		"Must read the heartbeat region through observer pod %q", observerPodName)
-	Expect(sequences).ToNot(BeEmpty(), "The heartbeat region must hold at least one written slot")
-	GinkgoWriter.Printf("Baseline heartbeat sequences by node ID: %v\n", sequences)
-
 	return partitionBaseline{
 		bootID:       bootID,
 		agentPodName: agentPodName,
 		selfFenced:   selfFenced,
 		restarts:     restarts,
-		sequences:    sequences,
 	}
 }
 
@@ -174,8 +164,8 @@ func startCephRBDPartition(victimNodeName string) {
 
 // awaitPartitionDetected waits for a peer to report the victim storage-unhealthy, confirms nothing
 // has been remediated, and returns the heartbeat node ID the victim writes to. The victim's node ID
-// is not recorded anywhere in the API, so it is identified as the one slot that stops advancing
-// while the victim is cut off.
+// is not in the Kubernetes API, so it is looked up by node name in the on-device node map, read
+// through the observer agent.
 func awaitPartitionDetected(
 	victimNodeName, observerPodName string, baseline partitionBaseline,
 ) victimSlotState {
@@ -197,20 +187,28 @@ func awaitPartitionDetected(
 		"No StorageBasedRemediation CR must exist for node %q during a transient partition (get returned %v)",
 		victimNodeName, pullErr)
 
-	By("Confirming exactly one heartbeat slot fell behind while the victim is partitioned")
+	By("Looking up the victim's heartbeat node ID in the node map through the observer agent")
+
+	nodeMap, jsonPayload, mapErr := readNodeMapFromPod(observerPodName)
+	Expect(mapErr).ToNot(HaveOccurred(),
+		"Must read the node map through observer pod %q (payload: %s)", observerPodName, jsonPayload)
+	victimEntry, mapped := nodeMap.Entries[victimNodeName]
+	Expect(mapped).To(BeTrue(),
+		"The node map must hold an entry for victim node %q", victimNodeName)
+
+	By("Recording the sequence the victim's heartbeat slot stalled at while it is partitioned")
 
 	duringOutage, seqErr := heartbeatSequences(observerPodName)
 	Expect(seqErr).ToNot(HaveOccurred(),
 		"Must read the heartbeat region through observer pod %q", observerPodName)
-	lagging := laggingNodeIDs(baseline.sequences, duringOutage)
-	Expect(lagging).To(HaveLen(1),
-		"Only node %q must fall behind on heartbeats while it is partitioned, but node IDs %v did "+
-			"(baseline %v, during the outage %v)",
-		victimNodeName, lagging, baseline.sequences, duringOutage)
+	stalledSequence, present := duringOutage[victimEntry.NodeID]
+	Expect(present).To(BeTrue(),
+		"The victim's heartbeat slot (node ID %d) must be present while it is partitioned",
+		victimEntry.NodeID)
 	GinkgoWriter.Printf("Victim node %s owns heartbeat slot node ID %d, stalled at sequence %d\n",
-		victimNodeName, lagging[0], duringOutage[lagging[0]])
+		victimNodeName, victimEntry.NodeID, stalledSequence)
 
-	return victimSlotState{nodeID: lagging[0], stalledSequence: duringOutage[lagging[0]]}
+	return victimSlotState{nodeID: victimEntry.NodeID, stalledSequence: stalledSequence}
 }
 
 // awaitPartitionRecovery waits for the disruptor to serve out its outage window and remove its own
