@@ -388,7 +388,7 @@ func validateSlotDataConsistency(slotDataByPod map[string][]SlotData) error {
 
 // validateSequenceNumbers checks that sequence numbers are incrementing
 // correctly and there are no conflicts between different agents.
-func validateSequenceNumbers(slotDataByPod map[string][]SlotData) error {
+func validateSequenceNumbers(slotDataByPod map[string][]SlotData, expected int) error {
 	// Collect all slots with sequence numbers across all pods
 	type sequenceEntry struct {
 		PodName  string
@@ -456,9 +456,9 @@ func validateSequenceNumbers(slotDataByPod map[string][]SlotData) error {
 	}
 
 	// Verify we see heartbeats from multiple nodes (proves concurrent writes)
-	if len(sequencesByNode) < 2 {
-		return fmt.Errorf("expected heartbeats from at least 2 different nodes, but found %d",
-			len(sequencesByNode))
+	if len(sequencesByNode) < expected {
+		return fmt.Errorf("expected heartbeats from at least %d different nodes, but found %d",
+			expected, len(sequencesByNode))
 	}
 	GinkgoWriter.Printf("✓ Sequence numbers are incrementing correctly\n")
 	GinkgoWriter.Printf("✓ Detected concurrent writes from %d different nodes\n", len(sequencesByNode))

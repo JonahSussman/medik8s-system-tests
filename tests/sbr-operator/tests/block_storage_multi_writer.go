@@ -2,6 +2,7 @@ package tests
 
 import (
 	"fmt"
+	"maps"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -86,10 +87,11 @@ func testCephRBDConcurrentWrites() {
 		actualCount, expectedCount)
 	GinkgoWriter.Printf("Agent pods are using Ceph RBD block storage in Block volume mode\n")
 
-	By("Confirming multi-attach capability via Ready pod count")
-	// If multiple agents reach Ready state simultaneously, the block device
-	// supports true RWX multi-attach. A single-writer limitation would prevent
-	// multiple agents from attaching to the same block device.
+	By("Confirming the cluster has at least two agents to exercise multi-attach")
+	// Agent health is already asserted above (pod count equals worker count). This is a
+	// precondition on the cluster, not a health check: there must be more than one concurrent
+	// writer for the multi-attach assertions below to mean anything, since a single-node cluster
+	// would pass every check without ever proving shared access.
 	Expect(actualCount).To(BeNumerically(">=", 2),
 		"At least 2 agents must be Ready to validate multi-attach capability")
 	GinkgoWriter.Printf("✓ Validated concurrent block device access: %d agents Ready\n", actualCount)
@@ -109,8 +111,31 @@ func testCephRBDConcurrentWrites() {
 	By("Comparing slot data across all agent pods for consistency")
 	Expect(validateSlotDataConsistency(slotDataByPod)).To(Succeed())
 
-	By("Validating sequence numbers increment correctly without conflicts")
-	Expect(validateSequenceNumbers(slotDataByPod)).To(Succeed())
+	By("Re-reading until every node's heartbeat sequence advances")
+	// A single read of a slot returns the same sequence from every pod, so it cannot show the
+	// counters moving. Read a second round and keep retrying: the agents write a heartbeat every
+	// sbrTimeoutSeconds/2, so within a couple of intervals the second round sits ahead of the
+	// first, and validateSequenceNumbers (which requires max > min per node) passes. The merged
+	// samples give every node two readings taken at different times.
+	Eventually(func() error {
+		secondRound := make(map[string][]SlotData, len(runningPods))
+		for _, agentPod := range runningPods {
+			podName := agentPod.Object.Name
+			slotData, readErr := readSlotDataFromPod(podName, medik8sparams.OperatorNs)
+			if readErr != nil {
+				return readErr
+			}
+			secondRound[podName+"@2"] = slotData
+		}
+
+		merged := make(map[string][]SlotData, len(slotDataByPod)+len(secondRound))
+		maps.Copy(merged, slotDataByPod)
+		maps.Copy(merged, secondRound)
+
+		return validateSequenceNumbers(merged, expectedCount)
+	}, medik8sparams.DefaultTimeout, sbrparams.DefaultPollInterval).Should(Succeed(),
+		"every node's heartbeat sequence must advance across reads without conflicts")
+
 	GinkgoWriter.Printf("✓ Block device maintains data integrity across all agents\n")
 	GinkgoWriter.Printf("✓ Sequence numbers increment correctly without conflicts\n")
 }
