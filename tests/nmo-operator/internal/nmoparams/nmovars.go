@@ -16,6 +16,12 @@ var (
 	// WorkloadTestImage is the container image used for test workload pods.
 	WorkloadTestImage = medik8sparams.WorkloadImage
 
+	// OperatorControllerPodLabels is the map form of OperatorControllerPodLabelSelector, for
+	// client.MatchingLabels and helpers.LogControllerState.
+	OperatorControllerPodLabels = map[string]string{
+		ControllerPodLabelKey: OperatorControllerPodLabel,
+	}
+
 	// ReporterNamespacesToDump tells the reporter from where to collect logs.
 	ReporterNamespacesToDump = map[string]string{
 		medik8sparams.OperatorNs: medik8sparams.OperatorNs,

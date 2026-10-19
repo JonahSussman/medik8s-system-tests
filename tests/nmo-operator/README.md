@@ -182,3 +182,20 @@ tolerate exactly one disruption (e.g. a 5-member control plane).
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="operator:nmo" --focus="Rejects a second control-plane NodeMaintenance" ./tests/nmo-operator/...`
 - **Pass criteria**: The NodeMaintenance validating webhook is present (a ValidatingWebhookConfiguration intercepts nodemaintenances); at start the etcd guard PodDisruptionBudget in openshift-etcd reports DisruptionsAllowed=1 and is logged; the first control-plane NodeMaintenance reaches Succeeded phase; the first node is cordoned (Unschedulable=true) with the medik8s.io/drain NoSchedule taint; DrainProgress=100 and PendingPods empty; the etcd PDB then reports DisruptionsAllowed=0; the second control-plane node's etcd guard pod is confirmed Ready; creating a NodeMaintenance for that second, distinct control-plane node is rejected with an error containing "will violate etcd quorum"; the second control-plane node remains schedulable (Unschedulable=false); on teardown both NodeMaintenance CRs are deleted and both nodes return to Ready and uncordoned
+
+### 14. Verify Must-Gather Collects NMO Data for a Node Under Maintenance ([OCP-48777](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-48777))
+
+Places a worker node under maintenance, runs `oc adm must-gather` with the medik8s
+must-gather image, and verifies the collected archive contains the NMO CRD, the
+NodeMaintenance CR, a YAML for every node, and the NMO controller pod's log -- and that
+those files record the active maintenance rather than merely existing.
+
+The Python original inherits an active maintenance from an incremental pytest class; this
+spec establishes that state in `BeforeAll`, because without it must-gather still collects
+the CRD and node YAMLs and every presence check would pass on an idle cluster.
+
+- **Operators**: NMO v0.17.0+
+- **Cluster**: MNO with at least 2 schedulable worker nodes; skipped otherwise
+- **Environment**: Connected, or disconnected with `MUST_GATHER_IMAGE` set to a mirrored ref
+- **Standalone**: `ginkgo --label-filter="operator:nmo" --focus="collects NMO data via oc adm must-gather" ./tests/nmo-operator/...`
+- **Pass criteria**: The NMO deployment is Ready; at least 2 schedulable non-control-plane worker nodes exist (skipped otherwise); a running NMO controller pod owned by the NMO deployment is found in the operator namespace, and the node hosting it is excluded from selection; the NodeMaintenance CR reaches Succeeded phase; the target node is cordoned (Unschedulable=true) with the medik8s.io/drain NoSchedule taint; DrainProgress=100 and PendingPods empty; a SucceedMaintenance event is emitted; `oc adm must-gather` completes successfully; the collected output contains a `<node>.yaml` under a nodes path for every node present before collection, a `node-maintenance-<node>.yaml` under a nodemaintenances path, a `nodemaintenances.nodemaintenance.medik8s.io.yaml` CRD definition, and at least one `*.log` file under the NMO controller pod's path; the collected CRD YAML contains `nodemaintenances.nodemaintenance.medik8s.io`; the collected node YAML parses as a Node carrying both the `medik8s.io/drain` and `node.kubernetes.io/unschedulable` taints with NoSchedule effect and `spec.unschedulable` true; the collected NodeMaintenance CR parses with `status.phase` Succeeded; the collected NMO controller `current.log` contains `all pods were evicted`; all four content checks are reported together rather than failing on the first; on teardown the NodeMaintenance CR is deleted and the node returns to Ready and uncordoned (best-effort, logged if incomplete), and the temporary output directory is removed
