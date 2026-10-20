@@ -180,6 +180,9 @@ type FenceSlot struct {
 	WriterNodeID uint16
 	TargetNodeID uint16
 	Reason       uint8
+	// Corrupt is true when the slot holds data that is not a valid SBD fence message. Such a slot
+	// must not be mistaken for an empty (never-written) slot.
+	Corrupt bool
 }
 
 // readDeviceBlocksFromPod reads countBlocks blockSlotSize-sized blocks from the shared block
@@ -760,8 +763,10 @@ func readFenceSlotsFromPod(podName string) (map[int]FenceSlot, error) {
 	return parseFenceSlots(data), nil
 }
 
-// parseFenceSlots parses raw fence-region bytes. Like parseSlotData it skips anything without a
-// valid SBD header, and additionally skips messages that are not fence messages.
+// parseFenceSlots parses raw fence-region bytes. A zero-filled slot is a healthy, never-written
+// slot and is left out of the map. A slot that holds data but is not a valid SBD fence message
+// (bad magic, wrong message type, or a header checksum mismatch) is recorded with Corrupt set, so
+// the inspection can fail on it rather than mistake it for empty.
 func parseFenceSlots(data []byte) map[int]FenceSlot {
 	slots := make(map[int]FenceSlot)
 
@@ -769,6 +774,10 @@ func parseFenceSlots(data []byte) map[int]FenceSlot {
 		slotBytes := validSBDHeader(data, slotIdx, sbdFenceMsgType, sbdFenceMsgSize)
 
 		if slotBytes == nil {
+			if !slotRegionIsZero(data, slotIdx) {
+				slots[slotIdx] = FenceSlot{SlotIndex: slotIdx, Corrupt: true}
+			}
+
 			continue
 		}
 
@@ -781,4 +790,23 @@ func parseFenceSlots(data []byte) map[int]FenceSlot {
 	}
 
 	return slots
+}
+
+// slotRegionIsZero reports whether the whole 4 KB slot at slotIdx is zero-filled, which is what a
+// healthy slot no agent has ever written looks like.
+func slotRegionIsZero(data []byte, slotIdx int) bool {
+	start := slotIdx * blockSlotSize
+	end := start + blockSlotSize
+
+	if end > len(data) {
+		end = len(data)
+	}
+
+	for _, b := range data[start:end] {
+		if b != 0 {
+			return false
+		}
+	}
+
+	return true
 }
