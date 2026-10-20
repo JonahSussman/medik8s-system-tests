@@ -2,7 +2,6 @@ package tests
 
 import (
 	"fmt"
-	"maps"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -97,45 +96,50 @@ func testCephRBDConcurrentWrites() {
 	GinkgoWriter.Printf("✓ Validated concurrent block device access: %d agents Ready\n", actualCount)
 	GinkgoWriter.Printf("✓ Ceph RBD block storage supports true RWX multi-attach\n")
 
-	By("Reading slot data from all agent pods to validate data integrity")
-	slotDataByPod := make(map[string][]SlotData)
-	for _, agentPod := range runningPods {
-		podName := agentPod.Object.Name
-		GinkgoWriter.Printf("Reading slot data from pod %s...\n", podName)
-		slotData, err := readSlotDataFromPod(podName)
-		Expect(err).ToNot(HaveOccurred(), "Failed to read slot data from pod %s", podName)
-		slotDataByPod[podName] = slotData
-		GinkgoWriter.Printf("  Retrieved %d slot entries from pod %s\n", len(slotData), podName)
-	}
+	By("Reading the heartbeat region through every agent pod")
+
+	firstRead, readErr := readSlotDataFromAllPods(runningPods)
+	Expect(readErr).ToNot(HaveOccurred(), "Must read the heartbeat region through every agent pod")
 
 	By("Comparing slot data across all agent pods for consistency")
-	Expect(validateSlotDataConsistency(slotDataByPod)).To(Succeed())
+	Expect(validateSlotDataConsistency(firstRead)).To(Succeed())
 
-	By("Re-reading until every node's heartbeat sequence advances")
-	// A single read of a slot returns the same sequence from every pod, so it cannot show the
-	// counters moving. Read a second round and keep retrying: the agents write a heartbeat every
-	// sbrTimeoutSeconds/2, so within a couple of intervals the second round sits ahead of the
-	// first, and validateSequenceNumbers (which requires max > min per node) passes. The merged
-	// samples give every node two readings taken at different times.
+	By("Re-reading until every node's heartbeat sequence has advanced")
+	// The read above is a single moment in time: every pod sees the same slots, so it cannot show
+	// whether anything is still being written. The agents write a heartbeat every
+	// sbrTimeoutSeconds/2 (15s on the default 30s timeout), so a second read taken a little later
+	// must sit ahead of the first for every node that is alive. Retrying here is what gives the
+	// agents that time, without sleeping for a fixed interval.
 	Eventually(func() error {
-		secondRound := make(map[string][]SlotData, len(runningPods))
-		for _, agentPod := range runningPods {
-			podName := agentPod.Object.Name
-			slotData, readErr := readSlotDataFromPod(podName, medik8sparams.OperatorNs)
-			if readErr != nil {
-				return readErr
-			}
-			secondRound[podName+"@2"] = slotData
+		secondRead, err := readSlotDataFromAllPods(runningPods)
+		if err != nil {
+			return err
 		}
 
-		merged := make(map[string][]SlotData, len(slotDataByPod)+len(secondRound))
-		maps.Copy(merged, slotDataByPod)
-		maps.Copy(merged, secondRound)
-
-		return validateSequenceNumbers(merged, expectedCount)
+		return validateSequenceNumbers([]map[string][]SlotData{firstRead, secondRead}, expectedCount)
 	}, medik8sparams.DefaultTimeout, sbrparams.DefaultPollInterval).Should(Succeed(),
-		"every node's heartbeat sequence must advance across reads without conflicts")
+		"Every node's heartbeat sequence must advance between two reads of the device")
 
 	GinkgoWriter.Printf("✓ Block device maintains data integrity across all agents\n")
 	GinkgoWriter.Printf("✓ Sequence numbers increment correctly without conflicts\n")
+}
+
+// readSlotDataFromAllPods reads the whole heartbeat region through each of the given agent pods
+// and returns one set of parsed slots per pod, keyed by pod name. This is one round of reading
+// the device: every pod in it sees the same slot contents, give or take the moment of the read.
+func readSlotDataFromAllPods(agentPods []*pod.Builder) (map[string][]SlotData, error) {
+	slotDataByPod := make(map[string][]SlotData, len(agentPods))
+
+	for _, agentPod := range agentPods {
+		podName := agentPod.Object.Name
+		slotData, err := readSlotDataFromPod(podName)
+		if err != nil {
+			return nil, fmt.Errorf("read slot data from pod %s: %w", podName, err)
+		}
+
+		slotDataByPod[podName] = slotData
+		GinkgoWriter.Printf("  Read %d slot entries from pod %s\n", len(slotData), podName)
+	}
+
+	return slotDataByPod, nil
 }

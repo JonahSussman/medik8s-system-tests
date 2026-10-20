@@ -386,82 +386,62 @@ func validateSlotDataConsistency(slotDataByPod map[string][]SlotData) error {
 	return nil
 }
 
-// validateSequenceNumbers checks that sequence numbers are incrementing
-// correctly and there are no conflicts between different agents.
-func validateSequenceNumbers(slotDataByPod map[string][]SlotData, expected int) error {
-	// Collect all slots with sequence numbers across all pods
-	type sequenceEntry struct {
-		PodName  string
-		NodeID   uint16
-		Sequence uint64
-	}
-
-	var allSequences []sequenceEntry
-
-	for podName, slots := range slotDataByPod {
-		for _, slot := range slots {
-			if slot.HasData && slot.Sequence > 0 {
-				allSequences = append(allSequences, sequenceEntry{
-					PodName:  podName,
-					NodeID:   slot.NodeID,
-					Sequence: slot.Sequence,
-				})
-			}
-		}
-	}
-
-	if len(allSequences) == 0 {
-		GinkgoWriter.Printf("⚠ No sequence numbers found in slot data (agents may still be initializing)\n")
-
-		return nil
-	}
-
-	GinkgoWriter.Printf("Found %d slot entries with sequence numbers\n", len(allSequences))
-
-	// Group by NodeID and check sequence progression
+// validateSequenceNumbers proves that every expected node is still writing heartbeats: each one
+// appears on the device, and its sequence number moved between reads.
+//
+// reads holds one entry per round of reading the device, each round keyed by the agent pod the
+// slots were read through. Two rounds are needed, and that is the whole point of the parameter
+// being a slice: every pod in a single round reads the same slots at the same moment, so one
+// round yields identical sequence numbers for a node no matter how many pods it covers. Only a
+// second round, taken after the agents have had time to write again, can show a counter move.
+func validateSequenceNumbers(reads []map[string][]SlotData, expectedNodes int) error {
+	// Collect every sequence number seen for each node, across every round and every pod.
 	sequencesByNode := make(map[uint16][]uint64)
 
-	for _, entry := range allSequences {
-		sequencesByNode[entry.NodeID] = append(sequencesByNode[entry.NodeID], entry.Sequence)
+	for _, round := range reads {
+		for _, slots := range round {
+			for _, slot := range slots {
+				if slot.HasData && slot.Sequence > 0 {
+					sequencesByNode[slot.NodeID] = append(sequencesByNode[slot.NodeID], slot.Sequence)
+				}
+			}
+		}
 	}
 
-	GinkgoWriter.Printf("Detected %d unique node IDs writing heartbeats\n", len(sequencesByNode))
+	GinkgoWriter.Printf("Detected %d node IDs writing heartbeats over %d read(s)\n",
+		len(sequencesByNode), len(reads))
 
-	// For each node, sequences should be incrementing
+	// Every node the test expects must have written a heartbeat at all.
+	if len(sequencesByNode) < expectedNodes {
+		return fmt.Errorf("expected heartbeats from %d nodes, but found %d",
+			expectedNodes, len(sequencesByNode))
+	}
+
+	// And each of them must have advanced: the newest sequence seen for a node has to be higher
+	// than the oldest, which can only happen if it wrote again between the two rounds.
 	for nodeID, sequences := range sequencesByNode {
-		if len(sequences) == 0 {
-			continue
-		}
+		lowest, highest := sequences[0], sequences[0]
 
-		// Check that we have incrementing sequences (allowing for some reads to miss recent writes)
-		minSeq := sequences[0]
-		maxSeq := sequences[0]
-
-		for _, seq := range sequences {
-			if seq < minSeq {
-				minSeq = seq
+		for _, sequence := range sequences {
+			if sequence < lowest {
+				lowest = sequence
 			}
-			if seq > maxSeq {
-				maxSeq = seq
+
+			if sequence > highest {
+				highest = sequence
 			}
 		}
 
-		GinkgoWriter.Printf("  Node ID %d: sequence range [%d - %d], samples: %d\n",
-			nodeID, minSeq, maxSeq, len(sequences))
+		GinkgoWriter.Printf("  Node ID %d: sequence %d -> %d over %d sample(s)\n",
+			nodeID, lowest, highest, len(sequences))
 
-		// Sequences should be incrementing (max > min unless only 1 sample)
-		if len(sequences) > 1 && maxSeq <= minSeq {
-			return fmt.Errorf("sequences for node %d should be incrementing", nodeID)
+		if highest <= lowest {
+			return fmt.Errorf("node %d is not writing: its heartbeat sequence stayed at %d "+
+				"across %d sample(s)", nodeID, lowest, len(sequences))
 		}
 	}
 
-	// Verify we see heartbeats from multiple nodes (proves concurrent writes)
-	if len(sequencesByNode) < expected {
-		return fmt.Errorf("expected heartbeats from at least %d different nodes, but found %d",
-			expected, len(sequencesByNode))
-	}
-	GinkgoWriter.Printf("✓ Sequence numbers are incrementing correctly\n")
-	GinkgoWriter.Printf("✓ Detected concurrent writes from %d different nodes\n", len(sequencesByNode))
+	GinkgoWriter.Printf("✓ All %d nodes advanced their heartbeat sequence\n", len(sequencesByNode))
 
 	return nil
 }
