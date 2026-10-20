@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"context"
 	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -81,7 +82,7 @@ var _ = Describe(
 		AfterAll(func() {
 			if victimNodeName != "" {
 				By("Removing any StorageBasedRemediation CR left for the victim node")
-				cleanupSBRCR(victimNodeName)
+				cleanupSBRCR(context.Background(), victimNodeName)
 			}
 
 			if testSBRC != nil {
