@@ -187,8 +187,8 @@ var _ = Describe(
 				labels.ComponentDaemonSet,
 				// Destructive in practice on current builds: rolling the agent
 				// DaemonSet has driven control plane nodes into watchdog
-				// self-remediation on two unrelated clusters. Revert to
-				// DisruptionNonDestructive once that product defect is fixed.
+				// self-remediation on two unrelated clusters (RHWA-1942).
+				// Revert to DisruptionNonDestructive once that is fixed.
 				labels.DisruptionDestructive,
 				labels.PlatformAny,
 				labels.TopologyControlPlane,
@@ -492,7 +492,7 @@ func patchPreferredAddressTypes(
 	patch := fmt.Appendf(nil, `{"spec":{"preferredAddressTypes":%s}}`, encoded)
 
 	return APIClient.Patch(ctx,
-		snrcForPatch(snrparams.SNRConfigName),
+		snrcForPatch(),
 		client.RawPatch(types.MergePatchType, patch),
 		opts...)
 }
@@ -556,7 +556,7 @@ func restorePreferredAddressTypes(ctx context.Context, original []string, found 
 
 	Eventually(func() error {
 		patchErr := APIClient.Patch(ctx,
-			snrcForPatch(snrparams.SNRConfigName),
+			snrcForPatch(),
 			client.RawPatch(types.MergePatchType, patch))
 		if k8serrors.IsNotFound(patchErr) {
 			GinkgoWriter.Printf(
@@ -787,13 +787,14 @@ func verifyControlPlaneAgentPods(ctx context.Context, controlPlaneNodes []string
 				agentPod.Name, nodeName, agentPod.Status.Phase)
 		}
 
-		for _, cs := range agentPod.Status.ContainerStatuses {
-			if !cs.Ready {
+		for _, containerStatus := range agentPod.Status.ContainerStatuses {
+			if !containerStatus.Ready {
 				return fmt.Errorf("agent pod %q on node %q: container %q is not ready (%+v)",
-					agentPod.Name, nodeName, cs.Name, cs.State)
+					agentPod.Name, nodeName, containerStatus.Name, containerStatus.State)
 			}
 
-			if cs.State.Waiting != nil && cs.State.Waiting.Reason == "CrashLoopBackOff" {
+			if containerStatus.State.Waiting != nil &&
+				containerStatus.State.Waiting.Reason == "CrashLoopBackOff" {
 				return fmt.Errorf("agent pod %q on node %q is in CrashLoopBackOff",
 					agentPod.Name, nodeName)
 			}

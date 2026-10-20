@@ -250,7 +250,8 @@ agents roll, render `PREFERRED_ADDRESS_TYPES=InternalIP,NodeName`, and leave the
 cluster un-remediated. Patches and restores the **default** SNRC, so it is
 `Serial`. **Labelled destructive**: the spec reboots nothing itself, but rolling the agent
 DaemonSet has driven control plane nodes into watchdog self-remediation on two unrelated
-clusters, so it is not safe for a non-destructive lane until that product defect is fixed. Full specification: [docs/TESTCASES/rhwa-1928.md](../../docs/TESTCASES/rhwa-1928.md).
+clusters ([RHWA-1942](https://redhat.atlassian.net/browse/RHWA-1942)), so it is not safe
+for a non-destructive lane until that is fixed. Full specification: [docs/TESTCASES/rhwa-1928.md](../../docs/TESTCASES/rhwa-1928.md).
 
 - **Operators**: SNR v5.8.0+
 - **Cluster**: Any topology with at least one control plane node; every control plane node needs an InternalIP
