@@ -95,7 +95,7 @@ var _ = Describe(
 				assertNoAgentUnhealthyUnderLoad(baselines)
 				assertHeartbeatsAdvanced(observerPodName, sequences)
 				assertNothingRemediatedUnderLoad(baselines)
-				assertAgentCountersUnchanged(baselines)
+				assertNoAgentSelfFencedUnderLoad(baselines)
 			})
 	})
 
@@ -253,12 +253,12 @@ func assertNothingRemediatedUnderLoad(baselines []agentBaseline) {
 	}
 }
 
-// assertAgentCountersUnchanged closes the loop from the agents' own side: nobody self-fenced while
+// assertNoAgentSelfFencedUnderLoad closes the loop from the agents' own side: nobody self-fenced while
 // its node was saturated. The device I/O-error counter is logged, not asserted: it increments on
 // any transient failed read/write before the retry succeeds, so a single blip under saturation does
 // not mean a false storage-loss verdict. That thesis is carried by sbr_self_fenced_total and the
 // SBRStorageUnhealthy check instead.
-func assertAgentCountersUnchanged(baselines []agentBaseline) {
+func assertNoAgentSelfFencedUnderLoad(baselines []agentBaseline) {
 	metricBodies := make(map[string]string, len(baselines))
 
 	By("Asserting each agent's sbr_self_fenced_total counter is unchanged")
