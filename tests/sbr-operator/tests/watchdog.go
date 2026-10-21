@@ -27,6 +27,10 @@ import (
 
 var validWatchdogDevice = regexp.MustCompile(`^/dev/watchdog[0-9]*$`)
 
+// softdogDriverIdentity is the driver identity the kernel reports for devices backed by
+// the softdog module, as read from /sys/class/watchdog/watchdogN/identity.
+const softdogDriverIdentity = "softdog"
+
 var _ = Describe(
 	"SBR Functional — Watchdog Integration",
 	Ordered,
@@ -43,6 +47,12 @@ var _ = Describe(
 		// which clears the softdog kernel module until an SBR agent restarts on it.
 		var inventoryBootIDs map[string]string
 
+		// inventoryDeviceIdentities maps node name to the driver identity the kernel
+		// reported for each inventoried device. The post-reboot missing-device skip
+		// applies only to softdog-backed devices: a hardware watchdog's driver loads
+		// at boot, so its device must be present after a reboot.
+		var inventoryDeviceIdentities map[string]map[string]string
+
 		BeforeAll(func() {
 			nodeList, err := APIClient.CoreV1Interface.Nodes().List(context.TODO(), metav1.ListOptions{})
 			Expect(err).ToNot(HaveOccurred(), "Failed to list cluster nodes for watchdog integration checks")
@@ -54,6 +64,7 @@ var _ = Describe(
 			if WatchdogDevicesByNode != nil {
 				nodeWatchdogDevices = make(map[string][]string)
 				inventoryBootIDs = make(map[string]string)
+				inventoryDeviceIdentities = make(map[string]map[string]string)
 
 				for i := range nodeList.Items {
 					node := &nodeList.Items[i]
@@ -65,6 +76,10 @@ var _ = Describe(
 
 					if bootID, ok := WatchdogInventoryBootIDs[node.Name]; ok {
 						inventoryBootIDs[node.Name] = bootID
+					}
+
+					if identities, ok := WatchdogDeviceIdentitiesByNode[node.Name]; ok {
+						inventoryDeviceIdentities[node.Name] = identities
 					}
 
 					devs, ok := WatchdogDevicesByNode[node.Name]
@@ -96,6 +111,7 @@ var _ = Describe(
 			// excludes FrequencyPresubmit). Discover watchdog devices independently.
 			nodeWatchdogDevices = make(map[string][]string)
 			inventoryBootIDs = make(map[string]string)
+			inventoryDeviceIdentities = make(map[string]map[string]string)
 
 			for i := range nodeList.Items {
 				node := &nodeList.Items[i]
@@ -124,7 +140,7 @@ var _ = Describe(
 					WithPrivilegedFlag().
 					WithRestartPolicy(corev1.RestartPolicyNever).
 					RedefineDefaultCMD([]string{
-						"sh", "-c", "ls -1 /proc/1/root/dev/watchdog* 2>/dev/null || true",
+						"sh", "-c", watchdogInventoryCmd(),
 					}).
 					Create()
 				if createErr != nil {
@@ -174,28 +190,9 @@ var _ = Describe(
 
 				// Use a non-nil empty slice so that "no devices found" is
 				// distinguishable from "probe failed" (which leaves nil in the map).
-				devices := make([]string, 0)
-
-				for _, line := range strings.Split(strings.TrimSpace(logContent), "\n") {
-					line = strings.TrimSpace(line)
-					if line == "" {
-						continue
-					}
-
-					if !strings.HasPrefix(line, "/proc/1/root/dev/watchdog") {
-						GinkgoWriter.Printf("Warning: ignoring unexpected watchdog probe output on node %s: %q\n",
-							nodeName, line)
-
-						continue
-					}
-
-					device := strings.TrimPrefix(line, "/proc/1/root")
-					if device != "" && validWatchdogDevice.MatchString(device) {
-						devices = append(devices, device)
-					}
-				}
-
+				devices, identities := parseWatchdogInventory(logContent, nodeName)
 				nodeWatchdogDevices[nodeName] = devices
+				inventoryDeviceIdentities[nodeName] = identities
 			}
 
 			if len(nodeWatchdogDevices) == 0 {
@@ -267,6 +264,9 @@ var _ = Describe(
 					// a reboot unloads it, and only a restarted SBR agent loads it again. The
 					// device files can therefore be missing even though the node is Ready, so
 					// such nodes get a bounded retry instead of failing on the first miss.
+					// The missing-device skip below applies only to devices the inventory
+					// recorded as softdog-backed: a hardware watchdog's driver loads at boot,
+					// so its device must be present after a reboot and stays a failure.
 					rebootedSinceInventory := false
 					inventoryBootID := inventoryBootIDs[nodeName]
 					if inventoryBootID != "" {
@@ -366,8 +366,9 @@ var _ = Describe(
 							device := strings.TrimSuffix(line, " FAIL")
 							seenDevices[device] = true
 
-							if rebootedSinceInventory {
-								GinkgoWriter.Printf("Skipping watchdog device %s on node %s: still not loaded %s "+
+							if rebootedSinceInventory &&
+								inventoryDeviceIdentities[nodeName][device] == softdogDriverIdentity {
+								GinkgoWriter.Printf("Skipping softdog watchdog device %s on node %s: still not loaded %s "+
 									"after the node rebooted following the inventory; the softdog module is "+
 									"only loaded by an SBR agent restarting on the node\n",
 									device, nodeName, sbrparams.WatchdogPostRebootDeviceWait)

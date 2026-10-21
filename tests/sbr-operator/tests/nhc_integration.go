@@ -419,10 +419,11 @@ var _ = Describe(
 				By("Waiting for FencingSucceeded=True on the StorageBasedRemediation CR")
 
 				// Design note: IsNotFound is treated as success because the controller's normal
-				// cleanup flow sets FencingSucceeded=True then immediately deletes the CR.
-				// A poll that lands after deletion but before the next reconcile would otherwise
-				// return a false failure. The BootID assertion above already confirms an actual
-				// reboot occurred; this step confirms the controller acknowledged it.
+				// cleanup flow sets FencingSucceeded=True then immediately deletes the CR, so a
+				// poll that lands after deletion has no condition left to observe. Whether any
+				// poll sees the condition depends on poll timing against that short window.
+				// The BootID assertion above is the proof that the fence rebooted the node;
+				// this wait verifies the CR lifecycle finished, not that the condition was seen.
 				Eventually(func() error {
 					sbrObj, getErr := pullSBRCR(targetNodeName)
 					if k8serrors.IsNotFound(getErr) {
@@ -447,7 +448,8 @@ var _ = Describe(
 
 					return nil
 				}, medik8sparams.DefaultTimeout, sbrparams.DefaultPollInterval).Should(Succeed(),
-					"StorageBasedRemediation/%s must reach FencingSucceeded=True", targetNodeName)
+					"StorageBasedRemediation/%s must reach FencingSucceeded=True or be cleaned up after fencing",
+					targetNodeName)
 
 				By("Waiting for the SBR CR to be deleted (controller cleanup after successful fencing)")
 
