@@ -571,15 +571,19 @@ func pickTargetWorkerNode() string {
 // Containers still using the image (for example an injector pod whose container is being
 // restarted after the reboot) are removed first, since crictl rmi refuses an image in use.
 // Best effort: failures are logged, not asserted. The command reports whether the image is
-// actually gone afterwards, so the logs never claim a removal that did not happen.
+// actually gone afterwards, so the logs never claim a removal that did not happen: only
+// crictl's confirmed "no such image" result is reported as absent, and any other inspection
+// failure is reported as inspect-failed so it is never mistaken for absence.
 func purgeInjectorImageAfterReboot(ctx context.Context, nodeName string) {
 	GinkgoWriter.Printf("Removing injector image %s from node %s to drop overlay layers written before the reboot\n",
 		sbrparams.InjectorImage, nodeName)
 	output, err := helpers.RunOnNode(ctx, nodeName, sbrparams.CrioCleanupTimeout,
 		"bash", "-c", fmt.Sprintf(
-			"if ! crictl inspecti %[1]s >/dev/null 2>&1; then echo absent; "+
-				"else crictl ps -a -q --image %[1]s | xargs -r crictl rm -f >/dev/null 2>&1; "+
-				"if crictl rmi %[1]s >/dev/null 2>&1; then echo removed; else echo still-present; fi; fi",
+			"if err=$(crictl inspecti %[1]s 2>&1); then "+
+				"crictl ps -a -q --image %[1]s | xargs -r crictl rm -f >/dev/null 2>&1; "+
+				"if crictl rmi %[1]s >/dev/null 2>&1; then echo removed; else echo still-present; fi; "+
+				"else case \"$err\" in *\"no such image\"*) echo absent;; "+
+				"*) echo inspect-failed;; esac; fi",
 			sbrparams.InjectorImage))
 
 	switch {
@@ -589,6 +593,10 @@ func purgeInjectorImageAfterReboot(ctx context.Context, nodeName string) {
 	case strings.Contains(output, "still-present"):
 		GinkgoT().Logf("Warning: injector image %s is still present on node %s after the purge, "+
 			"probably because a container is using it again (output: %s)",
+			sbrparams.InjectorImage, nodeName, output)
+	case strings.Contains(output, "inspect-failed"):
+		GinkgoT().Logf("Warning: could not determine whether injector image %s is present on node %s, "+
+			"so the purge was skipped (crictl inspecti failed; output: %s)",
 			sbrparams.InjectorImage, nodeName, output)
 	case strings.Contains(output, "absent"):
 		GinkgoT().Logf("Injector image %s already absent from node %s", sbrparams.InjectorImage, nodeName)
