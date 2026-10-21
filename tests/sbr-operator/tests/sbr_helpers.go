@@ -582,7 +582,7 @@ func purgeInjectorImageAfterReboot(ctx context.Context, nodeName string) {
 			"if err=$(crictl inspecti %[1]s 2>&1); then "+
 				"crictl ps -a -q --image %[1]s | xargs -r crictl rm -f >/dev/null 2>&1; "+
 				"if crictl rmi %[1]s >/dev/null 2>&1; then echo removed; else echo still-present; fi; "+
-				"else case \"$err\" in *\"no such image\"*) echo absent;; "+
+				"else case \"$err\" in *\"no such image \\\"%[1]s\\\" present\"*) echo absent;; "+
 				"*) echo inspect-failed;; esac; fi",
 			sbrparams.InjectorImage))
 
