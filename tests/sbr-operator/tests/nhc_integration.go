@@ -281,11 +281,11 @@ var _ = Describe(
 
 				By("Recording pre-injection BootID (baseline before watchdog reboot)")
 
-				nodeBeforeInject, nodeBootErr := APIClient.CoreV1Interface.Nodes().Get(
-					context.TODO(), targetNodeName, metav1.GetOptions{})
-				Expect(nodeBootErr).ToNot(HaveOccurred(),
-					"Failed to get node %q to record pre-injection BootID", targetNodeName)
-				preRebootBootID = nodeBeforeInject.Status.NodeInfo.BootID
+				var preBootIDErr error
+
+				preRebootBootID, preBootIDErr = getNodeBootID(targetNodeName)
+				Expect(preBootIDErr).ToNot(HaveOccurred(),
+					"Failed to record pre-injection BootID on node %q", targetNodeName)
 				GinkgoWriter.Printf("Node %q pre-injection BootID: %s\n", targetNodeName, preRebootBootID)
 
 				By(fmt.Sprintf("Creating privileged injector pod on node %q", targetNodeName))
@@ -406,11 +406,9 @@ var _ = Describe(
 
 				By("Verifying BootID changed (confirms actual reboot, not just transient state)")
 
-				nodeAfterReboot, nodeErr := APIClient.CoreV1Interface.Nodes().Get(
-					context.TODO(), targetNodeName, metav1.GetOptions{})
-				Expect(nodeErr).ToNot(HaveOccurred(),
-					"Failed to get node %q after reboot", targetNodeName)
-				newBootID := nodeAfterReboot.Status.NodeInfo.BootID
+				newBootID, newBootIDErr := getNodeBootID(targetNodeName)
+				Expect(newBootIDErr).ToNot(HaveOccurred(),
+					"Failed to read post-reboot BootID on node %q", targetNodeName)
 				Expect(newBootID).ToNot(Equal(preRebootBootID),
 					"Node %q BootID %q matches pre-reboot BootID %q — "+
 						"node did not actually reboot",
