@@ -210,7 +210,7 @@ independently using a short-lived privileged hostPID pod per node.
 - **Storage**: None
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="sbr" --focus="Verify watchdog device" ./tests/sbr-operator/...`
-- **Pass criteria**: All hardware watchdog devices are character devices; nodes without hardware watchdog have softdog.ko present in the kernel module tree
+- **Pass criteria**: All hardware watchdog devices are character devices; nodes without hardware watchdog have softdog.ko present in the kernel module tree. A node that rebooted after the inventory retries the device check for 2 minutes; a softdog-backed device still missing afterwards is a post-reboot skip (a reboot clears the softdog module, and only a restarted SBR agent loads it again), not a failure. A hardware watchdog's device must survive reboots, so it keeps failing the check
 
 ### 9. Verify SBR Must-Gather Collects Diagnostic Data ([OCP-88733](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-88733))
 
