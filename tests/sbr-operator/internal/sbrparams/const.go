@@ -508,6 +508,12 @@ const (
 	// single spurious fence stands out against more than one untouched peer.
 	MinWorkersForBlockSplitBrain = 3
 
+	// BlockWitnessProgressTimeout bounds the wait for every witness slot to advance past the sequence
+	// it held when the victim was already isolated. Heartbeats tick every few seconds and unevenly, so
+	// the evidence is two reads with real time between them rather than a single comparison: one read
+	// taken moments after the baseline can legitimately show a slot that has not ticked yet.
+	BlockWitnessProgressTimeout = 2 * time.Minute
+
 	// BlockInspectionMaxSkew bounds how old the newest heartbeat on the device may look from the
 	// machine running the test. It is deliberately loose: its job is to catch a device nobody is
 	// writing to any more, not to measure cadence, which BlockHeartbeatSlotMaxAge does on

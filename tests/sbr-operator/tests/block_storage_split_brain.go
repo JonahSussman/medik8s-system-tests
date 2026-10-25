@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -219,29 +220,38 @@ var _ = Describe(
 					victimNodeName, sbrparams.SBRStorageUnhealthyCondition,
 					sbrparams.SBRStorageUnhealthyReasonHeartbeatTimeout)
 
-				By("Looking up the victim's heartbeat node ID in the node map and recording its last heartbeat")
+				By("Looking up the victim's and the witnesses' heartbeat slots in the node map and " +
+					"recording the sequence the victim stalled at")
 
-				state, stateErr := victimHeartbeatSlotState(observerPodName, victimNodeName)
+				state, stateErr := splitBrainHeartbeatState(observerPodName, victimNodeName, witnessNodes)
 				Expect(stateErr).ToNot(HaveOccurred(),
-					"Must read the victim's heartbeat slot through observer pod %q", observerPodName)
-				GinkgoWriter.Printf("Victim node %q owns heartbeat slot node ID %d, last heartbeat at %s\n",
-					victimNodeName, state.victimNodeID,
+					"Must read the heartbeat slots of victim node %q and witness nodes %v through observer "+
+						"pod %q", victimNodeName, witnessNodes, observerPodName)
+				GinkgoWriter.Printf("Victim node %q owns heartbeat slot node ID %d, stalled at sequence %d, "+
+					"last heartbeat at %s\n", victimNodeName, state.victimNodeID, state.victimSequence,
 					time.Unix(0, state.heartbeatTS).UTC().Format(time.RFC3339Nano))
 
-				By(fmt.Sprintf("Consistently asserting for %s that no witness becomes unhealthy or gets "+
-					"an SBR CR", sbrparams.SplitBrainHealthyNodeCheckDuration))
+				// Checked on every poll of every wait from here on, rather than over one fixed window:
+				// the SBRStorageUnhealthy condition cycles and NHC deletes and recreates CRs with it, so
+				// a witness wrongly flagged or remediated can come and go inside an unwatched window. A
+				// violation is not something a later poll recovers from, hence StopTrying.
+				witnessGuard := func() error {
+					if witnessErr := witnessesStillHealthy(witnessNodes); witnessErr != nil {
+						return StopTrying("the fence landed on the wrong geometry: a witness node was " +
+							"flagged unhealthy or remediated while only the victim was isolated").Wrap(witnessErr)
+					}
 
-				// Runs while NHC decides to act on the victim. If any witness is flagged or remediated
-				// during this window the fence landed on the wrong geometry and the test fails immediately.
-				Consistently(func() error {
-					return witnessesStillHealthy(witnessNodes)
-				}, sbrparams.SplitBrainHealthyNodeCheckDuration,
-					sbrparams.SplitBrainHealthyNodeCheckInterval).Should(Succeed(),
-					"No witness node must be flagged unhealthy or remediated while only the victim is isolated")
+					return nil
+				}
 
-				By("Waiting for NHC to create a StorageBasedRemediation CR for the victim node")
+				By("Waiting for NHC to create a StorageBasedRemediation CR for the victim node, while no " +
+					"witness becomes unhealthy or gets an SBR CR")
 
 				Eventually(func() error {
+					if witnessErr := witnessGuard(); witnessErr != nil {
+						return witnessErr
+					}
+
 					_, pullErr := pullSBRCR(victimNodeName)
 					if k8serrors.IsNotFound(pullErr) {
 						return fmt.Errorf("StorageBasedRemediation/%s not yet created by NHC", victimNodeName)
@@ -260,6 +270,10 @@ var _ = Describe(
 				var provenCR *unstructured.Unstructured
 
 				Eventually(func() error {
+					if witnessErr := witnessGuard(); witnessErr != nil {
+						return witnessErr
+					}
+
 					var provenErr error
 
 					provenCR, provenErr = fencingProven(victimNodeName)
@@ -268,6 +282,26 @@ var _ = Describe(
 				}, sbrparams.FencingProvenTimeout, sbrparams.DefaultPollInterval).Should(Succeed(),
 					"StorageBasedRemediation/%s must reach %s=True and %s=True",
 					victimNodeName, sbrparams.FencingSucceededCondition, sbrparams.SucceededCondition)
+
+				By("Asserting the device agrees the victim went silent and the witnesses did not")
+
+				// Without this the ordering assertion below is nearly free: any transition is later than
+				// a timestamp read before it. What makes the proof mean something is that the victim's
+				// slot never moved again while the witnesses' kept moving. This is a second read of the
+				// region compared against the one taken while the victim was already isolated, and it is
+				// polled because heartbeats tick every few seconds and unevenly: a witness that has not
+				// written yet is an ordinary not-yet, while a victim that has written is not.
+				Eventually(func() error {
+					progressErr := splitBrainHeartbeatProgress(observerPodName, state)
+					if errors.Is(progressErr, errVictimResumedHeartbeating) {
+						return StopTrying(fmt.Sprintf("victim node %q kept heartbeating while it was "+
+							"isolated", victimNodeName)).Wrap(progressErr)
+					}
+
+					return progressErr
+				}, sbrparams.BlockWitnessProgressTimeout, sbrparams.DefaultPollInterval).Should(Succeed(),
+					"Fencing node %q may only be proven from storage while its heartbeat slot is stalled "+
+						"and its witnesses %v are still heartbeating", victimNodeName, witnessNodes)
 
 				By("Asserting the FencingSucceeded transition happened after the victim's last heartbeat")
 
@@ -285,10 +319,23 @@ var _ = Describe(
 
 				By("Waiting for the victim node's boot-id to change (confirms it actually rebooted)")
 
-				Eventually(func() (string, error) {
-					return getNodeBootID(victimNodeName)
-				}, sbrparams.NodeRebootTimeout, sbrparams.NodeRebootPollInterval).ShouldNot(
-					Equal(baseline.victimBootID),
+				Eventually(func() error {
+					if witnessErr := witnessGuard(); witnessErr != nil {
+						return witnessErr
+					}
+
+					bootID, bootIDErr := getNodeBootID(victimNodeName)
+					if bootIDErr != nil {
+						return bootIDErr
+					}
+
+					if bootID == baseline.victimBootID {
+						return fmt.Errorf("node %s still has boot-id %s; waiting for the fencing reboot",
+							victimNodeName, bootID)
+					}
+
+					return nil
+				}, sbrparams.NodeRebootTimeout, sbrparams.NodeRebootPollInterval).Should(Succeed(),
 					"Isolated node %q must reboot (boot-id must change from %q)",
 					victimNodeName, baseline.victimBootID)
 
@@ -301,6 +348,10 @@ var _ = Describe(
 				By(fmt.Sprintf("Waiting for the victim node %q to come back Ready", victimNodeName))
 
 				Eventually(func() error {
+					if witnessErr := witnessGuard(); witnessErr != nil {
+						return witnessErr
+					}
+
 					return nodeConditionIs(victimNodeName, string(corev1.NodeReady), corev1.ConditionTrue, "")
 				}, sbrparams.NodeRebootTimeout, sbrparams.NodeRebootPollInterval).Should(Succeed(),
 					"Node %q must return Ready after the fencing reboot", victimNodeName)
@@ -327,6 +378,10 @@ var _ = Describe(
 				// reboot finishes, so a second fence starting inside this window would not show as a
 				// boot-id change. Asserting the node also stays Ready catches a re-fence in progress.
 				Consistently(func() error {
+					if witnessErr := witnessGuard(); witnessErr != nil {
+						return witnessErr
+					}
+
 					bootID, bootIDErr := getNodeBootID(victimNodeName)
 					if bootIDErr != nil {
 						return bootIDErr
@@ -345,6 +400,10 @@ var _ = Describe(
 				By("Waiting for NHC to delete the StorageBasedRemediation CR")
 
 				Eventually(func() error {
+					if witnessErr := witnessGuard(); witnessErr != nil {
+						return witnessErr
+					}
+
 					_, pullErr := pullSBRCR(victimNodeName)
 					if k8serrors.IsNotFound(pullErr) {
 						return nil

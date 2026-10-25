@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -491,13 +492,22 @@ func stalledNodeIDs(before, after map[uint16]uint64) []uint16 {
 	return stalled
 }
 
-// splitBrainState is the victim's heartbeat slot, identified in the on-device node map while the
-// victim is cut off from storage, and the UnixNano timestamp of the last heartbeat it wrote. The
-// timestamp anchors the ordering assertion: fencing may only be proven after the victim actually
-// went silent, so the FencingSucceeded transition must be later than this.
+// splitBrainState is the heartbeat geometry of the scenario as the device shows it once the victim
+// is already cut off: which slot the victim owns, the UnixNano timestamp and sequence of the last
+// heartbeat it managed to write, and the same slot identity and sequence for every witness.
+//
+// The timestamp anchors the ordering assertion: fencing may only be proven after the victim
+// actually went silent, so the FencingSucceeded transition must be later than this. The sequences
+// anchor the stronger one: the victim's must never move again while it is isolated and every
+// witness's must keep moving, which is what makes a FencingSucceeded a proof of death rather than
+// a claim. Both are read after the victim is reported unhealthy, never before the partition, since
+// a slot normally lands one more heartbeat after the rules go in.
 type splitBrainState struct {
-	victimNodeID uint16
-	heartbeatTS  int64
+	victimNodeID     uint16
+	heartbeatTS      int64
+	victimSequence   uint64
+	witnessNodeIDs   map[string]uint16 // witness node name -> its heartbeat slot's node ID
+	witnessSequences map[uint16]uint64 // witness node ID -> its heartbeat sequence at capture
 }
 
 // splitBrainBaseline is the pre-partition state the test proves the fencing left the witnesses in:
@@ -604,10 +614,14 @@ func injectCephRBDRules(injectorPod *pod.Builder) (string, error) {
 	return injectOut.String(), injectErr
 }
 
-// victimHeartbeatSlotState looks the victim's heartbeat node ID up in the on-device node map, read through the
-// observer pod, and reads the last heartbeat that slot holds. Both come from the device, not the
-// Kubernetes API.
-func victimHeartbeatSlotState(observerPodName, victimNodeName string) (splitBrainState, error) {
+// splitBrainHeartbeatState looks every involved node's heartbeat slot up in the on-device node map,
+// read through the observer pod, and reads what those slots hold right now: the victim's last
+// heartbeat timestamp and sequence, and each witness's sequence. All of it comes from the device,
+// not the Kubernetes API, which is the point — the victim is the one node that cannot reach the
+// device, so its state is only knowable from a peer.
+func splitBrainHeartbeatState(
+	observerPodName, victimNodeName string, witnessNodes []string,
+) (splitBrainState, error) {
 	nodeMap, jsonPayload, mapErr := readNodeMapFromPod(observerPodName)
 	if mapErr != nil {
 		return splitBrainState{}, fmt.Errorf("read the node map through observer pod %s (payload: %s): %w",
@@ -626,13 +640,107 @@ func victimHeartbeatSlotState(observerPodName, victimNodeName string) (splitBrai
 			victimEntry.NodeID, observerPodName, tsErr)
 	}
 
-	return splitBrainState{victimNodeID: victimEntry.NodeID, heartbeatTS: heartbeatTS}, nil
+	sequences, seqErr := heartbeatSequences(observerPodName)
+	if seqErr != nil {
+		return splitBrainState{}, fmt.Errorf("read the heartbeat sequences through observer pod %s: %w",
+			observerPodName, seqErr)
+	}
+
+	victimSequence, written := sequences[victimEntry.NodeID]
+	if !written {
+		return splitBrainState{}, fmt.Errorf(
+			"the victim's heartbeat slot (node ID %d) holds no readable sequence", victimEntry.NodeID)
+	}
+
+	state := splitBrainState{
+		victimNodeID:     victimEntry.NodeID,
+		heartbeatTS:      heartbeatTS,
+		victimSequence:   victimSequence,
+		witnessNodeIDs:   make(map[string]uint16, len(witnessNodes)),
+		witnessSequences: make(map[uint16]uint64, len(witnessNodes)),
+	}
+
+	for _, witness := range witnessNodes {
+		witnessEntry, witnessMapped := nodeMap.Entries[witness]
+		if !witnessMapped {
+			return splitBrainState{}, fmt.Errorf("the node map holds no entry for witness node %s", witness)
+		}
+
+		witnessSequence, witnessWritten := sequences[witnessEntry.NodeID]
+		if !witnessWritten {
+			return splitBrainState{}, fmt.Errorf(
+				"witness node %s owns heartbeat slot node ID %d, which holds no readable sequence",
+				witness, witnessEntry.NodeID)
+		}
+
+		state.witnessNodeIDs[witness] = witnessEntry.NodeID
+		state.witnessSequences[witnessEntry.NodeID] = witnessSequence
+	}
+
+	return state, nil
+}
+
+// errVictimResumedHeartbeating marks the one unrecoverable outcome of a heartbeat progress check:
+// the isolated victim wrote again. Callers match it to fail immediately rather than keep polling.
+var errVictimResumedHeartbeating = errors.New("the isolated victim resumed heartbeating")
+
+// splitBrainHeartbeatProgress re-reads the heartbeat region and compares it with the state captured
+// once the victim was already isolated. It returns nil when every witness slot has advanced past the
+// sequence it held then and the victim's still has not, which is the evidence a FencingSucceeded has
+// to rest on: without it, "the controller proved death" cannot be told apart from the controller
+// reading the wrong slot, and "the victim's slot did not move" cannot be told apart from a device
+// read that is not working.
+//
+// Heartbeats tick every few seconds and unevenly, so a witness that has not advanced yet is an
+// ordinary not-yet and the caller should read again after a while. A victim that has advanced is
+// never a not-yet, and is returned wrapping errVictimResumedHeartbeating.
+func splitBrainHeartbeatProgress(observerPodName string, state splitBrainState) error {
+	sequences, seqErr := heartbeatSequences(observerPodName)
+	if seqErr != nil {
+		return fmt.Errorf("read the heartbeat sequences through observer pod %s: %w",
+			observerPodName, seqErr)
+	}
+
+	if victimSequence, written := sequences[state.victimNodeID]; written &&
+		victimSequence > state.victimSequence {
+		return fmt.Errorf("%w: slot (node ID %d) went from sequence %d to %d, so fencing was proven "+
+			"against a node that was still writing",
+			errVictimResumedHeartbeating, state.victimNodeID, state.victimSequence, victimSequence)
+	}
+
+	witnesses := make([]string, 0, len(state.witnessNodeIDs))
+	for witness := range state.witnessNodeIDs {
+		witnesses = append(witnesses, witness)
+	}
+
+	sort.Strings(witnesses)
+
+	for _, witness := range witnesses {
+		nodeID := state.witnessNodeIDs[witness]
+		sequence, written := sequences[nodeID]
+		if !written {
+			return fmt.Errorf("witness node %s owns heartbeat slot node ID %d, which holds no readable "+
+				"sequence right now", witness, nodeID)
+		}
+
+		if sequence <= state.witnessSequences[nodeID] {
+			return fmt.Errorf("witness node %s has not written again yet: its slot (node ID %d) is still "+
+				"at sequence %d", witness, nodeID, state.witnessSequences[nodeID])
+		}
+	}
+
+	return nil
 }
 
 // witnessesStillHealthy returns nil while no witness node is flagged SBRStorageUnhealthy=True and
-// none has a StorageBasedRemediation CR. Intended as a Consistently body for the window in which NHC
-// decides to act on the victim: a witness flagged or remediated there means the fence landed on the
-// wrong geometry.
+// none has a StorageBasedRemediation CR. It is checked on every poll of every wait that runs while
+// the victim is isolated, rather than over one window: the condition cycles True -> Unknown -> True
+// and NHC deletes and recreates CRs along with it, so a witness wrongly flagged or remediated can
+// appear and be withdrawn entirely inside a window that is not being watched. A witness flagged or
+// remediated at any point means the fence landed on the wrong geometry.
+//
+// It deliberately checks only the condition and the CR, never Ready or schedulable: a witness may
+// legitimately blip while the victim reboots, and the end state is asserted by witnessesUntouched.
 func witnessesStillHealthy(witnessNodes []string) error {
 	for _, witness := range witnessNodes {
 		if condErr := transientNodeHasCondition(witness,
