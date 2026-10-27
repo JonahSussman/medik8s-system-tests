@@ -463,3 +463,40 @@ Full test case: [docs/TESTCASES/rhwa-1934.md](../../docs/TESTCASES/rhwa-1934.md)
   Ready, schedulable, same boot-id, unchanged `sbr_self_fenced_total`; the victim returns Ready with a
   changed boot-id and a Ready agent pod, holds steady for 90s, then NHC deletes the CR and the node
   becomes schedulable with the taint gone
+
+### 19. Verify the SBR Agent DaemonSet Carries No Process-Table Probe ([RHWA-1965](https://redhat.atlassian.net/browse/RHWA-1965))
+
+Regression cover for [RHWA-1955](https://redhat.atlassian.net/browse/RHWA-1955). Proves the agent
+DaemonSet the controller renders carries no `livenessProbe` and no `startupProbe`,
+and that no probe on the agent container reads the host process table. The removed check,
+`grep -l sbr-agent /proc/*/cmdline`, was both blind and flaky: the agent pod sets `hostPID`, so the
+probe's own `sh` and `grep` carry the string `sbr-agent` and the grep matched itself, while any host
+process exiting mid-scan made it exit 2. On a busy node kubelet therefore restarted healthy agents —
+and a restart releases the watchdog, so an agent killed while its node is cut off from shared storage
+never comes back and nothing is left to reboot a node its peers have already fenced.
+
+The spec also pins the surviving readiness probe: command, the five tuning fields, and the
+detect-only variant that drops the watchdog check. It creates one config whose `nodeSelector` matches
+no node, so the DaemonSet renders the pod template in full while scheduling zero agent pods; the
+probe contract lives in that template, so no running agent is touched.
+
+Runtime behaviour is deliberately not asserted here. That a healthy agent survives process churn,
+that a dead agent still restarts (the agent is the container `ENTRYPOINT`), and that a
+storage-partitioned node still self-fences belong to the destructive specs and to the manual
+scenario on the bug.
+
+Full test case: [docs/TESTCASES/rhwa-1965.md](../../docs/TESTCASES/rhwa-1965.md)
+
+- **Operators**: SBR v0.3.0 (fix from storage-based-remediation PR #151)
+- **Cluster**: Any topology, any node count
+- **Storage**: Any RWX StorageClass; CephFS auto-discovered, `SBR_STORAGE_CLASS` overrides. Skips
+  when the cluster has none. No agent pod is scheduled
+- **Environment**: Connected or disconnected. **Non-destructive** — no node, no running agent and no
+  node label is touched
+- **Standalone**: `ginkgo --label-filter="sbr" --focus="no liveness or startup probe" ./tests/sbr-operator/...`
+- **Pass criteria**: `livenessProbe` and `startupProbe` are `nil` on the agent container in both
+  remediation and detect-only mode; no probe command contains `/proc`, `grep` or `cmdline`; the
+  readiness command is exactly `test -f /var/run/sbr-agent/preflight-ok && test -c /dev/watchdog`
+  with tuning `60/10/5/6/1`, and exactly `test -f /var/run/sbr-agent/preflight-ok` in detect-only
+  mode; `hostPID` is still true; the DaemonSet schedules zero pods and is garbage-collected after
+  the config is deleted
