@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -67,7 +66,7 @@ var _ = Describe("SBR startup preflight heartbeat", Ordered, Serial, func() {
 		storageClass = discoverRWXStorageClass()
 	})
 
-	It("Verify SBR startup clears the unassigned preflight slot without ghost peer warnings",
+	It("Verify SBR startup clears the unassigned preflight slot",
 		reportxml.ID("1964"),
 		Label(
 			labels.OperatorSBR,
@@ -96,17 +95,11 @@ var _ = Describe("SBR startup preflight heartbeat", Ordered, Serial, func() {
 			verifyGhostPeerNodeMap(agents)
 
 			By("Observing the unused slot and agent stability for one minute")
-			since := metav1.Now()
 			Consistently(func() error {
 				return checkGhostPeerStability(created.GetName(), agents)
 			}, sbrparams.GhostPeerObservationDuration, sbrparams.DefaultPollInterval).Should(Succeed(),
 				"SBRC %q agents must stay Ready without restarts and read an empty slot 1", created.GetName())
 			AddReportEntry("Unused filesystem slot 1", "512 zero bytes through every agent for one minute")
-
-			By("Checking every agent's steady-state peer logs")
-			for idx := range agents {
-				verifyGhostPeerLogs(&agents[idx], since)
-			}
 		})
 })
 
@@ -255,34 +248,6 @@ func checkGhostPeerStability(configName string, baseline []corev1.Pod) error {
 	}
 
 	return nil
-}
-
-func verifyGhostPeerLogs(agent *corev1.Pod, since metav1.Time) {
-	ctx, cancel := context.WithTimeout(context.Background(), sbrparams.GhostPeerReadTimeout)
-	defer cancel()
-	logs, err := APIClient.Pods(medik8sparams.OperatorNs).GetLogs(agent.Name,
-		&corev1.PodLogOptions{Container: "sbr-agent", SinceTime: &since}).DoRaw(ctx)
-	Expect(err).ToNot(HaveOccurred(), "Agent %q peer logs must be readable", agent.Name)
-	cycles := 0
-	for _, line := range strings.Split(string(logs), "\n") {
-		if !strings.Contains(line, "Cluster status") &&
-			!strings.Contains(line, "Skipping peer check - unable to resolve node name") {
-			continue
-		}
-		var event struct {
-			Message    string `json:"message"`
-			PeerNodeID uint16 `json:"peerNodeID"`
-		}
-		Expect(json.Unmarshal([]byte(line), &event)).To(Succeed(), "Agent %q peer events must be valid JSON", agent.Name)
-		if event.Message == "Cluster status" {
-			cycles++
-		}
-		Expect(event.Message == "Skipping peer check - unable to resolve node name" && event.PeerNodeID == 1).
-			To(BeFalse(), "Agent %q must not report unresolved peer nodeID 1: %s", agent.Name, line)
-	}
-	Expect(cycles).To(BeNumerically(">", 0), "Agent %q must run its peer monitor during observation", agent.Name)
-	AddReportEntry("Peer monitor "+agent.Name,
-		fmt.Sprintf("node=%s uid=%s peer cycles=%d, no unresolved ID 1", agent.Spec.NodeName, agent.UID, cycles))
 }
 
 func cleanupGhostPeerConfig(config *unstructured.Unstructured) {

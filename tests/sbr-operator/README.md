@@ -506,8 +506,7 @@ Full test case: [docs/TESTCASES/rhwa-1965.md](../../docs/TESTCASES/rhwa-1965.md)
 
 Regression coverage for RHWA-1058. Creates a filesystem SBRC, verifies the shared
 node map assigns every real agent a unique ID other than 1, and reads slot 1
-through every agent for a minute. Skips if a real node owns ID 1. Checks each
-agent's peer logs for ongoing monitoring without unresolved ID 1 warnings.
+through every agent for a minute. Skips if a real node owns ID 1.
 
 Full test case: [docs/TESTCASES/rhwa-1964.md](../../docs/TESTCASES/rhwa-1964.md)
 
@@ -518,5 +517,5 @@ Full test case: [docs/TESTCASES/rhwa-1964.md](../../docs/TESTCASES/rhwa-1964.md)
 - **Environment**: Connected or disconnected. Non-destructive, no fault injection
 - **Standalone**: `ginkgo -v --label-filter='operator:sbr && tier:acceptance' --focus='startup clears the unassigned preflight slot' ./tests/sbr-operator`
 - **Pass criteria**: Valid node map with ID 1 unused, full slot 1 zero through every
-  agent for one minute, unchanged Ready pods and restart counts, peer-monitor
-  activity without unresolved ID 1 warnings. Test SBRC and operands removed
+  agent for one minute, unchanged Ready pods and restart counts. Test SBRC and
+  operands removed

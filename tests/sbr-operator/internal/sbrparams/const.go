@@ -11,7 +11,7 @@ const (
 	// GhostPeerObservationDuration covers multiple five-second peer-monitor cycles.
 	GhostPeerObservationDuration = time.Minute
 
-	// GhostPeerReadTimeout bounds each device exec and agent-log read.
+	// GhostPeerReadTimeout bounds device execs and agent-state reads.
 	GhostPeerReadTimeout = 30 * time.Second
 
 	// GhostPeerCleanupTimeout bounds normal SBRC and operand removal.
