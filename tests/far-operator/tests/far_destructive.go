@@ -602,11 +602,13 @@ var _ = Describe("FAR Destructive Tests",
 		Context("control plane node target",
 			Label(labels.TopologyControlPlane),
 			func() {
-				Skip("Skipping until RHWA-1967 is resolved")
 				It("should remediate a control plane node and preserve etcd quorum",
 					Label(labels.TierAcceptance, labels.ComponentRemediation),
 					reportxml.ID("90217"),
 					func() {
+
+						Skip("Skipping until RHWA-1967 is resolved")
+
 						// Prior destructive tests fence/reboot worker nodes, which can
 						// leave the FAR controller's gRPC connections to the API server
 						// degraded. Restarting the pods forces fresh connections so the
