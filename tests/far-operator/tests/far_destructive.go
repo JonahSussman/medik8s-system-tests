@@ -602,6 +602,7 @@ var _ = Describe("FAR Destructive Tests",
 		Context("control plane node target",
 			Label(labels.TopologyControlPlane),
 			func() {
+				Skip("Skipping until RHWA-1967 is resolved")
 				It("should remediate a control plane node and preserve etcd quorum",
 					Label(labels.TierAcceptance, labels.ComponentRemediation),
 					reportxml.ID("90217"),

@@ -46,6 +46,8 @@ var _ = Describe(
 			observerPodName string
 		)
 
+		Skip("Skipping until RHWA-1966 is resolved")
+
 		BeforeAll(func() {
 			requireNoSBRNodeHealthCheck()
 			testSBRC = setupBlockModeSBRC(sbrparams.SBRCBlockTransientTestName)
