@@ -606,7 +606,6 @@ var _ = Describe("FAR Destructive Tests",
 					Label(labels.TierAcceptance, labels.ComponentRemediation),
 					reportxml.ID("90217"),
 					func() {
-
 						Skip("Skipping until RHWA-1967 is resolved")
 
 						// Prior destructive tests fence/reboot worker nodes, which can
