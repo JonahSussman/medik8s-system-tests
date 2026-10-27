@@ -539,7 +539,51 @@ const (
 	// writing to any more, not to measure cadence, which BlockHeartbeatSlotMaxAge does on
 	// device-written timestamps alone and so without any dependency on the runner's clock.
 	BlockInspectionMaxSkew = 5 * time.Minute
+
+	// SBRCProbeShapeTestName is the SBRC name used by the agent DaemonSet probe contract test
+	// (RHWA-1965). Its nodeSelector matches no node, so it renders a DaemonSet without
+	// scheduling any agent pod.
+	SBRCProbeShapeTestName = "test-sbrc-probe-shape"
+
+	// AgentContainerName is the name of the agent container in the agent DaemonSet pod template.
+	AgentContainerName = "sbr-agent"
+
+	// AgentPreflightSentinelPath is the marker file the agent creates once its pre-flight storage
+	// write/read-back test passes. The readiness probe tests for it.
+	// Sourced from internal/agent/constants.go in the SBR operator.
+	AgentPreflightSentinelPath = "/var/run/sbr-agent/preflight-ok"
+
+	// AgentDefaultWatchdogPath is the watchdog character device the readiness probe checks outside
+	// detect-only mode. Block mode mounts the host /dev at /host-dev and resolves the device there.
+	AgentDefaultWatchdogPath = "/dev/watchdog"
+
+	// DetectOnlyModeEnabled is the spec.detectOnlyMode value that disables remediation.
+	DetectOnlyModeEnabled = "Enabled"
+
+	// AgentReadinessInitialDelaySeconds is the agent readiness probe's initialDelaySeconds. This
+	// and the four values below are asserted so a change to the probe's sensitivity cannot pass
+	// unnoticed alongside an unrelated edit.
+	AgentReadinessInitialDelaySeconds int32 = 60
+
+	// AgentReadinessPeriodSeconds is the agent readiness probe's periodSeconds.
+	AgentReadinessPeriodSeconds int32 = 10
+
+	// AgentReadinessTimeoutSeconds is the agent readiness probe's timeoutSeconds.
+	AgentReadinessTimeoutSeconds int32 = 5
+
+	// AgentReadinessFailureThreshold is the agent readiness probe's failureThreshold.
+	AgentReadinessFailureThreshold int32 = 6
+
+	// AgentReadinessSuccessThreshold is the agent readiness probe's successThreshold.
+	AgentReadinessSuccessThreshold int32 = 1
 )
+
+// AgentProbeForbiddenSubstrings are the fragments of a host process-table scan that must never
+// appear in an agent probe command (RHWA-1955). The agent pod sets hostPID, so a probe such as
+// "grep -l sbr-agent /proc/*/cmdline" matches the probe's own sh and grep: it can never detect a
+// dead agent, and it exits 2 whenever any host process disappears mid-scan, which made kubelet
+// restart healthy agents on busy nodes.
+var AgentProbeForbiddenSubstrings = []string{"/proc", "grep", "cmdline"}
 
 // AgentExpectedMetricNames lists the Prometheus metric names that must be present in the agent output.
 // These are SBR operator contract and are used by the metrics test suite (OCP-89202).
